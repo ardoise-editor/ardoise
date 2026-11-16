@@ -172,6 +172,13 @@ fn draw<'a>(
             .width(Length::Fill)
             .into()
         }
+        Node::Screen(grid) => {
+            let focused = plugins
+                .screen_focus
+                .as_ref()
+                .is_some_and(|(k, id)| k == key && *id == grid.id);
+            super::screen::view(key, grid, dark, focused)
+        }
         Node::Separator => container(Space::new().height(1))
             .width(Length::Fill)
             .style(se_theme::rule(dark))

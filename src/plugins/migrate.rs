@@ -45,6 +45,9 @@ pub fn carry_personal_dictionary() {
     }
 }
 
+/// The official Terminal plugin.
+pub const TERMINAL: &str = "simpleedit.terminal";
+
 /// The official Remote Files plugin.
 pub const REMOTE: &str = "simpleedit.remote";
 

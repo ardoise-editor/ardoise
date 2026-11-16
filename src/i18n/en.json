@@ -426,10 +426,7 @@
   "git.binary": "Binary file",
   "git.no_diff": "No differences",
   "git.diff_truncated": "The diff is cut here: it is too long to show in full.",
-  "terminal.search": "Find in the terminal",
-  "terminal.search_none": "Nothing found",
   "terminal.title": "Terminal",
-  "terminal.local": "Local",
   "shortcuts.toggle_sidebar": "Toggle sidebar",
   "shortcuts.quit": "Quit",
   "shortcuts.undo": "Undo",
@@ -1611,5 +1608,6 @@
   "plugins.err_not_in_front": "the file is not the one in front",
   "spell.plugin_missing": "Install the Spelling plugin (Preferences › Plugins) to check the spelling",
   "tasks.plugin_missing": "Install the Tasks plugin (Preferences › Plugins) to run the tasks of a project",
-  "remote.plugin_missing": "Install the Remote Files plugin (Preferences › Plugins) to open files over SSH"
+  "remote.plugin_missing": "Install the Remote Files plugin (Preferences › Plugins) to open files over SSH",
+  "terminal.plugin_missing": "Install the Terminal plugin (Preferences › Plugins) to have a terminal"
 }

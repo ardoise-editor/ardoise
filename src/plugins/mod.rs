@@ -8,6 +8,7 @@ pub mod host;
 pub mod migrate;
 pub mod remote;
 pub mod render;
+pub mod screen;
 pub mod store;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -77,6 +78,16 @@ pub enum PluginMsg {
     Restart(String),
     /// Shows or hides the settings of a plugin in Preferences › Plugins.
     ToggleSettings(String),
+    /// A screen of a panel takes the keyboard, or gives it back: the
+    /// plugin, the panel, the screen.
+    ScreenFocus(String, String, String, bool),
+    /// The text selected on a screen, for the clipboard.
+    ScreenCopy(String),
+    /// A paste on a screen (wrapped as a bracketed paste or not).
+    ScreenPaste(String, String, String, bool),
+    ScreenPasted(String, String, String, bool, Option<String>),
+    /// A click on `file:line` on a screen, and the folder it is from.
+    ScreenOpen(String, PathBuf),
 
     // ── The Plugins page ───────────────────────────────────────────────
     LoadRegistry,
@@ -151,6 +162,8 @@ pub struct Plugins {
     pub bottom: Option<PanelKey>,
     /// The settings panel open in Preferences › Plugins.
     pub settings_open: Option<PanelKey>,
+    /// The screen that has the keyboard: its panel and its id.
+    pub screen_focus: Option<(PanelKey, String)>,
     /// The items of the status bar: (plugin, item).
     pub status: BTreeMap<(String, String), StatusParams>,
     /// The plugins that stopped by themselves, and why.

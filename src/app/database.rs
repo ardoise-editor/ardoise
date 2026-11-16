@@ -1609,8 +1609,7 @@ impl SimpleEditApp {
                 console.open = !console.open;
                 if console.open {
                     // One tool panel at the bottom.
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
+                    self.plugin_bottom_yield();
                     self.scratch.open = false;
                     self.bookmark_panel.open = false;
                     self.git.open = false;

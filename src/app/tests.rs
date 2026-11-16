@@ -1690,12 +1690,35 @@ mod behavior_tests {
         let mut app = app();
         let _ = app.handle(Message::ToggleGit);
         assert!(app.git.open);
-        let _ = app.handle(Message::ToggleTerminal);
-        assert!(app.terminal.open);
+        // The panel of the Terminal plugin.
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "simpleedit.terminal", "name": "Terminal", "version": "1.0.0", "api": 1,
+                "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "terminal", "title": "Terminal", "location": "bottom"}]}}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+        let terminal = ("simpleedit.terminal".to_string(), "terminal".to_string());
+        let _ = app.handle(Message::Plugin(crate::plugins::PluginMsg::TogglePanel(
+            terminal.0.clone(),
+            terminal.1.clone(),
+        )));
+        assert_eq!(app.plugins.bottom.as_ref(), Some(&terminal));
         assert!(!app.git.open, "one tool panel at a time");
         let _ = app.handle(Message::ToggleGit);
         assert!(app.git.open);
-        assert!(!app.terminal.open);
+        assert!(app.plugins.bottom.is_none());
+        // The shortcut of the terminal closes its panel when it is open.
+        let _ = app.handle(Message::Plugin(crate::plugins::PluginMsg::TogglePanel(
+            terminal.0.clone(),
+            terminal.1.clone(),
+        )));
+        let _ = app.handle(Message::ToggleTerminal);
+        assert!(app.plugins.bottom.is_none());
     }
 
     #[test]

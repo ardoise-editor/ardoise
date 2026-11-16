@@ -426,10 +426,7 @@
   "git.binary": "Fichier binaire",
   "git.no_diff": "Aucune différence",
   "git.diff_truncated": "Le diff est coupé ici : il est trop long pour être affiché en entier.",
-  "terminal.search": "Chercher dans le terminal",
-  "terminal.search_none": "Rien trouvé",
   "terminal.title": "Terminal",
-  "terminal.local": "Local",
   "shortcuts.toggle_sidebar": "Panneau latéral",
   "shortcuts.quit": "Quitter",
   "shortcuts.undo": "Annuler",
@@ -1611,5 +1608,6 @@
   "plugins.err_not_in_front": "le fichier n'est pas celui affiché",
   "spell.plugin_missing": "Installez le plugin Orthographe (Préférences › Plugins) pour vérifier l'orthographe",
   "tasks.plugin_missing": "Installez le plugin Tâches (Préférences › Plugins) pour lancer les tâches d'un projet",
-  "remote.plugin_missing": "Installez le plugin Fichiers distants (Préférences › Plugins) pour ouvrir des fichiers par SSH"
+  "remote.plugin_missing": "Installez le plugin Fichiers distants (Préférences › Plugins) pour ouvrir des fichiers par SSH",
+  "terminal.plugin_missing": "Installez le plugin Terminal (Préférences › Plugins) pour avoir un terminal"
 }

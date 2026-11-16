@@ -388,6 +388,11 @@ impl SimpleEditApp {
                     }
                 }
                 self.open_plugin_panel(&key);
+                // One tool panel at the bottom: those of the app step aside.
+                self.git.open = false;
+                self.scratch.open = false;
+                self.bookmark_panel.open = false;
+                self.db.console.open = false;
                 self.plugins.bottom = Some(key);
             }
             Some(Location::Settings) => {
@@ -395,6 +400,16 @@ impl SimpleEditApp {
             }
             None => {}
         }
+    }
+
+    /// A tool panel of the app opens under the editor: the plugin's one
+    /// steps aside (one tool panel at the bottom), and its screen lets the
+    /// keyboard go.
+    pub(super) fn plugin_bottom_yield(&mut self) {
+        if let Some(old) = self.plugins.bottom.take() {
+            self.close_plugin_panel(&old);
+        }
+        self.plugins.screen_focus = None;
     }
 
     /// A panel of the app was opened in the sidebar: the plugin's one closes.
@@ -427,9 +442,7 @@ impl SimpleEditApp {
                 Task::none()
             }
             PluginMsg::CloseBottom => {
-                if let Some(old) = self.plugins.bottom.take() {
-                    self.close_plugin_panel(&old);
-                }
+                self.plugin_bottom_yield();
                 Task::none()
             }
             PluginMsg::Ui(plugin, panel, action, value) => {
@@ -495,6 +508,53 @@ impl SimpleEditApp {
                 self.overlay = ActiveOverlay::None;
                 host::respond(&plugin, request, Ok(Value::Bool(yes)));
                 Task::none()
+            }
+            PluginMsg::ScreenFocus(plugin, panel, id, on) => {
+                self.plugins.screen_focus = on.then_some(((plugin, panel), id));
+                Task::none()
+            }
+            PluginMsg::ScreenCopy(text) => iced::clipboard::write(text),
+            PluginMsg::ScreenPaste(plugin, panel, id, bracketed) => {
+                iced::clipboard::read().map(move |text| {
+                    plugin_msg(PluginMsg::ScreenPasted(
+                        plugin.clone(),
+                        panel.clone(),
+                        id.clone(),
+                        bracketed,
+                        text,
+                    ))
+                })
+            }
+            PluginMsg::ScreenPasted(plugin, panel, id, bracketed, text) => {
+                // No escape sequence may come from a paste: `ESC[201~` would
+                // end the bracketed paste and what follows would run.
+                let Some(text) = text.map(|t| paste_text_safe(&t)) else {
+                    return Task::none();
+                };
+                let bytes = if bracketed {
+                    format!("\x1b[200~{text}\x1b[201~").into_bytes()
+                } else {
+                    // A pasted line break is the Enter key.
+                    text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
+                };
+                let input = simpleedit_plugin::ui::ScreenInput::Input { bytes };
+                self.plugin_update(PluginMsg::Ui(
+                    plugin,
+                    panel,
+                    id,
+                    serde_json::to_value(input).ok(),
+                ))
+            }
+            PluginMsg::ScreenOpen(word, dir) => {
+                let dir = if dir.as_os_str().is_empty() {
+                    self.projects.roots.first().cloned().unwrap_or_default()
+                } else {
+                    dir
+                };
+                match crate::places::location_with(&word, &dir, &mut |p| p.is_file()) {
+                    Some(at) => self.open_place(at),
+                    None => Task::none(),
+                }
             }
             PluginMsg::ToggleSettings(id) => {
                 let Some(panel) = self.plugins.settings_panel(&id).map(|p| p.id.clone()) else {

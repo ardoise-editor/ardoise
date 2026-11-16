@@ -603,7 +603,6 @@ pub enum Message {
     MarksBase(PathBuf, Option<Option<String>>),
     // Terminal
     ToggleTerminal,
-    NewTerminal,
     // Scratch files
     ToggleScratch,
     // The Git menu of a file
@@ -638,22 +637,6 @@ pub enum Message {
     ScratchDirChosen(Option<PathBuf>),
     /// Keeps the scratch files in this folder ("" for the default one).
     SetScratchDir(String),
-    SelectTerminal(usize),
-    CloseTerminal(usize),
-    /// Time to repaint the terminal and drop the ones whose shell ended.
-    TerminalTick,
-    TerminalFocus(bool),
-    TerminalCopy(String),
-    /// A word of the terminal was clicked with Command: a place to open
-    /// (`file:line`), from the folder the shell started in.
-    TerminalOpen(String, PathBuf),
-    TerminalPaste,
-    /// Opens (or closes) the search of the terminal.
-    TerminalSearchToggle,
-    TerminalSearchInput(String),
-    /// To the next match: `true` goes back in the history.
-    TerminalSearchNext(bool),
-    TerminalPasteText(Option<String>),
     /// The pointer entered a menu title: switches menus if one is already open.
     HoverMenu(TopMenu),
     /// Resolves the on-screen position of an open top menu's button, so its
@@ -914,7 +897,6 @@ pub struct SimpleEditApp {
     is_dirty: bool,
     is_formatting: bool,
     status_message: String,
-    terminal: crate::terminal::Panel,
     scratch: crate::scratch::Panel,
     plugins: crate::plugins::Plugins,
     bookmark_panel: bookmark_panel::Panel,
@@ -1228,7 +1210,6 @@ impl SimpleEditApp {
             is_dirty: false,
             is_formatting: false,
             status_message: t!("status.ready").to_string(),
-            terminal: Default::default(),
             scratch: crate::scratch::Panel::new(&config.scratch_dir),
             plugins: Default::default(),
             bookmark_panel: Default::default(),
@@ -1432,7 +1413,6 @@ impl SimpleEditApp {
                     | Message::SetRecents(_)
                     | Message::SessionWritten(_)
                     | Message::PreviewTick
-                    | Message::TerminalTick
                     | Message::WindowResized(..)
                     | Message::WindowFocus(_)
                     | Message::Git(crate::git_panel::GitMsg::Pick(_))
@@ -1458,7 +1438,7 @@ impl SimpleEditApp {
         let git_done = matches!(&message, Message::Git(crate::git_panel::GitMsg::Done(_)));
         // The terminal redraws 30 times a second: it changes nothing the rest
         // of the window follows (the text, the preview, the lint, the marks).
-        let idle = matches!(&message, Message::TerminalTick);
+        let idle = false;
         let command = self.handle(message);
         if idle {
             return command;
@@ -1718,9 +1698,6 @@ impl SimpleEditApp {
                     .map(|_| Message::Git(crate::git_panel::GitMsg::Tick)),
             );
         }
-        if self.terminal.open {
-            subscriptions.push(crate::terminal::changes());
-        }
         subscriptions.push(crate::plugins::host::events());
         #[cfg(all(target_os = "macos", not(test)))]
         subscriptions.push(crate::native_menu::subscription());
@@ -1872,9 +1849,7 @@ impl SimpleEditApp {
         if let Some(errors) = error_panel {
             panel = panel.push(errors);
         }
-        if self.terminal.open {
-            panel = panel.push(self.terminal_panel(dark));
-        } else if self.git.open {
+        if self.git.open {
             panel =
                 panel.push(container(self.git.view(dark)).height(Length::Fixed(self.panel_height)));
         }
@@ -2544,7 +2519,6 @@ impl SimpleEditApp {
                     | Message::AutoSave
                     | Message::SessionWritten(_)
                     | Message::PreviewTick
-                    | Message::TerminalTick
                     | Message::WindowResized(..)
                     | Message::WindowFocus(_)
             );
@@ -3045,8 +3019,7 @@ impl SimpleEditApp {
                 let task = self.git.toggle(&ctx);
                 if self.git.open {
                     // One tool panel at the bottom: the terminal steps aside.
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
+                    self.plugin_bottom_yield();
                     self.scratch.open = false;
                     self.bookmark_panel.open = false;
                     self.db.console.open = false;
@@ -3096,31 +3069,27 @@ impl SimpleEditApp {
                 };
                 Task::batch([panel, tabs, again])
             }
+            // The terminal is the Terminal plugin's: its panel opens or closes.
             Message::ToggleTerminal => {
-                if self.terminal.open {
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
-                } else {
-                    if self.terminal.tabs.is_empty() {
-                        self.new_terminal();
-                    }
-                    self.terminal.open = !self.terminal.tabs.is_empty();
-                    self.terminal.focused = self.terminal.open;
-                    if self.terminal.open {
-                        // One tool panel at the bottom.
-                        self.scratch.open = false;
-                        self.bookmark_panel.open = false;
-                        self.git.open = false;
-                        self.db.console.open = false;
-                    }
+                let open = self
+                    .plugins
+                    .bottom
+                    .as_ref()
+                    .is_some_and(|k| k.0 == crate::plugins::migrate::TERMINAL);
+                if open {
+                    self.plugin_bottom_yield();
+                    return Task::none();
                 }
-                Task::none()
+                self.run_official_command(
+                    crate::plugins::migrate::TERMINAL,
+                    "terminal.toggle",
+                    t!("terminal.plugin_missing").to_string(),
+                )
             }
             Message::ToggleScratch => {
                 self.scratch.open = !self.scratch.open;
                 if self.scratch.open {
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
+                    self.plugin_bottom_yield();
                     self.bookmark_panel.open = false;
                     self.git.open = false;
                     self.db.console.open = false;
@@ -3150,8 +3119,7 @@ impl SimpleEditApp {
             Message::ToggleBookmarkPanel => {
                 self.bookmark_panel.open = !self.bookmark_panel.open;
                 if self.bookmark_panel.open {
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
+                    self.plugin_bottom_yield();
                     self.scratch.open = false;
                     self.git.open = false;
                     self.db.console.open = false;
@@ -3240,88 +3208,6 @@ impl SimpleEditApp {
             }
             Message::ScratchDirChosen(None) => Task::none(),
             Message::SetScratchDir(dir) => self.set_scratch_dir(dir),
-            Message::NewTerminal => {
-                self.new_terminal();
-                self.terminal.open = !self.terminal.tabs.is_empty();
-                self.terminal.focused = self.terminal.open;
-                Task::none()
-            }
-            Message::SelectTerminal(index) => {
-                if index < self.terminal.tabs.len() {
-                    self.terminal.active = index;
-                    self.terminal.focused = true;
-                }
-                Task::none()
-            }
-            Message::CloseTerminal(index) => {
-                self.terminal.close(index);
-                Task::none()
-            }
-            Message::TerminalTick => {
-                self.terminal.prune_ended();
-                Task::none()
-            }
-            Message::TerminalFocus(focused) => {
-                self.terminal.focused = focused && self.terminal.open;
-                Task::none()
-            }
-            Message::TerminalCopy(text) => iced::clipboard::write(text),
-            Message::TerminalOpen(word, dir) => {
-                let dir = if dir.as_os_str().is_empty() {
-                    self.projects.roots.first().cloned().unwrap_or_default()
-                } else {
-                    dir
-                };
-                match crate::places::location_with(&word, &dir, &mut |p| p.is_file()) {
-                    Some(at) => self.open_place(at),
-                    None => Task::none(),
-                }
-            }
-            Message::TerminalPaste => iced::clipboard::read().map(Message::TerminalPasteText),
-            Message::TerminalSearchToggle => {
-                if self.terminal.search.is_some() {
-                    self.terminal.search = None;
-                    self.terminal.focused = true;
-                    Task::none()
-                } else {
-                    self.terminal.search = Some(String::new());
-                    self.terminal.focused = false;
-                    iced::widget::operation::focus(terminal_search_id())
-                }
-            }
-            Message::TerminalSearchInput(text) => {
-                if let Some(session) = self.terminal.active_session() {
-                    session.forget_found();
-                }
-                self.terminal.search = Some(text);
-                Task::none()
-            }
-            Message::TerminalSearchNext(older) => {
-                let query = self.terminal.search.clone().unwrap_or_default();
-                if let Some(session) = self.terminal.active_session() {
-                    if !session.find(&query, older) {
-                        self.set_status(t!("terminal.search_none"), false);
-                    }
-                }
-                Task::none()
-            }
-            Message::TerminalPasteText(text) => {
-                // No escape sequence may come from a paste: `ESC[201~` would
-                // end the bracketed paste and what follows would run.
-                let text = text.map(|t| paste_text_safe(&t));
-                if let (Some(text), Some(session)) = (text, self.terminal.active_session()) {
-                    let bracketed = session
-                        .with_screen(|screen| screen.bracketed_paste())
-                        .unwrap_or(false);
-                    if bracketed {
-                        session.write(format!("\x1b[200~{text}\x1b[201~").as_bytes());
-                    } else {
-                        // A pasted line break is the Enter key.
-                        session.write(text.replace("\r\n", "\r").replace('\n', "\r").as_bytes());
-                    }
-                }
-                Task::none()
-            }
             Message::ConfirmOverwrite => {
                 self.overlay = ActiveOverlay::None;
                 // Take the new on-disk state as the baseline, then save.
@@ -3519,17 +3405,19 @@ impl SimpleEditApp {
                 Task::none()
             }
             Message::OpenTerminalAt(dir) => {
-                if let Err(error) = self.terminal.add(&dir, &t!("terminal.local")) {
-                    self.set_status(format!("{}: {error}", t!("status.error")), true);
+                if self
+                    .plugins
+                    .get(crate::plugins::migrate::TERMINAL)
+                    .is_none()
+                {
+                    self.set_status(t!("terminal.plugin_missing"), true);
                     return Task::none();
                 }
-                self.terminal.open = true;
-                self.terminal.focused = true;
-                self.scratch.open = false;
-                self.bookmark_panel.open = false;
-                self.git.open = false;
-                self.db.console.open = false;
-                Task::none()
+                self.plugin_update(crate::plugins::PluginMsg::RunAt(
+                    crate::plugins::migrate::TERMINAL.to_string(),
+                    "terminal.here".to_string(),
+                    dir,
+                ))
             }
             Message::RevealInFileManager(path) => {
                 if let Err(e) = reveal_in_file_manager(&path) {
@@ -5144,7 +5032,7 @@ impl SimpleEditApp {
                 }
                 // The terminal has the keyboard: it gets every key (it reads
                 // them itself), except the one that hides it.
-                if self.terminal.focused {
+                if self.plugins.screen_focus.is_some() {
                     let toggle = &self.config.shortcuts.toggle_terminal;
                     if toggle.key.eq_ignore_ascii_case(&key)
                         && toggle.ctrl == ctrl
@@ -7485,8 +7373,7 @@ impl SimpleEditApp {
             return Task::none();
         }
         let (repo, relative) = (blame.repo.clone(), blame.relative.clone());
-        self.terminal.open = false;
-        self.terminal.focused = false;
+        self.plugin_bottom_yield();
         self.git.reveal_commit(sha, Some(relative), repo)
     }
 
@@ -7903,21 +7790,6 @@ impl SimpleEditApp {
                     Message::DiffApplied,
                 )
             }
-        }
-    }
-
-    /// Opens a terminal in the project of the current file (or the home folder).
-    fn new_terminal(&mut self) {
-        let cwd = self
-            .current_file
-            .as_deref()
-            .filter(|p| !is_untitled(p))
-            .and_then(crate::definition::project_root)
-            .filter(|p| p.is_dir())
-            .or_else(dirs::home_dir)
-            .unwrap_or_else(|| PathBuf::from("/"));
-        if let Err(error) = self.terminal.add(&cwd, &t!("terminal.local")) {
-            self.set_status(format!("{}: {error}", t!("status.error")), true);
         }
     }
 
@@ -9791,10 +9663,6 @@ async fn patterns(
 
 fn rename_field_id() -> iced::widget::Id {
     iced::widget::Id::new("rename-field")
-}
-
-fn terminal_search_id() -> iced::widget::Id {
-    iced::widget::Id::new("terminal-search")
 }
 
 fn goto_line_id() -> iced::widget::Id {

@@ -511,8 +511,7 @@ impl SimpleEditApp {
     /// Opens the Git panel on the repository of the file.
     fn show_git_panel(&mut self, root: PathBuf) {
         self.git.show_repo(root, self.current_file.clone());
-        self.terminal.open = false;
-        self.terminal.focused = false;
+        self.plugin_bottom_yield();
         self.scratch.open = false;
         self.bookmark_panel.open = false;
     }

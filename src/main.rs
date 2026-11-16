@@ -54,7 +54,6 @@ mod sidebar;
 mod ssh_trust;
 mod tab_strip;
 mod tabs;
-mod terminal;
 mod text_ops;
 mod theme;
 mod trust;
