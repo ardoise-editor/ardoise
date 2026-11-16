@@ -130,6 +130,10 @@ pub struct Plugins {
     pub told_open: HashSet<PathBuf>,
     /// The settings the plugins were last told.
     pub sent_settings: Option<Settings>,
+    /// The file in front the plugins were last told of.
+    pub sent_active: Option<Option<PathBuf>>,
+    /// The problems the plugins published, by file and plugin.
+    pub published: BTreeMap<PathBuf, BTreeMap<String, Vec<crate::lint::Diagnostic>>>,
 }
 
 impl Plugins {
@@ -197,6 +201,19 @@ impl Plugins {
         self.inputs.retain(|k, _| k.0 .0 != id);
         self.rendered_inputs.retain(|k, _| k.0 != id);
         self.status.retain(|k, _| k.0 != id);
+        for by_plugin in self.published.values_mut() {
+            by_plugin.remove(id);
+        }
+        self.published.retain(|_, by_plugin| !by_plugin.is_empty());
+    }
+
+    /// The problems the plugins published for a file.
+    pub fn published_for(&self, path: &std::path::Path) -> Vec<crate::lint::Diagnostic> {
+        self.published
+            .get(path)
+            .into_iter()
+            .flat_map(|by_plugin| by_plugin.values().flatten().cloned())
+            .collect()
     }
 
     /// The text of a field as shown.
@@ -234,7 +251,7 @@ fn collect_inputs(node: &Node, out: &mut HashMap<String, String>) {
                 collect_inputs(child, out);
             }
         }
-        Node::Scroll { child } => collect_inputs(child, out),
+        Node::Scroll { child, .. } => collect_inputs(child, out),
         _ => {}
     }
 }

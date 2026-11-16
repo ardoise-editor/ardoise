@@ -33,6 +33,28 @@ fn carry_lint_settings_to(config: &crate::config::Config, dir: &Path) {
     }
 }
 
+/// The official Spelling plugin.
+pub const SPELL: &str = "simpleedit.spell";
+
+/// The words the user added to the dictionary, kept by the editor before
+/// the Spelling plugin: copied to its data folder, once.
+pub fn carry_personal_dictionary() {
+    let old = crate::fsutil::config_dir().map(|d| d.join("simpleedit").join("dictionary.txt"));
+    if let (Some(old), Some(dir)) = (old, super::store::data_dir_of(SPELL)) {
+        carry_file(&old, &dir.join("dictionary.txt"));
+    }
+}
+
+/// Copies `from` to `to` unless `to` is there or `from` is not.
+fn carry_file(from: &Path, to: &Path) {
+    if to.exists() {
+        return;
+    }
+    if let Ok(bytes) = std::fs::read(from) {
+        let _ = crate::fsutil::write_atomic(to, &bytes, false);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,7 +80,14 @@ mod tests {
         assert_eq!(written["languages"], serde_json::json!(["py"]));
         assert_eq!(written["tools"]["py"][1], "lsp");
         assert_eq!(written["programs"]["ruff"], "/opt/ruff");
-        // What the plugin changed since is left alone.
+        // What the plugin changed since is left alone (and a file is copied once).
+        let other = dir.path().join("words.txt");
+        std::fs::write(&other, "zork\n").unwrap();
+        let copy = dir.path().join("copy.txt");
+        carry_file(&other, &copy);
+        std::fs::write(&other, "new\n").unwrap();
+        carry_file(&other, &copy);
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), "zork\n");
         std::fs::write(&file, "{}").unwrap();
         carry_lint_settings_to(&config, dir.path());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");

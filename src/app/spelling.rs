@@ -1,38 +1,46 @@
 //! Spelling in the editor: misspelled words underlined, a window of
-//! suggestions for the one under the cursor, a personal dictionary.
+//! suggestions for the one under the cursor, a personal dictionary. The
+//! dictionaries are a plugin's (`contributes.speller`, the official one is
+//! `simpleedit.spell`): it is asked `spell/check`, `spell/suggest`,
+//! `spell/learn` and `spell/languages`.
 
 use super::*;
-use crate::spell::{self, Language, Speller};
 use iced::widget::column;
+use simpleedit_plugin::protocol::methods;
+use simpleedit_plugin::spell::{CheckParams, CheckResult, Language, LearnParams, SuggestParams};
 use std::sync::Arc;
 
 /// Files with more lines than this are not checked as they are typed.
 const MAX_LINES: usize = 20_000;
-/// Files with more lines than this are checked in the background, once the
-/// typing pauses: checking every word at each keystroke would slow it.
+/// Files with more lines than this are checked once the typing pauses:
+/// asking at each keystroke would be of no use.
 const SYNC_LINES: usize = 300;
 /// The pause.
 const PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
+/// How long the speller may take (the first check reads the dictionary).
+const WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// What marks are computed for: the file, its text (revision), the settings.
 pub type SpellKey = (Option<PathBuf>, u64, u64);
-/// Marks computed in the background, and what for (none: given up, the
-/// text having changed again).
-pub type SpellChecked = (SpellKey, Vec<(usize, usize, usize)>);
+/// Marks computed, what for, and the language of the dictionary (none:
+/// given up, the text having changed again).
+pub type SpellChecked = (SpellKey, Option<String>, Vec<(usize, usize, usize)>);
 
 /// What the underlines are numbered from (the problems of the lint are
 /// numbered from 0).
 pub const MARK_BASE: usize = 1 << 30;
 
-/// The misspelled words of `text`, as (line, byte column, end column).
-fn spell_marks(speller: &Speller, text: &str, ext: &str) -> Vec<(usize, usize, usize)> {
+/// Byte ranges of `text` as (line, byte column, end column).
+fn line_marks(text: &str, ranges: &[(usize, usize)]) -> Vec<(usize, usize, usize)> {
     let mut starts = vec![0usize];
     starts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
-    spell::misspelled(speller, text, ext)
-        .into_iter()
-        .map(|(from, to)| {
+    ranges
+        .iter()
+        .filter(|(from, to)| from < to && *to <= text.len())
+        .map(|&(from, to)| {
             let line = starts.partition_point(|s| *s <= from).saturating_sub(1);
-            (line, from - starts[line], to - starts[line])
+            let end = starts.get(line + 1).map_or(to, |next| to.min(next - 1));
+            (line, from - starts[line], end - starts[line])
         })
         .collect()
 }
@@ -48,129 +56,47 @@ pub struct Suggestion {
 
 #[derive(Default)]
 pub struct SpellState {
-    speller: Option<Speller>,
-    /// The language whose dictionary is being read in the background.
-    loading: Option<String>,
-    /// The code of the language of `speller`.
-    language: String,
-    available: Option<Vec<Language>>,
+    /// The language the last check was made in (empty: no dictionary).
+    pub language: String,
     /// The misspelled words: (line, byte column, end column).
     pub marks: Vec<(usize, usize, usize)>,
-    /// What `marks` were computed for: the file, its text, the settings.
+    /// What `marks` were asked for: the file, its text, the settings.
     key: Option<SpellKey>,
-    /// The text asked for last, in the background: an answer for another
-    /// one is of no use (and is not even computed when it is already old).
+    /// The text asked for last: an answer for another one is of no use
+    /// (and is not even asked when it is already old).
     wanted: Arc<std::sync::Mutex<Option<SpellKey>>>,
-    /// Changes with the dictionary, the language, the words added.
+    /// Changes with the language and the words learnt.
     generation: u64,
     /// The languages of the picker.
     pub choices: Vec<String>,
 }
 
-/// The dictionary of a language with the words the user added.
-fn load_speller(language: &Language) -> Option<Speller> {
-    let mut speller = Speller::load(language).ok()?;
-    if let Some(words) = personal_file().and_then(|f| std::fs::read_to_string(f).ok()) {
-        for word in words.lines().filter(|w| !w.trim().is_empty()) {
-            speller.add_personal(word.trim());
-        }
-    }
-    Some(speller)
-}
-
-fn personal_file() -> Option<PathBuf> {
-    crate::fsutil::config_dir().map(|d| d.join("simpleedit").join("dictionary.txt"))
-}
-
 impl SimpleEditApp {
-    fn spell_languages(&mut self) -> &[Language] {
-        self.spell.available.get_or_insert_with(spell::languages)
+    /// The plugin that checks the spelling, started.
+    fn speller(&mut self) -> Option<String> {
+        let id = self
+            .plugins
+            .installed
+            .iter()
+            .find(|p| p.manifest.contributes.speller.is_some())?
+            .id()
+            .to_string();
+        self.plugin_ensure(&id).then_some(id)
     }
 
-    /// The dictionary of the language: whether it is there. When it is not,
-    /// it is read in the background (the first file opened, a change of
-    /// language) and the check is made again when it comes.
-    fn ensure_speller(&mut self) -> (bool, Task<Message>) {
-        let interface = self.config.locale.clone();
-        let wanted = self.config.spell_language.clone();
-        let picked = {
-            let available = self.spell_languages();
-            spell::pick_language(&wanted, &interface, available).cloned()
-        };
-        let Some(language) = picked else {
-            self.spell.speller = None;
-            return (false, Task::none());
-        };
-        if self.spell.speller.is_some() && self.spell.language == language.code {
-            return (true, Task::none());
-        }
-        // The tests have no runtime to run a task: it is read on the spot.
-        if cfg!(test) {
-            return match load_speller(&language) {
-                Some(speller) => {
-                    self.spell.language = language.code;
-                    self.spell.speller = Some(speller);
-                    (true, Task::none())
-                }
-                None => {
-                    self.spell.speller = None;
-                    (false, Task::none())
-                }
-            };
-        }
-        if self.spell.loading.as_deref() == Some(language.code.as_str()) {
-            return (false, Task::none());
-        }
-        self.spell.loading = Some(language.code.clone());
-        let code = language.code.clone();
-        (
-            false,
-            Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || load_speller(&language))
-                        .await
-                        .ok()
-                        .flatten()
-                },
-                move |speller| Message::SpellerLoaded(code.clone(), speller),
-            ),
-        )
-    }
-
-    /// The dictionary was read: the words are checked with it.
-    pub(super) fn speller_loaded(
-        &mut self,
-        code: String,
-        speller: Option<Speller>,
-    ) -> Task<Message> {
-        if self.spell.loading.as_deref() == Some(code.as_str()) {
-            self.spell.loading = None;
-        }
-        // The language may have been changed while it was read.
-        let interface = self.config.locale.clone();
-        let wanted = self.config.spell_language.clone();
-        let current = {
-            let available = self.spell_languages();
-            spell::pick_language(&wanted, &interface, available).map(|l| l.code.clone())
-        };
-        if current.as_deref() != Some(code.as_str()) {
-            self.spell.key = None;
-            return self.refresh_spelling();
-        }
-        self.spell.speller = speller;
-        if self.spell.speller.is_some() {
-            self.spell.language = code;
-        }
-        self.spell.generation += 1;
-        self.spell.key = None;
-        self.refresh_spelling()
+    fn has_speller(&self) -> bool {
+        self.plugins
+            .installed
+            .iter()
+            .any(|p| p.manifest.contributes.speller.is_some())
     }
 
     /// Looks again at the words when the text, the file or the settings
-    /// changed: at once, or for a big file being typed in, in the
-    /// background once the typing pauses.
+    /// changed: at once, or for a big file being typed in, once the typing
+    /// pauses. The marks of before stay until the answer.
     pub(super) fn refresh_spelling(&mut self) -> Task<Message> {
         let eligible = self.config.spell_check
+            && self.has_speller()
             && self.current_file.is_some()
             && !self.current_file.as_deref().is_some_and(is_virtual)
             && self.large_view().is_none()
@@ -191,103 +117,130 @@ impl SimpleEditApp {
         if self.spell.key.as_ref() == Some(&key) {
             return Task::none();
         }
-        // The same file and settings, a bigger text that changed: in the
-        // background, the marks of before staying until then.
         let typed = self
             .spell
             .key
             .as_ref()
             .is_some_and(|k| k.0 == key.0 && k.2 == key.2);
+        // Another file, another language: the old marks mean nothing.
+        if !typed {
+            self.spell.marks.clear();
+        }
         let later = typed && self.editor.content.line_count() > SYNC_LINES;
         self.spell.key = Some(key.clone());
-        if !later {
-            self.spell.marks.clear();
-        }
-        let (ready, loading) = self.ensure_speller();
-        if !ready {
-            self.spell.marks.clear();
-            // Asked again when the dictionary is there.
-            self.spell.key = None;
-            return loading;
-        }
-        let text = crate::editor::buffer_text(&self.editor.content);
-        let ext = self.editor.language.clone().unwrap_or_default();
-        let Some(speller) = &self.spell.speller else {
+        let Some(id) = self.speller() else {
             return Task::none();
         };
-        if !later {
-            self.spell.marks = spell_marks(speller, &text, &ext);
-            return Task::none();
-        }
-        let speller = speller.clone();
+        let text = crate::editor::buffer_text(&self.editor.content);
+        let params = CheckParams {
+            text: text.clone(),
+            syntax: self.editor.language.clone().unwrap_or_default(),
+            language: self.config.spell_language.clone(),
+            interface: self.config.locale.clone(),
+        };
         let wanted = self.spell.wanted.clone();
         if let Ok(mut w) = wanted.lock() {
             *w = Some(key.clone());
         }
         Task::perform(
             async move {
-                tokio::time::sleep(PAUSE).await;
                 let still = |w: &Arc<std::sync::Mutex<Option<SpellKey>>>| {
                     w.lock().is_ok_and(|w| w.as_ref() == Some(&key))
                 };
-                if !still(&wanted) {
-                    return None;
+                if later {
+                    tokio::time::sleep(PAUSE).await;
+                    if !still(&wanted) {
+                        return None;
+                    }
                 }
-                tokio::task::spawn_blocking(move || {
-                    let marks = spell_marks(&speller, &text, &ext);
-                    (key, marks)
-                })
-                .await
-                .ok()
+                let answer =
+                    crate::plugins::host::request(&id, methods::SPELL_CHECK, &params, WAIT)
+                        .await
+                        .ok()?;
+                let found: CheckResult = serde_json::from_value(answer).ok()?;
+                let marks = line_marks(&text, &found.misspelled);
+                Some((key, found.language, marks))
             },
             Message::SpellChecked,
         )
     }
 
-    /// The marks computed in the background, if still for the text of now.
+    /// The marks of the speller, if still for the text of now.
     pub(super) fn spell_checked(&mut self, done: Option<SpellChecked>) {
-        if let Some((_, marks)) = done.filter(|(key, _)| self.spell.key.as_ref() == Some(key)) {
+        if let Some((_, language, marks)) =
+            done.filter(|(key, _, _)| self.spell.key.as_ref() == Some(key))
+        {
             self.spell.marks = marks;
+            self.spell.language = language.unwrap_or_default();
         }
     }
 
-    /// The misspelled word at the cursor (or just before it), with
-    /// suggestions.
-    fn spell_at_cursor(&self) -> Option<Suggestion> {
+    /// Asks the suggestions for the misspelled word at the cursor (or just
+    /// before it).
+    pub(super) fn open_spell_fix(&mut self) -> Task<Message> {
+        if !self.has_speller() {
+            self.set_status(t!("spell.plugin_missing"), false);
+            return Task::none();
+        }
         let (line, col) = self.editor.content.cursor_position();
-        let &(_, start, end) = self
+        let found = self
             .spell
             .marks
             .iter()
-            .find(|(l, s, e)| *l == line && *s <= col && col <= *e)?;
-        let word = self.editor.content.line(line)?.get(start..end)?.to_string();
-        let list = self
-            .spell
-            .speller
-            .as_ref()
-            .map(|s| s.suggest(&word))
-            .unwrap_or_default();
-        Some(Suggestion {
-            word,
-            line,
-            col: start,
-            list,
-        })
+            .find(|(l, s, e)| *l == line && *s <= col && col <= *e)
+            .and_then(|&(_, start, end)| {
+                let word = self.editor.content.line(line)?.get(start..end)?.to_string();
+                Some(Suggestion {
+                    word,
+                    line,
+                    col: start,
+                    list: Vec::new(),
+                })
+            });
+        let Some(found) = found else {
+            let key = if self.spell.language.is_empty() {
+                t!("spell.no_dictionary")
+            } else {
+                t!("spell.none")
+            };
+            self.set_status(key, false);
+            return Task::none();
+        };
+        let Some(id) = self.speller() else {
+            return Task::none();
+        };
+        let params = SuggestParams {
+            word: found.word.clone(),
+            language: self.spell.language.clone(),
+        };
+        Task::perform(
+            async move {
+                let list =
+                    crate::plugins::host::request(&id, methods::SPELL_SUGGEST, &params, WAIT)
+                        .await
+                        .ok()
+                        .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
+                        .unwrap_or_default();
+                Suggestion { list, ..found }
+            },
+            Message::SpellSuggested,
+        )
     }
 
-    pub(super) fn open_spell_fix(&mut self) -> Task<Message> {
-        match self.spell_at_cursor() {
-            Some(found) => self.overlay = ActiveOverlay::Spelling(Box::new(found)),
-            None => {
-                let key = if self.spell.available.as_ref().is_some_and(Vec::is_empty) {
-                    t!("spell.no_dictionary")
-                } else {
-                    t!("spell.none")
-                };
-                self.set_status(key, false);
-            }
+    /// The suggestions came: the window opens, if the word is still there.
+    pub(super) fn spell_suggested(&mut self, found: Suggestion) {
+        let still = self
+            .editor
+            .content
+            .line(found.line)
+            .and_then(|l| {
+                l.get(found.col..found.col + found.word.len())
+                    .map(str::to_string)
+            })
+            .is_some_and(|w| w == found.word);
+        if still && matches!(self.overlay, ActiveOverlay::None) {
+            self.overlay = ActiveOverlay::Spelling(Box::new(found));
         }
-        Task::none()
     }
 
     pub(super) fn spell_replace(&mut self, new: String) -> Task<Message> {
@@ -316,61 +269,92 @@ impl SimpleEditApp {
     }
 
     /// The word is known from now on: for ever (`add`) or until the app
-    /// closes.
+    /// closes. Its marks go at once.
     pub(super) fn spell_learn(&mut self, add: bool) -> Task<Message> {
         let ActiveOverlay::Spelling(found) =
             std::mem::replace(&mut self.overlay, ActiveOverlay::None)
         else {
             return Task::none();
         };
-        if let Some(speller) = &mut self.spell.speller {
-            if add {
-                speller.add_personal(&found.word);
-                if let Some(file) = personal_file() {
-                    if let Some(parent) = file.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    let mut words = std::fs::read_to_string(&file).unwrap_or_default();
-                    words.push_str(&found.word);
-                    words.push('\n');
-                    if let Err(e) = crate::fsutil::write_atomic(&file, words.as_bytes(), false) {
-                        self.set_status(format!("{}: {e}", t!("status.error")), true);
-                    }
-                }
-            } else {
-                speller.ignore(&found.word);
-            }
+        let lower = found.word.to_lowercase();
+        let content = &self.editor.content;
+        self.spell.marks.retain(|(line, start, end)| {
+            content
+                .line(*line)
+                .and_then(|l| l.get(*start..*end).map(str::to_lowercase))
+                .is_none_or(|w| w != lower)
+        });
+        let Some(id) = self.speller() else {
+            return Task::none();
+        };
+        let params = LearnParams {
+            word: found.word,
+            keep: add,
+        };
+        Task::perform(
+            async move {
+                crate::plugins::host::request(&id, methods::SPELL_LEARN, &params, WAIT)
+                    .await
+                    .err()
+            },
+            Message::SpellLearned,
+        )
+    }
+
+    /// The speller knows the word: the text is looked at again.
+    pub(super) fn spell_learned(&mut self, error: Option<String>) -> Task<Message> {
+        if let Some(e) = error {
+            self.set_status(format!("{}: {e}", t!("status.error")), true);
         }
         self.spell.generation += 1;
         self.refresh_spelling()
     }
 
     pub(super) fn open_spell_languages(&mut self) -> Task<Message> {
-        let codes: Vec<String> = self
-            .spell_languages()
-            .iter()
-            .map(|l| l.code.clone())
-            .collect();
+        let Some(id) = self.speller() else {
+            self.set_status(t!("spell.plugin_missing"), true);
+            return Task::none();
+        };
+        Task::perform(
+            async move {
+                crate::plugins::host::request(
+                    &id,
+                    methods::SPELL_LANGUAGES,
+                    serde_json::Value::Null,
+                    WAIT,
+                )
+                .await
+                .ok()
+                .and_then(|v| serde_json::from_value::<Vec<Language>>(v).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| l.code)
+                .collect()
+            },
+            Message::SpellLanguagesLoaded,
+        )
+    }
+
+    /// The dictionaries of the speller: the picker opens on them.
+    pub(super) fn spell_languages_loaded(&mut self, codes: Vec<String>) {
         if codes.is_empty() {
             self.set_status(t!("spell.no_dictionary"), true);
-            return Task::none();
+            return;
         }
         self.spell.choices = codes;
         self.overlay = ActiveOverlay::SpellLanguages;
-        Task::none()
     }
 
     pub(super) fn spell_set_language(&mut self, code: String) -> Task<Message> {
         self.overlay = ActiveOverlay::None;
         self.config.spell_language = code;
         self.config.save();
-        self.spell.speller = None;
         self.spell.generation += 1;
         let check = self.refresh_spelling();
-        let language = if self.spell.language.is_empty() {
-            self.config.spell_language.clone()
+        let language = if self.config.spell_language.is_empty() {
+            t!("spell.language_auto").to_string()
         } else {
-            self.spell.language.clone()
+            self.config.spell_language.clone()
         };
         self.set_status(t!("spell.language_set", code = language.as_str()), false);
         check
@@ -508,52 +492,76 @@ impl SimpleEditApp {
 mod tests {
     use super::*;
 
-    fn app_with(text: &str, ext: &str) -> SimpleEditApp {
-        let dir = tempfile::tempdir().unwrap();
-        let dictionaries = dir.path().join("dictionaries");
-        std::fs::create_dir(&dictionaries).unwrap();
-        std::fs::write(
-            dictionaries.join("xx.aff"),
-            "SET UTF-8\nTRY esianrtolcdug\n",
+    /// A plugin that says it checks the spelling (not started: its answers
+    /// are given by hand).
+    fn with_speller(app: &mut SimpleEditApp) {
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "test.speller", "name": "Test", "version": "1.0.0", "api": 1,
+                "command": ["bin/none"], "contributes": {"speller": {}}}"#,
         )
         .unwrap();
-        std::fs::write(
-            dictionaries.join("xx.dic"),
-            "6\nhello\nworld\nthe\nnice\nis\nand\n",
-        )
-        .unwrap();
-        let file = dir.path().join(format!("a.{ext}"));
-        std::fs::write(&file, text).unwrap();
-        let config = Config {
-            spell_language: "xx".into(),
-            ..Config::default()
-        };
-        let mut app = SimpleEditApp::blank(config);
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+    }
+
+    fn app_with(text: &str, speller: bool) -> SimpleEditApp {
+        let mut app = SimpleEditApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
-        app.spell.available = Some(spell::languages_in(&[dictionaries]));
+        if speller {
+            with_speller(&mut app);
+        }
+        let file = PathBuf::from("/s/a.txt");
         let _ = app.update(Message::TabRead(Ok(Loaded {
-            path: file.clone(),
+            path: file,
             text: text.into(),
             format: TextFormat::default(),
-            stamp: DiskStamp::of(&file),
+            stamp: None,
         })));
-        std::mem::forget(dir);
         let _ = app.refresh_spelling();
         app
     }
 
+    /// What the speller would answer for the text of now.
+    fn answer(app: &mut SimpleEditApp, ranges: &[(usize, usize)]) {
+        let key = app.spell.key.clone().expect("a check was asked");
+        let text = crate::editor::buffer_text(&app.editor.content);
+        let marks = line_marks(&text, ranges);
+        let _ = app.update(Message::SpellChecked(Some((key, Some("xx".into()), marks))));
+    }
+
     #[test]
-    fn misspelled_words_are_found_with_their_places_and_follow_the_typing() {
-        let mut app = app_with("hello wrold\nthe nice wrld is\n", "txt");
+    fn byte_ranges_become_places_in_their_lines() {
+        let text = "hello wrold\nthe nice wrld is\n";
+        assert_eq!(
+            line_marks(text, &[(6, 11), (21, 25)]),
+            vec![(0, 6, 11), (1, 9, 13)]
+        );
+        // What is out of the text or empty is left out.
+        assert!(line_marks(text, &[(3, 3), (40, 50)]).is_empty());
+    }
+
+    #[test]
+    fn the_answers_of_the_speller_are_shown_if_still_for_the_text() {
+        let mut app = app_with("hello wrold\nthe nice wrld is\n", true);
+        answer(&mut app, &[(6, 11), (21, 25)]);
         assert_eq!(app.spell.marks, vec![(0, 6, 11), (1, 9, 13)]);
+        assert_eq!(app.spell.language, "xx");
         assert_eq!(app.spell_marks(true).len(), 2);
         assert!(app.spell_marks(true)[0].id >= MARK_BASE);
-        // Fixing one word, by typing, updates the marks.
+        // Typed in: the marks stay until the next answer, an old one is dropped.
+        let old = app.spell.key.clone().unwrap();
         app.editor.content.select_bytes(0, 6, 5);
         let _ = app.update(Message::EditorAction(text_editor::Action::Edit(
             text_editor::Edit::Paste(std::sync::Arc::new("world".into())),
         )));
         let _ = app.refresh_spelling();
+        assert_eq!(app.spell.marks.len(), 2);
+        let _ = app.update(Message::SpellChecked(Some((old, None, vec![]))));
+        assert_eq!(app.spell.marks.len(), 2);
+        answer(&mut app, &[(21, 25)]);
         assert_eq!(app.spell.marks, vec![(1, 9, 13)]);
         // Off: nothing is marked.
         app.config.spell_check = false;
@@ -562,51 +570,37 @@ mod tests {
     }
 
     #[test]
-    fn a_big_file_is_checked_once_the_typing_pauses_and_only_for_its_text() {
-        let text = "hello wrold\n".to_string() + &"the nice world\n".repeat(SYNC_LINES);
-        let mut app = app_with(&text, "txt");
-        // Opened: checked at once.
-        assert_eq!(app.spell.marks, vec![(0, 6, 11)]);
-        // Typed in: the marks of before stay until the check, made later.
-        app.editor.content.select_bytes(0, 6, 5);
-        let _ = app.update(Message::EditorAction(text_editor::Action::Edit(
-            text_editor::Edit::Paste(std::sync::Arc::new("world".into())),
-        )));
-        let _ = app.refresh_spelling();
-        assert_eq!(app.spell.marks, vec![(0, 6, 11)]);
-        let key = app.spell.key.clone().unwrap();
-        // An answer for a text that is no more is dropped.
-        let old = (key.0.clone(), key.1 - 1, key.2);
-        let _ = app.update(Message::SpellChecked(Some((old, vec![]))));
-        assert_eq!(app.spell.marks, vec![(0, 6, 11)]);
-        let text = crate::editor::buffer_text(&app.editor.content);
-        let marks = spell_marks(app.spell.speller.as_ref().unwrap(), &text, "txt");
-        let _ = app.update(Message::SpellChecked(Some((key, marks))));
-        assert!(app.spell.marks.is_empty());
-    }
-
-    #[test]
     fn a_word_is_corrected_added_or_ignored_from_the_window() {
-        let mut app = app_with("hello wrold\n", "txt");
+        let mut app = app_with("hello wrold\nwrold\n", true);
+        answer(&mut app, &[(6, 11), (12, 17)]);
         app.editor.content.select_bytes(0, 8, 0);
         let _ = app.update(Message::SpellFix);
+        // The suggestions come from the speller.
+        let _ = app.update(Message::SpellSuggested(Suggestion {
+            word: "wrold".into(),
+            line: 0,
+            col: 6,
+            list: vec!["world".into()],
+        }));
         let ActiveOverlay::Spelling(found) = app.overlay.clone() else {
             panic!("the window of suggestions");
         };
-        assert_eq!(
-            (found.word.as_str(), found.line, found.col),
-            ("wrold", 0, 6)
-        );
+        assert_eq!(found.list, vec!["world".to_string()]);
         let _ = app.update(Message::SpellReplace("world".into()));
         assert_eq!(
             crate::editor::buffer_text(&app.editor.content),
-            "hello world\n"
+            "hello world\nwrold\n"
         );
         assert_eq!(app.overlay, ActiveOverlay::None);
-        // Ignoring a word clears its mark.
-        let mut app = app_with("hello wrold\n", "txt");
-        app.editor.content.select_bytes(0, 8, 0);
-        let _ = app.update(Message::SpellFix);
+        // Ignoring a word takes its marks away at once, everywhere.
+        let mut app = app_with("hello wrold\nwrold\n", true);
+        answer(&mut app, &[(6, 11), (12, 17)]);
+        app.overlay = ActiveOverlay::Spelling(Box::new(Suggestion {
+            word: "wrold".into(),
+            line: 0,
+            col: 6,
+            list: vec![],
+        }));
         let _ = app.update(Message::SpellIgnore);
         assert!(app.spell.marks.is_empty());
         // Where nothing is wrong, there is no window.
@@ -616,24 +610,29 @@ mod tests {
     }
 
     #[test]
-    fn a_program_is_checked_only_in_its_comments() {
-        let app = app_with("let wrld = 1; // the wrld\n", "rs");
-        assert_eq!(app.spell.marks, vec![(0, 21, 25)]);
+    fn without_a_speller_nothing_is_checked_and_the_plugin_is_named() {
+        let mut app = app_with("hello wrold\n", false);
+        assert!(app.spell.key.is_none() && app.spell.marks.is_empty());
+        let _ = app.update(Message::SpellFix);
+        assert_eq!(app.status_message, t!("spell.plugin_missing"));
+        let _ = app.update(Message::OpenSpellLanguages);
+        assert!(app.status_is_error);
     }
 
     #[test]
-    fn a_language_is_chosen_and_nothing_is_found_without_a_dictionary() {
-        let mut app = app_with("hello wrold\n", "txt");
-        let _ = app.update(Message::SpellLanguage("xx".into()));
-        assert_eq!(app.config.spell_language, "xx");
-        assert_eq!(app.spell.marks.len(), 1);
-        let mut app = app_with("hello wrold\n", "txt");
-        app.spell.available = Some(Vec::new());
-        app.spell.speller = None;
-        app.spell.generation += 1;
-        let _ = app.refresh_spelling();
-        assert!(app.spell.marks.is_empty());
-        let _ = app.update(Message::OpenSpellLanguages);
-        assert!(app.status_is_error);
+    fn a_language_is_chosen_among_the_dictionaries() {
+        let mut app = app_with("hello wrold\n", true);
+        let _ = app.update(Message::SpellLanguagesLoaded(vec![]));
+        assert!(app.status_is_error, "no dictionary");
+        let _ = app.update(Message::SpellLanguagesLoaded(vec![
+            "en".into(),
+            "fr".into(),
+        ]));
+        assert_eq!(app.overlay, ActiveOverlay::SpellLanguages);
+        assert_eq!(app.spell.choices.len(), 2);
+        let before = app.spell.key.clone();
+        let _ = app.update(Message::SpellLanguage("fr".into()));
+        assert_eq!(app.config.spell_language, "fr");
+        assert_ne!(app.spell.key, before, "checked again in that language");
     }
 }

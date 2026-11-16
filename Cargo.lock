@@ -5079,7 +5079,6 @@ dependencies = [
  "sha2 0.10.9",
  "similar",
  "simpleedit-plugin",
- "spellbook",
  "sqlformat",
  "syntect",
  "tar",
@@ -5096,8 +5095,8 @@ dependencies = [
 
 [[package]]
 name = "simpleedit-plugin"
-version = "0.2.0"
-source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.2.0#0270c3e2e07b0c4249993e26292e7bd71361ceb6"
+version = "0.3.0"
+source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.3.0#628e7fa02fc294c6fcbc4a6848a19a2628846354"
 dependencies = [
  "serde",
  "serde_json",
@@ -5261,16 +5260,6 @@ dependencies = [
  "web-sys",
  "windows-sys 0.61.2",
  "x11rb",
-]
-
-[[package]]
-name = "spellbook"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d204abcbdf8e88729306a8d0ca01a79d8a49969fe1f84696909d6dbc4321c1a"
-dependencies = [
- "foldhash 0.2.0",
- "hashbrown 0.17.1",
 ]
 
 [[package]]

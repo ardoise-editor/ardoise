@@ -52,7 +52,6 @@ mod scratch;
 mod search;
 mod session;
 mod sidebar;
-mod spell;
 mod ssh_trust;
 mod tab_strip;
 mod tabs;

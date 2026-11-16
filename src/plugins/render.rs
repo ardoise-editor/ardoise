@@ -177,11 +177,17 @@ fn draw<'a>(
             .style(se_theme::rule(dark))
             .into(),
         Node::Space { height } => Space::new().height(height.clamp(0.0, 400.0)).into(),
-        Node::Scroll { child } => scrollable(draw(plugins, key, child, dark, depth + 1))
-            .style(se_theme::Scrollbar { dark }.style())
-            .height(Length::Fill)
-            .width(Length::Fill)
-            .into(),
+        Node::Scroll { child, bottom } => {
+            let s = scrollable(draw(plugins, key, child, dark, depth + 1))
+                .style(se_theme::Scrollbar { dark }.style())
+                .height(Length::Fill)
+                .width(Length::Fill);
+            if *bottom {
+                s.anchor_bottom().into()
+            } else {
+                s.into()
+            }
+        }
     }
 }
 

@@ -11,9 +11,10 @@ use crate::plugins::{
 use serde_json::Value;
 use simpleedit_plugin::manifest::{Event, Location};
 use simpleedit_plugin::protocol::{
-    self as rpc, codes, methods, ActiveFile, CommandParams, ConfirmParams, Context, FileParams,
-    InitializeParams, Level, Message as Rpc, NotifyParams, OpenFileParams, PanelParams,
-    RenderParams, RpcError, Settings, StatusParams, UiEvent,
+    self as rpc, codes, methods, ActiveFile, ActiveFileParams, CommandParams, ConfirmParams,
+    Context, DiffParams, FileParams, InitializeParams, Level, Message as Rpc, NotifyParams,
+    OpenFileParams, PanelParams, PublishParams, RenderParams, ReplaceTextParams, RpcError,
+    Settings, StatusParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -167,6 +168,24 @@ impl SimpleEditApp {
         self.plugins.sent_settings = Some(now);
     }
 
+    /// The file in front changed: the plugins that follow it hear of it.
+    pub(super) fn plugins_follow_active(&mut self) {
+        let now = self.plugin_context().file;
+        if self.plugins.sent_active.as_ref() == Some(&now) {
+            return;
+        }
+        for plugin in &self.plugins.installed {
+            if plugin.manifest.events.contains(&Event::ActiveFile) {
+                host::notify(
+                    plugin.id(),
+                    methods::ACTIVE_FILE_CHANGED,
+                    ActiveFileParams { path: now.clone() },
+                );
+            }
+        }
+        self.plugins.sent_active = Some(now);
+    }
+
     /// A file was opened, saved or closed: the plugins that asked hear of it.
     pub(super) fn plugins_file_event(&mut self, event: Event, path: &Path) {
         if is_untitled(path) || is_virtual(path) {
@@ -186,7 +205,7 @@ impl SimpleEditApp {
                 methods::FILE_CLOSED
             }
             Event::FileSaved => methods::FILE_SAVED,
-            Event::Startup => return,
+            Event::Startup | Event::ActiveFile => return,
         };
         for plugin in &self.plugins.installed {
             if plugin.manifest.events.contains(&event) {
@@ -198,6 +217,36 @@ impl SimpleEditApp {
                     },
                 );
             }
+        }
+    }
+
+    /// The problems a plugin found in a file: shown with the others, and the
+    /// file marked in the tree and the tabs.
+    fn plugin_published(&mut self, id: String, p: PublishParams) {
+        let list: Vec<crate::lint::Diagnostic> = p
+            .diagnostics
+            .into_iter()
+            .map(crate::lint::Diagnostic::from)
+            .collect();
+        let by_plugin = self.plugins.published.entry(p.path.clone()).or_default();
+        if list.is_empty() {
+            by_plugin.remove(&id);
+        } else {
+            by_plugin.insert(id, list);
+        }
+        if by_plugin.is_empty() {
+            self.plugins.published.remove(&p.path);
+        }
+        let errors = self
+            .plugins
+            .published_for(&p.path)
+            .iter()
+            .filter(|d| d.severity == crate::lint::Severity::Error)
+            .count();
+        if self.lint.file.as_ref() == Some(&p.path) {
+            self.lint.force = true;
+        } else {
+            self.file_marks.set_errors(&p.path, errors);
         }
     }
 
@@ -676,6 +725,11 @@ impl SimpleEditApp {
                             self.set_status(p.message, p.level == Level::Error);
                         }
                     }
+                    methods::PUBLISH_DIAGNOSTICS => {
+                        if let Ok(p) = serde_json::from_value::<PublishParams>(params) {
+                            self.plugin_published(id, p);
+                        }
+                    }
                     methods::STATUS => {
                         if let Ok(p) = serde_json::from_value::<StatusParams>(params) {
                             let key = (id, p.id.clone());
@@ -729,6 +783,48 @@ impl SimpleEditApp {
                         Task::none()
                     }
                 },
+                methods::OPEN_DIFF => match serde_json::from_value::<DiffParams>(params) {
+                    Ok(p) => {
+                        host::respond(&id, request, Ok(Value::Null));
+                        self.open_comparison(
+                            (p.left.title, p.left.text),
+                            (p.right.title, p.right.text),
+                        )
+                    }
+                    Err(e) => {
+                        host::respond(&id, request, Err(invalid(e)));
+                        Task::none()
+                    }
+                },
+                methods::REPLACE_TEXT => {
+                    match serde_json::from_value::<ReplaceTextParams>(params) {
+                        Ok(p) if self.current_file.as_ref() == Some(&p.path) => {
+                            if self.editing_blocked() {
+                                host::respond(
+                                    &id,
+                                    request,
+                                    Err(invalid(t!("plugins.err_read_only"))),
+                                );
+                                return Task::none();
+                            }
+                            host::respond(&id, request, Ok(Value::Null));
+                            let (line, col) = self.editor.content.cursor_position();
+                            self.apply_text_edit(p.text, line, col, None)
+                        }
+                        Ok(_) => {
+                            host::respond(
+                                &id,
+                                request,
+                                Err(invalid(t!("plugins.err_not_in_front"))),
+                            );
+                            Task::none()
+                        }
+                        Err(e) => {
+                            host::respond(&id, request, Err(invalid(e)));
+                            Task::none()
+                        }
+                    }
+                }
                 methods::ACTIVE_FILE => {
                     let active = ActiveFile {
                         path: self.plugin_context().file,

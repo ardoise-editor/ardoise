@@ -1650,5 +1650,8 @@
   "lint.plugin_missing": "Sans linter, seuls les serveurs de langage trouvent des problèmes. Installez le plugin Lint pour ESLint, ruff, ShellCheck et les autres.",
   "plugins.settings": "Réglages",
   "plugins.not_running": "le plugin %{id} ne tourne pas",
-  "plugins.no_answer": "le plugin %{id} n'a pas répondu à temps"
+  "plugins.no_answer": "le plugin %{id} n'a pas répondu à temps",
+  "plugins.err_read_only": "le fichier ne peut pas être modifié",
+  "plugins.err_not_in_front": "le fichier n'est pas celui affiché",
+  "spell.plugin_missing": "Installez le plugin Orthographe (Préférences › Plugins) pour vérifier l'orthographe"
 }

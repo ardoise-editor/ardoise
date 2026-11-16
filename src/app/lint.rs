@@ -98,7 +98,9 @@ impl SimpleEditApp {
     /// Whether anything can look at a file: a linter of a plugin, or a
     /// language server.
     pub(super) fn lint_on_for(&self, path: &Path) -> bool {
-        !self.linters_for(path).is_empty() || lint::server_ready(&ext_of(path))
+        !self.linters_for(path).is_empty()
+            || lint::server_ready(&ext_of(path))
+            || self.plugins.published.contains_key(path)
     }
 
     fn clear_lint(&mut self) {
@@ -237,10 +239,18 @@ impl SimpleEditApp {
                     d
                 }),
         );
-        // What the last task said about this file too, unless a tool already
-        // says it on that line.
+        // What the last task and the plugins said about this file too, unless
+        // a tool already says it on that line.
         if let Some(file) = &self.lint.file {
-            for p in self.tasks.problems.get(file).into_iter().flatten() {
+            let published = self.plugins.published_for(file);
+            for p in self
+                .tasks
+                .problems
+                .get(file)
+                .into_iter()
+                .flatten()
+                .chain(&published)
+            {
                 if !found
                     .iter()
                     .any(|d| d.line == p.line && d.severity == p.severity)

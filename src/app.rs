@@ -333,7 +333,12 @@ pub enum Message {
     SpellFix,
     SpellChecked(Option<spelling::SpellChecked>),
     /// The dictionary of a language, read in the background.
-    SpellerLoaded(String, Option<crate::spell::Speller>),
+    /// The suggestions of the speller for the word at the cursor.
+    SpellSuggested(spelling::Suggestion),
+    /// The speller learnt a word (or why not).
+    SpellLearned(Option<String>),
+    /// The dictionaries of the speller.
+    SpellLanguagesLoaded(Vec<String>),
     SpellReplace(String),
     SpellAdd,
     SpellIgnore,
@@ -1392,6 +1397,7 @@ impl SimpleEditApp {
         app.announce_new_version();
         if owner {
             crate::plugins::migrate::carry_lint_settings(&app.config);
+            crate::plugins::migrate::carry_personal_dictionary();
         }
         app.plugins = crate::plugins::Plugins::load();
         app.plugins_start();
@@ -1418,6 +1424,7 @@ impl SimpleEditApp {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.update_message(message);
         self.plugins_follow_settings();
+        self.plugins_follow_active();
         // The tests run off the main thread, where the system menu is off limits.
         #[cfg(all(target_os = "macos", not(test)))]
         self.sync_native_menu();
@@ -2495,7 +2502,7 @@ impl Message {
             Message::BlameLoaded(..)
             | Message::MarksBase(..)
             | Message::SpellChecked(_)
-            | Message::SpellerLoaded(..) => true,
+            | Message::SpellLearned(_) => true,
             // What comes by itself (answers, timers) or from the pointer
             // merely passing over something: an open menu stays open.
             Message::FileStates(_)
@@ -3786,7 +3793,15 @@ impl SimpleEditApp {
             Message::RemoteDownloaded(file, result) => self.remote_downloaded(file, result),
             Message::RemoteSent(path, result) => self.remote_sent(path, result),
             Message::SpellFix => self.open_spell_fix(),
-            Message::SpellerLoaded(code, speller) => self.speller_loaded(code, speller),
+            Message::SpellSuggested(found) => {
+                self.spell_suggested(found);
+                Task::none()
+            }
+            Message::SpellLearned(error) => self.spell_learned(error),
+            Message::SpellLanguagesLoaded(codes) => {
+                self.spell_languages_loaded(codes);
+                Task::none()
+            }
             Message::SpellChecked(done) => {
                 self.spell_checked(done);
                 Task::none()
