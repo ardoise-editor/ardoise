@@ -1322,6 +1322,14 @@ impl SimpleEditApp {
         }
 
         app.bookmarks.prune_missing();
+        // The plugins first: the session brings back their tabs.
+        if owner {
+            crate::plugins::migrate::carry_lint_settings(&app.config);
+            crate::plugins::migrate::carry_personal_dictionary();
+            crate::plugins::migrate::carry_local_history(&app.config);
+        }
+        app.plugins = crate::plugins::Plugins::load();
+        app.plugins_start();
         let mut commands = vec![app.restore_session(loaded.session)];
         if let Some(aside) = loaded.set_aside {
             let name = aside
@@ -1341,13 +1349,6 @@ impl SimpleEditApp {
             );
         }
         app.announce_new_version();
-        if owner {
-            crate::plugins::migrate::carry_lint_settings(&app.config);
-            crate::plugins::migrate::carry_personal_dictionary();
-            crate::plugins::migrate::carry_local_history(&app.config);
-        }
-        app.plugins = crate::plugins::Plugins::load();
-        app.plugins_start();
 
         // This window takes the files that other commands name.
         app.ipc_listening = owner && crate::ipc::listen();

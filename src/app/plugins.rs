@@ -14,7 +14,8 @@ use simpleedit_plugin::protocol::{
     self as rpc, codes, methods, ActiveFile, ActiveFileParams, CommandParams, ConfirmParams,
     Context, DiffParams, FileParams, InitializeParams, Level, Message as Rpc, NotifyParams,
     OpenFileParams, PanelParams, PublishParams, RenameParams, RenderParams, ReplaceTextParams,
-    RpcError, SaveFileParams, Settings, StatusParams, TabDirtyParams, TabParams, UiEvent,
+    CopyParams, PickFileParams, RpcError, SaveFileParams, Settings, StatusParams, TabDirtyParams,
+    TabParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -982,6 +983,11 @@ impl SimpleEditApp {
                             self.set_status(p.message, p.level == Level::Error);
                         }
                     }
+                    methods::COPY => {
+                        if let Ok(p) = serde_json::from_value::<CopyParams>(params) {
+                            return iced::clipboard::write(p.text);
+                        }
+                    }
                     methods::TAB_DIRTY => {
                         if let Ok(p) = serde_json::from_value::<TabDirtyParams>(params) {
                             if let Some(tab) = self
@@ -1076,6 +1082,28 @@ impl SimpleEditApp {
                         Task::none()
                     }
                 },
+                methods::PICK_FILE => match serde_json::from_value::<PickFileParams>(params) {
+                    Ok(p) => Task::perform(
+                        async move {
+                            let mut dialog = rfd::AsyncFileDialog::new();
+                            if !p.title.is_empty() {
+                                dialog = dialog.set_title(p.title);
+                            }
+                            if !p.extensions.is_empty() {
+                                dialog = dialog.add_filter("", &p.extensions);
+                            }
+                            let picked = dialog.pick_file().await;
+                            Ok(picked.map_or(Value::Null, |f| {
+                                Value::String(f.path().to_string_lossy().into_owned())
+                            }))
+                        },
+                        move |result| plugin_msg(PluginMsg::Respond(id.clone(), request, result)),
+                    ),
+                    Err(e) => {
+                        host::respond(&id, request, Err(invalid(e)));
+                        Task::none()
+                    }
+                },
                 methods::OPEN_TAB => match serde_json::from_value::<TabParams>(params) {
                     Ok(p) => match self.plugin_open_tab(&id, p) {
                         Ok(task) => {
@@ -1105,7 +1133,8 @@ impl SimpleEditApp {
                                 let Some(handle) = picked else {
                                     return Ok(Value::Bool(false));
                                 };
-                                tokio::fs::write(handle.path(), p.text)
+                                let bytes = p.bytes.unwrap_or_else(|| p.text.into_bytes());
+                                tokio::fs::write(handle.path(), bytes)
                                     .await
                                     .map(|()| Value::Bool(true))
                                     .map_err(|e| RpcError {

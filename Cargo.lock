@@ -5010,8 +5010,8 @@ dependencies = [
 
 [[package]]
 name = "simpleedit-plugin"
-version = "0.6.0"
-source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.6.0#871c5addcc62c224eedc03569fba96f9e7c82943"
+version = "0.6.1"
+source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.6.1#dc24aee0a777351e135a94202241cbff4a704de7"
 dependencies = [
  "serde",
  "serde_json",
