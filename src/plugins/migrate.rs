@@ -45,6 +45,83 @@ pub fn carry_personal_dictionary() {
     }
 }
 
+/// The official API plugin.
+pub const API: &str = "simpleedit.api";
+
+/// The collections, environments and history of the API client, and what
+/// the client trusts and goes through: they become the API plugin's, once.
+pub fn carry_api(config: &crate::config::Config) {
+    let (Some(data), Some(dir)) = (crate::fsutil::data_dir(), super::store::data_dir_of(API))
+    else {
+        return;
+    };
+    carry_api_to(config, &data.join("simpleedit").join("api"), &dir);
+}
+
+fn carry_api_to(config: &crate::config::Config, old: &Path, dir: &Path) {
+    let new = dir.join("api");
+    if old.is_dir() && !new.exists() {
+        let _ = std::fs::rename(old, &new);
+    }
+    let settings = dir.join("settings.json");
+    let used = !config.api_ca_file.is_empty()
+        || !config.api_client_cert.is_empty()
+        || !config.api_proxy.is_empty();
+    if used && !settings.exists() {
+        let json = serde_json::json!({
+            "ca_file": config.api_ca_file,
+            "client_cert": config.api_client_cert,
+            "proxy": config.api_proxy,
+        })
+        .to_string();
+        let _ = crate::fsutil::write_atomic(&settings, json.as_bytes(), false);
+    }
+}
+
+/// The API requests changed and not kept, of before the API plugin: added
+/// to the tabs it keeps. Their tabs and titles.
+pub fn carry_api_tabs(saved: &[crate::session::ApiSession]) -> Vec<(String, String)> {
+    match super::store::data_dir_of(API) {
+        Some(dir) => carry_api_tabs_to(saved, &dir),
+        None => Vec::new(),
+    }
+}
+
+fn carry_api_tabs_to(saved: &[crate::session::ApiSession], dir: &Path) -> Vec<(String, String)> {
+    let file = dir.join("tabs.json");
+    let mut kept: serde_json::Value = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({ "tabs": {}, "counter": 0 }));
+    let mut counter = kept["counter"].as_u64().unwrap_or(0);
+    let mut opened = Vec::new();
+    for s in saved {
+        counter += 1;
+        let tab = format!("req-{counter}");
+        let name = s.request["name"]
+            .as_str()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let title = if name.is_empty() {
+            s.request["url"].as_str().unwrap_or("request").to_string()
+        } else {
+            name
+        };
+        kept["tabs"][&tab] = serde_json::json!({
+            "request": s.request,
+            "kept": s.kept,
+            "origin": s.origin,
+        });
+        opened.push((tab, title));
+    }
+    kept["counter"] = serde_json::json!(counter);
+    if let Ok(json) = serde_json::to_string_pretty(&kept) {
+        let _ = crate::fsutil::write_atomic(&file, json.as_bytes(), true);
+    }
+    opened
+}
+
 /// The official Terminal plugin.
 pub const TERMINAL: &str = "simpleedit.terminal";
 
@@ -177,6 +254,33 @@ mod tests {
                 .unwrap();
         assert_eq!(kept["hosts"][0], "me@box");
         assert_eq!(kept["links"]["/l/a.txt"]["date"], 3);
+        // The API: its folder, its network settings, its tabs not kept.
+        let old_api = dir.path().join("old-api");
+        std::fs::create_dir_all(old_api.join("collections")).unwrap();
+        let api = dir.path().join("api-plugin");
+        std::fs::create_dir_all(&api).unwrap();
+        config.api_proxy = "http://p:3128".into();
+        carry_api_to(&config, &old_api, &api);
+        assert!(api.join("api/collections").is_dir());
+        let net: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(api.join("settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(net["proxy"], "http://p:3128");
+        let saved = crate::session::ApiSession {
+            request: serde_json::json!({"name": "", "url": "https://x/y", "method": "Get"}),
+            kept: serde_json::json!({"name": "", "url": ""}),
+            origin: None,
+        };
+        let opened = carry_api_tabs_to(std::slice::from_ref(&saved), &api);
+        assert_eq!(
+            opened,
+            vec![("req-1".to_string(), "https://x/y".to_string())]
+        );
+        let again = carry_api_tabs_to(&[saved], &api);
+        assert_eq!(again[0].0, "req-2", "added after what is kept");
+        let tabs: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(api.join("tabs.json")).unwrap()).unwrap();
+        assert_eq!(tabs["tabs"]["req-1"]["request"]["url"], "https://x/y");
         std::fs::write(&file, "{}").unwrap();
         carry_lint_settings_to(&config, dir.path());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");

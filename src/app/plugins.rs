@@ -12,10 +12,10 @@ use serde_json::Value;
 use simpleedit_plugin::manifest::{Event, Location};
 use simpleedit_plugin::protocol::{
     self as rpc, codes, methods, ActiveFile, ActiveFileParams, CommandParams, ConfirmParams,
-    Context, DiffParams, FileParams, InitializeParams, Level, Message as Rpc, NotifyParams,
-    OpenFileParams, PanelParams, PublishParams, RenameParams, RenderParams, ReplaceTextParams,
-    CopyParams, PickFileParams, RpcError, SaveFileParams, Settings, StatusParams, TabDirtyParams,
-    TabParams, UiEvent,
+    Context, CopyParams, DiffParams, FileParams, InitializeParams, Level, Message as Rpc,
+    NotifyParams, OpenFileParams, PanelParams, PickFileParams, PublishParams, RenameParams,
+    RenderParams, ReplaceTextParams, RpcError, SaveFileParams, Settings, StatusParams,
+    TabDirtyParams, TabParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -455,7 +455,6 @@ impl SimpleEditApp {
                     files: false,
                     projects: false,
                     database: false,
-                    api: false,
                 };
                 self.show_sidebar = true;
                 self.open_plugin_panel(&key);

@@ -10,7 +10,6 @@ fn load_icon() -> Option<window::Icon> {
     window::icon::from_rgba(img.into_raw(), w, h).ok()
 }
 
-mod api;
 mod app;
 mod bookmarks;
 mod changelog;

@@ -643,9 +643,8 @@ pub struct Config {
     pub projects_exclude: Vec<String>,
     /// Where scratch files are kept; empty: the default folder.
     pub scratch_dir: String,
-    /// The API client: a file of certificate authorities (PEM) to trust
-    /// besides the system's, a client certificate with its key (PEM) for
-    /// mutual TLS, and a proxy address (empty: the system's).
+    /// What the API client trusted and went through before it became the
+    /// API plugin (carried over to its settings, no longer used).
     pub api_ca_file: String,
     pub api_client_cert: String,
     pub api_proxy: String,

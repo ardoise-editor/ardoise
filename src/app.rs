@@ -532,7 +532,6 @@ pub enum Message {
     /// The Database panel and its tables.
     Db(crate::database::DbMsg),
     /// The API panel and its requests.
-    Api(crate::api::ApiMsg),
     SidebarResizeStart,
     SidebarResize(f32),
     SidebarResizeEnd,
@@ -864,9 +863,6 @@ pub struct SimpleEditApp {
     db_tabs: HashMap<PathBuf, crate::database::TableTab>,
     db_counter: usize,
     /// The API panel: collections, environments, history.
-    api: crate::api::State,
-    /// The requests open as tabs (`api://N/...`).
-    api_tabs: HashMap<PathBuf, crate::api::ApiTab>,
     sidebar_resizing: bool,
     /// The height of the bottom panels (Git, terminal, scratch files, bookmarks), and the drag that resizes it: where the
     /// pointer and the height were at its first move.
@@ -1132,11 +1128,6 @@ impl SimpleEditApp {
     fn blank(config: Config) -> Self {
         crate::trust::set_all(&config.trusted_folders);
         crate::lsp::set_completion_options(&config.completion_options);
-        crate::api::http::set_network(crate::api::http::Network {
-            ca_file: config.api_ca_file.clone(),
-            client_cert: config.api_client_cert.clone(),
-            proxy: config.api_proxy.clone(),
-        });
         Self {
             bookmarks: crate::bookmarks::Bookmarks::default(),
             editor: EditorState::new(),
@@ -1171,21 +1162,16 @@ impl SimpleEditApp {
             tab_list: None,
             panels: crate::sidebar::Panels {
                 files: !config.show_database_panel
-                    && !config.show_api_panel
                     && config.show_files_panel
                     && (!config.show_projects_panel || config.projects.is_empty()),
                 projects: !config.show_database_panel
-                    && !config.show_api_panel
                     && config.show_projects_panel
                     && (!config.show_files_panel || !config.projects.is_empty()),
-                database: config.show_database_panel && !config.show_api_panel,
-                api: config.show_api_panel,
+                database: config.show_database_panel,
             },
             db: crate::database::State::load(),
             db_tabs: HashMap::new(),
             db_counter: 0,
-            api: crate::api::State::load(),
-            api_tabs: HashMap::new(),
             trust_asked: HashSet::new(),
             session_writes: 0,
             abandoned_reads: HashSet::new(),
@@ -1327,6 +1313,7 @@ impl SimpleEditApp {
             crate::plugins::migrate::carry_lint_settings(&app.config);
             crate::plugins::migrate::carry_personal_dictionary();
             crate::plugins::migrate::carry_local_history(&app.config);
+            crate::plugins::migrate::carry_api(&app.config);
         }
         app.plugins = crate::plugins::Plugins::load();
         app.plugins_start();
@@ -1340,13 +1327,6 @@ impl SimpleEditApp {
         }
         if let Some(name) = app.config.set_aside.clone() {
             app.set_status(t!("status.config_set_aside", name = name.as_str()), true);
-        }
-        if !app.api.set_aside.is_empty() {
-            let names = app.api.set_aside.join(", ");
-            app.set_status(
-                t!("status.api_collection_set_aside", name = names.as_str()),
-                true,
-            );
         }
         app.announce_new_version();
 
@@ -1887,15 +1867,12 @@ impl SimpleEditApp {
             && (self.panels.files
                 || self.panels.projects
                 || self.panels.database
-                || self.panels.api
                 || plugin_sidebar.is_some())
         {
             let panel: Element<Message> = if let Some(panel) = plugin_sidebar {
                 panel
             } else if self.panels.database {
                 crate::database::view::sidebar(&self.db, dark)
-            } else if self.panels.api {
-                crate::api::view::sidebar(&self.api, &self.api_tabs, dark)
             } else {
                 self.sidebar.view(
                     dark,
@@ -2131,17 +2108,6 @@ impl SimpleEditApp {
             None => with_prefs,
         };
 
-        // The windows of the API panel.
-        let with_prefs: Element<Message> = match crate::api::view::dialog(&self.api, dark) {
-            Some(card) => crate::floating::modal(
-                with_prefs,
-                card,
-                Some(Message::Api(crate::api::ApiMsg::DialogClose)),
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
         // The table designer, and the question before a drop or a deletion.
         let with_prefs: Element<Message> = match &self.db.designer {
             Some(designer) => crate::floating::modal(
@@ -2711,14 +2677,6 @@ impl SimpleEditApp {
                     );
                     return Task::none();
                 }
-                // A request of the API panel is kept in its collection.
-                if let Some(path) = self
-                    .current_file
-                    .clone()
-                    .filter(|p| self.api_tabs.contains_key(p))
-                {
-                    return self.api_message(crate::api::ApiMsg::Tab(path, crate::api::Act::Save));
-                }
                 // Format first, when asked to: the save follows the formatting.
                 let skip_format = std::mem::take(&mut self.skip_format_once);
                 if self.config.format_on_save
@@ -2755,9 +2713,10 @@ impl SimpleEditApp {
                 let mut tasks = Vec::new();
                 // The tab on screen goes through the usual save; a tab
                 // without a file waits for the user to name it.
-                let on_screen = self.current_file.as_ref().is_some_and(|p| {
-                    !is_untitled(p) && !is_virtual(p) && !self.api_tabs.contains_key(p)
-                });
+                let on_screen = self
+                    .current_file
+                    .as_ref()
+                    .is_some_and(|p| !is_untitled(p) && !is_virtual(p));
                 if self.is_dirty && on_screen {
                     tasks.push(self.handle(Message::SaveFile));
                 }
@@ -3454,14 +3413,12 @@ impl SimpleEditApp {
                     files: false,
                     projects: true,
                     database: false,
-                    api: false,
                 };
                 self.show_sidebar = true;
                 self.config.show_sidebar = true;
                 self.config.show_files_panel = false;
                 self.config.show_projects_panel = true;
                 self.config.show_database_panel = false;
-                self.config.show_api_panel = false;
                 self.config_dirty = true;
                 // And scrolled to the file.
                 let index = self
@@ -4155,13 +4112,11 @@ impl SimpleEditApp {
                     crate::sidebar::Panel::Files => self.panels.files,
                     crate::sidebar::Panel::Projects => self.panels.projects,
                     crate::sidebar::Panel::Database => self.panels.database,
-                    crate::sidebar::Panel::Api => self.panels.api,
                 };
                 self.panels = crate::sidebar::Panels {
                     files: panel == crate::sidebar::Panel::Files && !was_open,
                     projects: panel == crate::sidebar::Panel::Projects && !was_open,
                     database: panel == crate::sidebar::Panel::Database && !was_open,
-                    api: panel == crate::sidebar::Panel::Api && !was_open,
                 };
                 // A panel that is asked for shows the sidebar if it was hidden.
                 if !was_open {
@@ -4172,7 +4127,6 @@ impl SimpleEditApp {
                 self.config.show_files_panel = self.panels.files;
                 self.config.show_projects_panel = self.panels.projects;
                 self.config.show_database_panel = self.panels.database;
-                self.config.show_api_panel = self.panels.api;
                 self.config_dirty = true;
                 // The first look at the panel finds out if the driver is there.
                 if self.panels.database && self.db.driver == crate::database::Driver::Unknown {
@@ -4251,7 +4205,6 @@ impl SimpleEditApp {
                 Task::none()
             }
             Message::Db(msg) => self.db_message(msg),
-            Message::Api(msg) => self.api_message(msg),
             Message::SidebarResizeStart => {
                 self.sidebar_resizing = true;
                 Task::none()
@@ -4438,11 +4391,6 @@ impl SimpleEditApp {
                 }
                 if self.preferences.update(msg, &mut self.config) {
                     self.config_dirty = true;
-                    crate::api::http::set_network(crate::api::http::Network {
-                        ca_file: self.config.api_ca_file.clone(),
-                        client_cert: self.config.api_client_cert.clone(),
-                        proxy: self.config.api_proxy.clone(),
-                    });
                 }
                 if servers_page {
                     return Task::perform(
@@ -4486,7 +4434,6 @@ impl SimpleEditApp {
                     if self.session_owner {
                         self.config.save();
                     }
-                    self.api.save_environments_now();
                     crate::lsp::stop_servers();
                     crate::plugins::host::stop_all();
                     std::process::exit(0)
@@ -4502,7 +4449,6 @@ impl SimpleEditApp {
                 if self.session_owner {
                     self.config.save();
                 }
-                self.api.save_environments_now();
                 crate::lsp::stop_servers();
                 crate::plugins::host::stop_all();
                 std::process::exit(0)
@@ -6936,15 +6882,11 @@ impl SimpleEditApp {
             .db_tabs
             .get(path)
             .is_some_and(|t| !t.pending.is_empty())
-            || self.api_tabs.get(path).is_some_and(|t| t.changed())
             || self.plugins.tabs.get(path).is_some_and(|t| t.dirty)
         {
             return true;
         }
-        if self.db_tabs.contains_key(path)
-            || self.api_tabs.contains_key(path)
-            || self.plugins.tabs.contains_key(path)
-        {
+        if self.db_tabs.contains_key(path) || self.plugins.tabs.contains_key(path) {
             return false;
         }
         if self.current_file.as_deref() == Some(path) {
@@ -7891,7 +7833,6 @@ impl SimpleEditApp {
         self.diff_tabs.remove(&path);
         self.merge_tabs.remove(&path);
         self.db_tabs.remove(&path);
-        self.api_tabs.remove(&path);
         if let Some(tab) = self.plugins.tabs.remove(&path) {
             crate::plugins::host::notify(
                 &tab.plugin,
@@ -9008,13 +8949,6 @@ impl SimpleEditApp {
         {
             return crate::database::view::table(path, tab, dark);
         }
-        if let Some((path, tab)) = self
-            .current_file
-            .as_ref()
-            .and_then(|p| self.api_tabs.get(p).map(|tab| (p, tab)))
-        {
-            return crate::api::view::tab(path, tab, &self.api, dark);
-        }
         if let Some(tab) = self
             .current_file
             .as_ref()
@@ -9463,7 +9397,6 @@ impl SimpleEditApp {
 #[path = "app/file_io.rs"]
 mod file_io;
 use file_io::*;
-mod api;
 #[path = "app/bookmark_panel.rs"]
 mod bookmark_panel;
 mod compare;
@@ -9516,11 +9449,6 @@ pub fn display_name(path: &Path) -> String {
         format!("▦ {title}")
     } else if let Some(title) = crate::plugins::tab_title(path) {
         title
-    } else if is_api(path) {
-        // api://3/title
-        let rest = path.to_str().unwrap_or("").trim_start_matches("api://");
-        let title = rest.split_once('/').map_or(rest, |(_, t)| t);
-        format!("⇄ {title}")
     } else if is_merge(path) {
         // merge://3/dir/file.rs
         let rest = path.to_str().unwrap_or("").trim_start_matches("merge://");
@@ -9856,7 +9784,6 @@ pub fn is_untitled(path: &Path) -> bool {
                 || s.starts_with("merge://")
                 || s.starts_with("rev://")
                 || s.starts_with("db://")
-                || s.starts_with("api://")
                 || s.starts_with("plugin://")
         })
         .unwrap_or(false)
@@ -9885,17 +9812,12 @@ pub fn is_merge(path: &Path) -> bool {
 
 /// A tab that is not a file and is never saved or remembered.
 pub fn is_virtual(path: &Path) -> bool {
-    is_diff(path) || is_merge(path) || is_db(path) || is_api(path) || is_plugin_tab(path)
+    is_diff(path) || is_merge(path) || is_db(path) || is_plugin_tab(path)
 }
 
 /// A tab of a plugin (`plugin://<plugin>/<tab>/<title>`).
 pub fn is_plugin_tab(path: &Path) -> bool {
     path.to_str().is_some_and(|s| s.starts_with("plugin://"))
-}
-
-/// A tab that holds a request to an API (`api://N/title`).
-pub fn is_api(path: &Path) -> bool {
-    path.to_str().is_some_and(|s| s.starts_with("api://"))
 }
 
 /// A tab that shows a table of a database (`db://N/schema.table`).

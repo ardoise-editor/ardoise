@@ -113,9 +113,10 @@ pub struct RemoteSession {
 /// A request of an API tab that was changed and not kept.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiSession {
-    pub request: crate::api::model::Request,
+    /// As the editor kept it before the API plugin (carried over to it).
+    pub request: serde_json::Value,
     /// The request as it was last kept.
-    pub kept: crate::api::model::Request,
+    pub kept: serde_json::Value,
     pub origin: Option<(u64, u64)>,
 }
 

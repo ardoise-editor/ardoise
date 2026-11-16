@@ -991,36 +991,6 @@ impl SimpleEditApp {
             })
             .collect();
 
-        // The requests changed and not kept, without their credentials.
-        let bare = |request: &crate::api::model::Request| {
-            let mut request = request.clone();
-            for value in [
-                &mut request.auth.token,
-                &mut request.auth.password,
-                &mut request.auth.key_value,
-            ] {
-                if !value.contains("{{") {
-                    value.clear();
-                }
-            }
-            request
-        };
-        let mut api_tabs: Vec<(&PathBuf, crate::session::ApiSession)> = self
-            .api_tabs
-            .iter()
-            .filter(|(_, tab)| tab.changed())
-            .map(|(path, tab)| {
-                (
-                    path,
-                    crate::session::ApiSession {
-                        request: bare(&tab.request),
-                        kept: bare(&tab.kept),
-                        origin: tab.origin,
-                    },
-                )
-            })
-            .collect();
-        api_tabs.sort_by(|a, b| a.0.cmp(b.0));
         // The tabs of plugins, in the order of the tabs.
         let plugin_tabs: Vec<String> = self
             .sidebar
@@ -1032,7 +1002,8 @@ impl SimpleEditApp {
         Session {
             files,
             plugin_tabs,
-            api_tabs: api_tabs.into_iter().map(|(_, s)| s).collect(),
+            // The requests of the API are the API plugin's.
+            api_tabs: Vec::new(),
             active_file: self
                 .current_file
                 .as_ref()
@@ -1188,19 +1159,24 @@ impl SimpleEditApp {
         }
 
         // The requests that were changed and not kept come back as tabs.
-        for saved in session.api_tabs {
-            self.api.counter += 1;
-            let title = saved.request.title();
-            let title = if title.is_empty() {
-                t!("api.untitled").to_string()
-            } else {
-                title
-            };
-            let path = PathBuf::from(format!("api://{}/{}", self.api.counter, title));
-            let mut tab = crate::api::ApiTab::new(saved.request, saved.origin);
-            tab.kept = saved.kept;
-            self.api_tabs.insert(path.clone(), tab);
-            self.sidebar.add_file(path);
+        // The API requests changed and not kept, of before the API plugin:
+        // they become its tabs.
+        if self.session_owner && !session.api_tabs.is_empty() {
+            for (tab, title) in crate::plugins::migrate::carry_api_tabs(&session.api_tabs) {
+                if self.plugins.get(crate::plugins::migrate::API).is_some() {
+                    let path = crate::plugins::tab_path(crate::plugins::migrate::API, &tab, &title);
+                    self.plugins.tabs.insert(
+                        path.clone(),
+                        crate::plugins::PluginTab {
+                            plugin: crate::plugins::migrate::API.to_string(),
+                            tab,
+                            dirty: true,
+                            asked: false,
+                        },
+                    );
+                    self.sidebar.add_file(path);
+                }
+            }
         }
 
         if self.sidebar.files().is_empty() {
@@ -1337,12 +1313,6 @@ impl SimpleEditApp {
                     self.panels.database,
                     t!("sidebar.database").to_string(),
                     Message::TogglePanel(crate::sidebar::Panel::Database),
-                ),
-                tool(
-                    crate::sidebar::icons::api(shown(self.panels.api)),
-                    self.panels.api,
-                    t!("sidebar.api").to_string(),
-                    Message::TogglePanel(crate::sidebar::Panel::Api),
                 ),
             ]
             .extend(plugin_tools(simpleedit_plugin::manifest::Location::Sidebar))

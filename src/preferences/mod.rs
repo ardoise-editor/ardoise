@@ -30,9 +30,6 @@ pub enum PreferencesMessage {
     /// A completion setting of a language (`rust.postfix`, …).
     CompletionOption(String, bool),
     EverywhereTextToggled(bool),
-    NetCa(String),
-    NetCert(String),
-    NetProxy(String),
     EverywhereGitToggled(bool),
     AutocompleteBracketsToggled(bool),
     AutocompleteQuotesToggled(bool),
@@ -66,12 +63,11 @@ pub enum PrefsPage {
     Lint,
     Servers,
     Plugins,
-    Network,
     Updates,
 }
 
 impl PrefsPage {
-    pub(crate) const ALL: [PrefsPage; 10] = [
+    pub(crate) const ALL: [PrefsPage; 9] = [
         PrefsPage::Editor,
         PrefsPage::Appearance,
         PrefsPage::Shortcuts,
@@ -80,7 +76,6 @@ impl PrefsPage {
         PrefsPage::Lint,
         PrefsPage::Servers,
         PrefsPage::Plugins,
-        PrefsPage::Network,
         PrefsPage::Updates,
     ];
 
@@ -94,7 +89,6 @@ impl PrefsPage {
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
             PrefsPage::Plugins => t!("prefs.nav_plugins"),
-            PrefsPage::Network => t!("prefs.nav_network"),
             PrefsPage::Updates => t!("prefs.nav_updates"),
         }
         .to_string()
@@ -221,9 +215,6 @@ impl PreferencesState {
             PreferencesMessage::CompletionOption(key, v) => {
                 config.completion_options.insert(key, v);
             }
-            PreferencesMessage::NetCa(v) => config.api_ca_file = v,
-            PreferencesMessage::NetCert(v) => config.api_client_cert = v,
-            PreferencesMessage::NetProxy(v) => config.api_proxy = v,
             PreferencesMessage::EverywhereTextToggled(v) => {
                 config.everywhere_text = v;
             }
@@ -386,7 +377,6 @@ impl PreferencesState {
             ),
             PrefsPage::Servers => self.servers_page(dark, servers),
             PrefsPage::Plugins => plugins::page(plugin_state, dark),
-            PrefsPage::Network => self.network_card(config, dark),
             PrefsPage::Updates => self.updates_card(dark),
         };
 
@@ -873,50 +863,6 @@ impl PreferencesState {
         ]
         .spacing(12)
         .into()
-    }
-
-    /// What the API client trusts and goes through.
-    fn network_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let field = |hint: String, value: &str, on: fn(String) -> PreferencesMessage| {
-            text_input(&hint, value)
-                .on_input(move |v| Message::Preferences(on(v)))
-                .padding([6, 10])
-                .size(13)
-                .width(320)
-                .style(theme::Field::new(dark).style())
-        };
-        card_of_rows(
-            dark,
-            vec![
-                setting_row(
-                    t!("prefs.net_ca").to_string(),
-                    field(
-                        "/path/ca.pem".into(),
-                        &config.api_ca_file,
-                        PreferencesMessage::NetCa,
-                    )
-                    .into(),
-                ),
-                setting_row(
-                    t!("prefs.net_cert").to_string(),
-                    field(
-                        "/path/client.pem".into(),
-                        &config.api_client_cert,
-                        PreferencesMessage::NetCert,
-                    )
-                    .into(),
-                ),
-                setting_row(
-                    t!("prefs.net_proxy").to_string(),
-                    field(
-                        "http://proxy:3128".into(),
-                        &config.api_proxy,
-                        PreferencesMessage::NetProxy,
-                    )
-                    .into(),
-                ),
-            ],
-        )
     }
 
     fn updates_card(&self, dark: bool) -> Element<'_, Message> {

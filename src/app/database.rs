@@ -572,10 +572,6 @@ impl SimpleEditApp {
 
     /// Escape gives up what is being typed or picked in the table in front.
     pub(super) fn db_escape(&mut self) -> bool {
-        if self.api.dialog.is_some() {
-            self.api_close_dialog();
-            return true;
-        }
         if self.db.text.take().is_some() || self.db.links.take().is_some() {
             return true;
         }
