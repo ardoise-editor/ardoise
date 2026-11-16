@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::Value;
+pub use simpleedit_plugin::manifest::Menu;
 use simpleedit_plugin::manifest::{Location, Manifest};
 use simpleedit_plugin::protocol::{Settings, StatusParams};
 use simpleedit_plugin::ui::Node;
@@ -25,6 +26,26 @@ pub use store::Installed;
 
 /// A panel of a plugin: the plugin's id, the panel's id.
 pub type PanelKey = (String, String);
+
+/// A command of a plugin in a context menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuItem {
+    pub menu: simpleedit_plugin::manifest::Menu,
+    pub plugin: String,
+    pub command: String,
+    pub label: String,
+}
+
+impl MenuItem {
+    /// What its button sends, for the file or folder the menu is on.
+    pub fn message(&self, path: &std::path::Path) -> crate::app::Message {
+        crate::app::Message::Plugin(PluginMsg::RunAt(
+            self.plugin.clone(),
+            self.command.clone(),
+            path.to_path_buf(),
+        ))
+    }
+}
 
 /// What the plugins and the Plugins page send.
 #[derive(Debug, Clone)]
@@ -42,8 +63,16 @@ pub enum PluginMsg {
     Input(String, String, String, String),
     /// A command of a plugin, run from the search for actions.
     Run(String, String),
+    /// A command of a plugin, run from the context menu of a file or folder.
+    RunAt(String, String, PathBuf),
     /// The answer to a plugin's question: the plugin, the request, yes / no.
     Answer(String, i64, bool),
+    /// The answer to a request of a plugin, worked out in the background.
+    Respond(
+        String,
+        i64,
+        Result<Value, simpleedit_plugin::protocol::RpcError>,
+    ),
     /// Starts a plugin that stopped, and opens again its panels.
     Restart(String),
     /// Shows or hides the settings of a plugin in Preferences › Plugins.

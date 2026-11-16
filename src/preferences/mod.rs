@@ -30,7 +30,6 @@ pub enum PreferencesMessage {
     /// A completion setting of a language (`rust.postfix`, …).
     CompletionOption(String, bool),
     EverywhereTextToggled(bool),
-    HistoryDays(u32),
     NetCa(String),
     NetCert(String),
     NetProxy(String),
@@ -112,32 +111,6 @@ impl PrefsPage {
 /// How often the Git panel fetches by itself, in minutes (0: never).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct AutoFetch(u32);
-
-/// How long the local history goes back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct HistoryDays(u32);
-
-impl HistoryDays {
-    const ALL: [HistoryDays; 7] = [
-        HistoryDays(0),
-        HistoryDays(1),
-        HistoryDays(5),
-        HistoryDays(14),
-        HistoryDays(30),
-        HistoryDays(90),
-        HistoryDays(365),
-    ];
-}
-
-impl std::fmt::Display for HistoryDays {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n = self.0.to_string();
-        f.write_str(&match self.0 {
-            0 => t!("prefs.history_off"),
-            _ => t!("prefs.history_days", n = n.as_str()),
-        })
-    }
-}
 
 impl AutoFetch {
     const ALL: [AutoFetch; 5] = [
@@ -251,9 +224,6 @@ impl PreferencesState {
             PreferencesMessage::NetCa(v) => config.api_ca_file = v,
             PreferencesMessage::NetCert(v) => config.api_client_cert = v,
             PreferencesMessage::NetProxy(v) => config.api_proxy = v,
-            PreferencesMessage::HistoryDays(days) => {
-                config.local_history_days = days;
-            }
             PreferencesMessage::EverywhereTextToggled(v) => {
                 config.everywhere_text = v;
             }
@@ -826,23 +796,12 @@ impl PreferencesState {
         .text_size(13)
         .style(theme::Select { dark }.style())
         .menu_style(theme::Select { dark }.menu_style());
-        let keep = pick_list(
-            HistoryDays::ALL,
-            Some(HistoryDays(config.local_history_days)),
-            |choice| Message::Preferences(PreferencesMessage::HistoryDays(choice.0)),
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
         card_of_rows(
             dark,
             vec![
                 setting_row(t!("prefs.git_pull").to_string(), pull.into()),
                 setting_row(t!("prefs.git_merge").to_string(), merge.into()),
                 setting_row(t!("prefs.git_auto_fetch").to_string(), fetch.into()),
-                setting_row(t!("prefs.history_keep").to_string(), keep.into()),
             ],
         )
     }

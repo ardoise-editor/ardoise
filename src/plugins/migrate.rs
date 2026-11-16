@@ -45,6 +45,33 @@ pub fn carry_personal_dictionary() {
     }
 }
 
+/// The official Local History plugin.
+pub const HISTORY: &str = "simpleedit.history";
+
+/// The history the editor kept before the Local History plugin, and how
+/// long it kept it: they become the plugin's, once.
+pub fn carry_local_history(config: &crate::config::Config) {
+    let (Some(data), Some(dir)) = (
+        crate::fsutil::data_dir(),
+        super::store::data_dir_of(HISTORY),
+    ) else {
+        return;
+    };
+    carry_local_history_to(config, &data.join("simpleedit").join("local-history"), &dir);
+}
+
+fn carry_local_history_to(config: &crate::config::Config, old: &Path, dir: &Path) {
+    let new = dir.join("local-history");
+    if old.is_dir() && !new.exists() {
+        let _ = std::fs::rename(old, &new);
+    }
+    let settings = dir.join("settings.json");
+    if !settings.exists() {
+        let json = serde_json::json!({ "days": config.local_history_days }).to_string();
+        let _ = crate::fsutil::write_atomic(&settings, json.as_bytes(), false);
+    }
+}
+
 /// Copies `from` to `to` unless `to` is there or `from` is not.
 fn carry_file(from: &Path, to: &Path) {
     if to.exists() {
@@ -88,6 +115,18 @@ mod tests {
         std::fs::write(&other, "new\n").unwrap();
         carry_file(&other, &copy);
         assert_eq!(std::fs::read_to_string(&copy).unwrap(), "zork\n");
+        // The history moves to the plugin with how long it is kept.
+        let old = dir.path().join("old-history");
+        std::fs::create_dir_all(old.join("files")).unwrap();
+        let plugin = dir.path().join("plugin");
+        std::fs::create_dir_all(&plugin).unwrap();
+        config.local_history_days = 30;
+        carry_local_history_to(&config, &old, &plugin);
+        assert!(plugin.join("local-history/files").is_dir() && !old.exists());
+        let days: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(plugin.join("settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(days["days"], 30);
         std::fs::write(&file, "{}").unwrap();
         carry_lint_settings_to(&config, dir.path());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");

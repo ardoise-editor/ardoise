@@ -629,7 +629,7 @@ mod behavior_tests {
         let _ = app.handle(Message::DeleteFile(loose.clone(), false));
         assert!(matches!(app.overlay, ActiveOverlay::None));
         assert_eq!(
-            block(super::delete_file(loose.clone(), false, 5)),
+            block(super::delete_file(loose.clone(), false)),
             Ok(false)
         );
         assert!(!loose.exists());
@@ -651,20 +651,20 @@ mod behavior_tests {
             app.overlay,
             ActiveOverlay::ConfirmFileDelete(a.clone(), Some(false))
         );
-        assert_eq!(block(super::delete_file(a.clone(), false, 5)), Ok(false));
+        assert_eq!(block(super::delete_file(a.clone(), false)), Ok(false));
         assert!(!a.exists());
         assert!(
             repo.git(&["status", "--porcelain"]).starts_with(" D"),
             "not staged"
         );
         // Checked: git removes it too.
-        assert_eq!(block(super::delete_file(b.clone(), true, 5)), Ok(true));
+        assert_eq!(block(super::delete_file(b.clone(), true)), Ok(true));
         assert!(repo.git(&["status", "--porcelain"]).contains("D  b.txt"));
         // A file of a repository that git doesn't know: only the disk.
         repo.write("new.txt", "n\n");
         let new = repo.path().join("new.txt");
         assert!(!block(super::is_tracked(&new)));
-        assert_eq!(block(super::delete_file(new.clone(), true, 5)), Ok(false));
+        assert_eq!(block(super::delete_file(new.clone(), true)), Ok(false));
         assert!(!new.exists());
     }
 

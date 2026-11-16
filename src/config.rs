@@ -597,7 +597,8 @@ pub struct Config {
     /// Abbreviations of actions, by action (search everywhere).
     pub action_abbreviations: std::collections::BTreeMap<String, Vec<String>>,
     /// Searches and replacements made in files, latest first (Alt+↓).
-    /// Working days the local history goes back (0: it is off).
+    /// Working days the local history went back before it became the Local
+    /// History plugin (carried over to its settings, no longer used).
     pub local_history_days: u32,
     /// The color of each project, by its folder.
     pub project_colors: std::collections::BTreeMap<String, usize>,

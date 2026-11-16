@@ -179,10 +179,6 @@ pub enum ActiveOverlay {
     Rename(String),
     /// Search everywhere (Shift twice).
     Everywhere,
-    /// The revisions of a file or a folder.
-    LocalHistory(Box<local_history::HistoryView>),
-    /// A name for a moment of the history.
-    HistoryLabel(String),
     About,
     /// Every release.
     Changelog,
@@ -275,7 +271,8 @@ pub enum Message {
     /// A tab was dragged from a place to another.
     TabMoved(usize, usize),
     /// A group of tabs folded or opened; the color of a project.
-    History(local_history::HistoryMsg),
+    /// The arrows and the picks of the diff of a comparison.
+    CompareDiff(DiffNav),
     TabGroupToggle(Option<PathBuf>),
     TabGroupClose(Option<PathBuf>),
     ProjectColor(PathBuf, usize),
@@ -404,9 +401,6 @@ pub enum Message {
     /// The open folders of the tree, read in the background.
     /// The text of the file of the preview of a search, read in the background.
     FinderPreviewRead(PathBuf, String),
-    /// Files put back by a revert of the local history (how many already, the
-    /// failure, the files on disk).
-    HistoryReverted(usize, Option<String>, Vec<local_history::Reverted>),
     ProjectsReloaded(Vec<crate::projects::LoadedDir>),
     ReplaceDone(Box<finder::Replaced>, Vec<finder::DiskDone>),
     /// A rename is done in the files on disk too.
@@ -924,9 +918,8 @@ pub struct SimpleEditApp {
     capturing: Option<ShortcutTarget>,
     everywhere: everywhere::Everywhere,
     results: results::Results,
-    /// The diff of the local history, and whether the compact list shows.
+    /// The diff of a comparison.
     history_diff: crate::git_panel::Viewer,
-    history_compact: bool,
     /// How the blame looks for who wrote a line.
     blame_options: crate::git::history::BlameOptions,
     /// The groups of tabs that are folded.
@@ -1249,7 +1242,6 @@ impl SimpleEditApp {
             everywhere: everywhere::Everywhere::default(),
             results: results::Results::default(),
             history_diff: Default::default(),
-            history_compact: false,
             blame_options: Default::default(),
             folded_tabs: BTreeSet::new(),
             open_menu: None,
@@ -1398,6 +1390,7 @@ impl SimpleEditApp {
         if owner {
             crate::plugins::migrate::carry_lint_settings(&app.config);
             crate::plugins::migrate::carry_personal_dictionary();
+            crate::plugins::migrate::carry_local_history(&app.config);
         }
         app.plugins = crate::plugins::Plugins::load();
         app.plugins_start();
@@ -1969,6 +1962,7 @@ impl SimpleEditApp {
                     self.panels,
                     self.tree_view,
                     self.sidebar_width,
+                    self.plugin_menus(),
                 )
             };
             main_row = main_row.push(container(panel).width(Length::Fixed(self.sidebar_width)));
@@ -2406,8 +2400,6 @@ impl SimpleEditApp {
                         )
                     }
                     ActiveOverlay::ProjectName(dialog) => self.view_name_overlay(dark, dialog),
-                    ActiveOverlay::HistoryLabel(name) => self.view_history_label(name, dark),
-                    ActiveOverlay::LocalHistory(view) => self.view_local_history(view, dark),
                     ActiveOverlay::ConfirmMove(source, dir) => confirm_card(
                         dark,
                         t!("projects.move_title").to_string(),
@@ -2490,7 +2482,7 @@ impl Message {
                 msg,
                 crate::database::DbMsg::Scrolled(..) | crate::database::DbMsg::DriverProbed(..)
             ),
-            Message::History(msg) => msg.is_background(),
+            Message::CompareDiff(DiffNav::Scrolled(..)) => true,
             Message::Plugin(msg) => matches!(
                 msg,
                 crate::plugins::PluginMsg::Incoming(_)
@@ -2723,7 +2715,6 @@ impl SimpleEditApp {
                     // The user went elsewhere in the meantime.
                     Ok(loaded) if self.abandoned_reads.remove(&loaded.path) => {}
                     Ok(loaded) => {
-                        self.history_record(&loaded.path, &loaded.text);
                         self.open_loaded(loaded);
                         self.apply_pending_jump();
                     }
@@ -2748,7 +2739,11 @@ impl SimpleEditApp {
                     // Too large to open whole: only its first part came.
                     Ok(loaded) if self.large.contains_key(&loaded.path) => {}
                     Ok(loaded) => {
-                        self.history_record(&loaded.path, &loaded.text);
+                        // Changed on the disk: the plugins that follow it hear of it.
+                        self.plugins_file_event(
+                            simpleedit_plugin::manifest::Event::FileSaved,
+                            &loaded.path,
+                        );
                         self.apply_reload(loaded);
                     }
                     Err(e) => self.set_status(format!("{}: {}", t!("status.error"), e), true),
@@ -2870,7 +2865,6 @@ impl SimpleEditApp {
             Message::FileSaved(origin, result) => {
                 match result {
                     Ok((path, saved)) => {
-                        self.history_record(&path, &saved);
                         self.plugins_file_event(
                             simpleedit_plugin::manifest::Event::FileSaved,
                             &path,
@@ -3107,11 +3101,6 @@ impl SimpleEditApp {
                     self.config_dirty = true;
                 }
                 self.remember_before_git(&msg);
-                if let crate::git_panel::GitMsg::Done(Ok(said)) = &msg {
-                    if said.starts_with("\u{2}") || said.starts_with("\u{5}") {
-                        self.history_label(t!("history.auto_commit").to_string(), true);
-                    }
-                }
                 let ctx = crate::git_panel::Ctx {
                     current_file: self.current_file.as_deref(),
                     ctrl: self.mod_ctrl,
@@ -3657,7 +3646,7 @@ impl SimpleEditApp {
                 }
                 Task::none()
             }
-            Message::History(msg) => self.history_update(msg),
+            Message::CompareDiff(nav) => self.compare_diff_nav(nav),
             Message::TabGroupClose(project) => {
                 let targets = self.tabs_of(&project);
                 self.folded_tabs.remove(&project);
@@ -4278,9 +4267,6 @@ impl SimpleEditApp {
             }
             Message::FindPreviewAction(action) => self.finder_preview_action(action),
             Message::FindPreviewMenu(what) => self.finder_preview_menu(what),
-            Message::HistoryReverted(done, failed, written) => {
-                self.history_reverted(done, failed, written)
-            }
             Message::FinderPreviewRead(path, text) => {
                 self.finder_preview_read(path, text);
                 Task::none()
@@ -4487,9 +4473,9 @@ impl SimpleEditApp {
             Message::DeleteFile(path, from_git) => {
                 self.overlay = ActiveOverlay::None;
                 self.bookmarks.clear(&path);
+                self.plugins_before_delete(&path);
                 let close = self.close_path(path.clone());
-                let days = self.config.local_history_days;
-                let delete = Task::perform(delete_file(path, from_git, days), Message::FileDeleted);
+                let delete = Task::perform(delete_file(path, from_git), Message::FileDeleted);
                 Task::batch([close, delete])
             }
             Message::FileDeleted(result) => {
@@ -4972,10 +4958,6 @@ impl SimpleEditApp {
                 } else {
                     Task::none()
                 };
-                self.history_tick();
-                if self.ticks == 5 {
-                    self.history_prune();
-                }
                 self.ticks = self.ticks.wrapping_add(1);
                 // The marks follow HEAD, which a commit made elsewhere moves.
                 let marks = if every(10, self.ticks) {
@@ -9391,7 +9373,6 @@ impl SimpleEditApp {
                 .is_some_and(|sha| !sha.chars().all(|c| c == '0'))
         });
         let lbl_previous = t!("git.blame_previous").to_string();
-        let lbl_history = t!("history.show").to_string();
         let ticked = |on: bool, label: String| format!("{} {label}", if on { "✓" } else { "  " });
         let blame_opts = &self.blame_options;
         let mut blame_items = vec![
@@ -9417,6 +9398,7 @@ impl SimpleEditApp {
         }
         let lbl_blame = t!("git.blame").to_string();
         let lbl_blame_close = t!("git.blame_close").to_string();
+        let plugin_menus = self.plugin_menus();
         let menu = crate::pointer_area::context_menu(editor_widget, move || {
             use crate::menu_bar::{disabled_item, item, separator};
             if gutter_menu {
@@ -9488,12 +9470,6 @@ impl SimpleEditApp {
                     Message::RenameSymbol,
                 ),
                 item(
-                    lbl_history.clone(),
-                    None,
-                    dark,
-                    Message::History(HistoryMsg::OpenCurrent),
-                ),
-                item(
                     lbl_select_all.clone(),
                     Some(sh_select_all.clone()),
                     dark,
@@ -9520,6 +9496,24 @@ impl SimpleEditApp {
                 ),
                 None => disabled_item(lbl_git.clone(), dark),
             });
+            let ours: Vec<_> = plugin_menus
+                .iter()
+                .filter(|m| m.menu == simpleedit_plugin::manifest::Menu::Editor)
+                .collect();
+            if !ours.is_empty() {
+                ctx_items.push(separator(dark));
+                for m in ours {
+                    ctx_items.push(item(
+                        m.label.clone(),
+                        None,
+                        dark,
+                        Message::Plugin(crate::plugins::PluginMsg::Run(
+                            m.plugin.clone(),
+                            m.command.clone(),
+                        )),
+                    ));
+                }
+            }
             ctx_items.push(separator(dark));
             ctx_items.push(item(lbl_lint_now.clone(), None, dark, Message::LintNow));
             ctx_items.push(if has_problems {
@@ -9641,15 +9635,12 @@ mod db_tree;
 mod everywhere;
 pub(crate) use completion::Floating;
 pub(crate) use everywhere::Commit;
-pub(crate) use local_history::HistoryMsg;
 #[path = "app/finder.rs"]
 mod finder;
 #[path = "app/git_file.rs"]
 mod git_file;
 #[path = "app/lint.rs"]
 mod lint;
-#[path = "app/local_history.rs"]
-mod local_history;
 #[path = "app/plugins.rs"]
 mod plugins;
 #[path = "app/project_ops.rs"]
@@ -10003,8 +9994,7 @@ pub(crate) async fn is_tracked(path: &Path) -> bool {
 
 /// Deletes a file from the disk and, if `from_git` and git tracks it, from
 /// the index too (`git rm`). `true`: it was removed from git as well.
-async fn delete_file(path: PathBuf, from_git: bool, days: u32) -> Result<bool, String> {
-    local_history::record_before_delete(&path, days);
+async fn delete_file(path: PathBuf, from_git: bool) -> Result<bool, String> {
     if from_git && is_tracked(&path).await {
         if let Some(root) = crate::git::repo_root(&path).await {
             if let Some(rel) = relative_to(&root, &path) {

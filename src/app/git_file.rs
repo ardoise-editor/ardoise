@@ -527,9 +527,7 @@ impl SimpleEditApp {
     ) -> Task<Message> {
         self.overlay = ActiveOverlay::None;
         let path = repo.join(&file);
-        if let Ok(bytes) = super::file_io::read_bytes(&path) {
-            self.history_record(&path, &String::from_utf8_lossy(&bytes));
-        }
+        self.plugins_file_event(simpleedit_plugin::manifest::Event::FileSaved, &path);
         self.remember_file(path);
         Task::perform(
             async move {

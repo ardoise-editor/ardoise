@@ -13,8 +13,8 @@ use simpleedit_plugin::manifest::{Event, Location};
 use simpleedit_plugin::protocol::{
     self as rpc, codes, methods, ActiveFile, ActiveFileParams, CommandParams, ConfirmParams,
     Context, DiffParams, FileParams, InitializeParams, Level, Message as Rpc, NotifyParams,
-    OpenFileParams, PanelParams, PublishParams, RenderParams, ReplaceTextParams, RpcError,
-    Settings, StatusParams, UiEvent,
+    OpenFileParams, PanelParams, PublishParams, RenameParams, RenderParams, ReplaceTextParams,
+    RpcError, SaveFileParams, Settings, StatusParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -126,7 +126,7 @@ impl SimpleEditApp {
                 // The files open now, for the plugins that follow them.
                 if plugin.manifest.events.contains(&Event::FileOpened) {
                     for path in self.plugins.told_open.iter() {
-                        host::notify(id, methods::FILE_OPENED, FileParams { path: path.clone() });
+                        host::notify(id, methods::FILE_OPENED, FileParams::new(path.clone()));
                     }
                 }
                 true
@@ -188,6 +188,17 @@ impl SimpleEditApp {
 
     /// A file was opened, saved or closed: the plugins that asked hear of it.
     pub(super) fn plugins_file_event(&mut self, event: Event, path: &Path) {
+        self.plugins_file_event_with(event, path, None);
+    }
+
+    /// The same, with what the file held before (a file rewritten by the
+    /// editor, one about to be deleted).
+    pub(super) fn plugins_file_event_with(
+        &mut self,
+        event: Event,
+        path: &Path,
+        previous: Option<String>,
+    ) {
         if is_untitled(path) || is_virtual(path) {
             return;
         }
@@ -205,17 +216,58 @@ impl SimpleEditApp {
                 methods::FILE_CLOSED
             }
             Event::FileSaved => methods::FILE_SAVED,
-            Event::Startup | Event::ActiveFile => return,
+            Event::FileDeleted => methods::FILE_DELETED,
+            Event::Startup | Event::ActiveFile | Event::FileRenamed => return,
+        };
+        let params = FileParams {
+            path: path.to_path_buf(),
+            previous,
         };
         for plugin in &self.plugins.installed {
             if plugin.manifest.events.contains(&event) {
-                host::notify(
-                    plugin.id(),
-                    method,
-                    FileParams {
-                        path: path.to_path_buf(),
-                    },
-                );
+                host::notify(plugin.id(), method, &params);
+            }
+        }
+    }
+
+    /// Whether a plugin follows the files deleted (it is told what they held
+    /// before they go: reading them costs only then).
+    pub(super) fn plugins_follow(&self, event: Event) -> bool {
+        self.plugins
+            .installed
+            .iter()
+            .any(|p| p.manifest.events.contains(&event))
+    }
+
+    /// A file or folder about to be deleted: the plugins that follow it are
+    /// told what each file in it holds (for a folder, its first files).
+    pub(super) fn plugins_before_delete(&mut self, path: &Path) {
+        if !self.plugins_follow(Event::FileDeleted) {
+            return;
+        }
+        let files: Vec<PathBuf> = if path.is_dir() {
+            walk_files(path, 2000)
+        } else {
+            vec![path.to_path_buf()]
+        };
+        for file in files {
+            let text = std::fs::read(&file)
+                .ok()
+                .filter(|b| b.len() <= 5 * 1024 * 1024)
+                .and_then(|b| String::from_utf8(b).ok());
+            self.plugins_file_event_with(Event::FileDeleted, &file, text);
+        }
+    }
+
+    /// A file or folder was renamed or moved.
+    pub(super) fn plugins_renamed(&self, from: &Path, to: &Path) {
+        let params = RenameParams {
+            from: from.to_path_buf(),
+            to: to.to_path_buf(),
+        };
+        for plugin in &self.plugins.installed {
+            if plugin.manifest.events.contains(&Event::FileRenamed) {
+                host::notify(plugin.id(), methods::FILE_RENAMED, &params);
             }
         }
     }
@@ -405,6 +457,24 @@ impl SimpleEditApp {
                         CommandParams { command, context },
                     );
                 }
+                Task::none()
+            }
+            PluginMsg::RunAt(plugin, command, path) => {
+                if self.plugin_ensure(&plugin) {
+                    let context = Context {
+                        file: Some(path),
+                        workspace: self.projects.roots.clone(),
+                    };
+                    host::notify(
+                        &plugin,
+                        methods::COMMAND,
+                        CommandParams { command, context },
+                    );
+                }
+                Task::none()
+            }
+            PluginMsg::Respond(plugin, request, result) => {
+                host::respond(&plugin, request, result);
                 Task::none()
             }
             PluginMsg::Answer(plugin, request, yes) => {
@@ -725,6 +795,17 @@ impl SimpleEditApp {
                             self.set_status(p.message, p.level == Level::Error);
                         }
                     }
+                    methods::SHOW_PANEL => {
+                        if let Ok(p) = serde_json::from_value::<PanelParams>(params) {
+                            let key = (id, p.panel);
+                            let open = [&self.plugins.sidebar, &self.plugins.bottom]
+                                .into_iter()
+                                .any(|k| k.as_ref() == Some(&key));
+                            if !open {
+                                self.toggle_plugin_panel(key);
+                            }
+                        }
+                    }
                     methods::PUBLISH_DIAGNOSTICS => {
                         if let Ok(p) = serde_json::from_value::<PublishParams>(params) {
                             self.plugin_published(id, p);
@@ -777,6 +858,37 @@ impl SimpleEditApp {
                             col: 0,
                             len: 0,
                         })
+                    }
+                    Err(e) => {
+                        host::respond(&id, request, Err(invalid(e)));
+                        Task::none()
+                    }
+                },
+                methods::SAVE_FILE => match serde_json::from_value::<SaveFileParams>(params) {
+                    Ok(p) => {
+                        let title = self.plugins.get(&id).map(|x| x.name()).unwrap_or_default();
+                        Task::perform(
+                            async move {
+                                let picked = rfd::AsyncFileDialog::new()
+                                    .set_title(title)
+                                    .set_file_name(p.name)
+                                    .save_file()
+                                    .await;
+                                let Some(handle) = picked else {
+                                    return Ok(Value::Bool(false));
+                                };
+                                tokio::fs::write(handle.path(), p.text)
+                                    .await
+                                    .map(|()| Value::Bool(true))
+                                    .map_err(|e| RpcError {
+                                        code: codes::INTERNAL_ERROR,
+                                        message: e.to_string(),
+                                    })
+                            },
+                            move |result| {
+                                plugin_msg(PluginMsg::Respond(id.clone(), request, result))
+                            },
+                        )
                     }
                     Err(e) => {
                         host::respond(&id, request, Err(invalid(e)));
@@ -1009,6 +1121,25 @@ impl SimpleEditApp {
             .collect()
     }
 
+    /// The commands of the plugins in the context menus.
+    pub(super) fn plugin_menus(&self) -> Arc<Vec<crate::plugins::MenuItem>> {
+        let locale = rust_i18n::locale().to_string();
+        let mut items = Vec::new();
+        for plugin in &self.plugins.installed {
+            for command in &plugin.manifest.contributes.commands {
+                for menu in &command.menus {
+                    items.push(crate::plugins::MenuItem {
+                        menu: *menu,
+                        plugin: plugin.id().to_string(),
+                        command: command.id.clone(),
+                        label: command.title.get(&locale).to_string(),
+                    });
+                }
+            }
+        }
+        Arc::new(items)
+    }
+
     /// The commands of the plugins, for the search for actions: (plugin,
     /// command, label).
     pub(super) fn plugin_commands(&self) -> Vec<(String, String, String)> {
@@ -1084,6 +1215,30 @@ impl SimpleEditApp {
             host::respond(&q.plugin, q.request, Ok(Value::Bool(false)));
         }
     }
+}
+
+/// The files under `dir` (not in hidden folders), at most `max`.
+fn walk_files(dir: &Path, max: usize) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let hidden = entry.file_name().to_string_lossy().starts_with('.');
+            match entry.file_type() {
+                Ok(t) if t.is_dir() && !hidden => stack.push(path),
+                Ok(t) if t.is_file() => out.push(path),
+                _ => {}
+            }
+            if out.len() >= max {
+                return out;
+            }
+        }
+    }
+    out
 }
 
 fn invalid(e: impl std::fmt::Display) -> RpcError {

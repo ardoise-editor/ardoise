@@ -172,6 +172,7 @@ impl SidebarState {
         panels: Panels,
         tree_view: (f32, f32),
         width: f32,
+        plugin_menus: std::sync::Arc<Vec<crate::plugins::MenuItem>>,
     ) -> Element<'a, Message> {
         let lbl_close = t!("sidebar.close").to_string();
         let lbl_close_others = t!("menu.file_close_others").to_string();
@@ -182,7 +183,6 @@ impl SidebarState {
         let lbl_delete = t!("sidebar.delete").to_string();
         let lbl_lint_fix = t!("menu.lint_fix").to_string();
         let lbl_show = t!("sidebar.show_in_tree").to_string();
-        let lbl_history = t!("history.show").to_string();
         let lbl_split_right = t!("sidebar.split_right").to_string();
         let lbl_split_down = t!("sidebar.split_down").to_string();
         let lbl_bookmark_add = t!("sidebar.bookmark_add").to_string();
@@ -262,11 +262,17 @@ impl SidebarState {
                 let lbl_delete = lbl_delete.clone();
                 let lbl_lint_fix = lbl_lint_fix.clone();
                 let lbl_show = lbl_show.clone();
-                let lbl_history = lbl_history.clone();
                 let in_project = projects.roots.iter().any(|r| path.starts_with(r));
                 let lbl_split_right = lbl_split_right.clone();
                 let lbl_split_down = lbl_split_down.clone();
                 let full_path = path.clone();
+                let file_menus: Vec<(String, Message)> = plugin_menus
+                    .iter()
+                    .filter(|m| {
+                        m.menu == crate::plugins::Menu::File && !crate::app::is_untitled(path)
+                    })
+                    .map(|m| (m.label.clone(), m.message(path)))
+                    .collect();
 
                 let row_with_menu = crate::pointer_area::context_menu(row_button, move || {
                     let ctx_item =
@@ -315,12 +321,6 @@ impl SidebarState {
                                 in_project.then(|| Message::ShowInProjects(bookmark_path.clone())),
                             ),
                             ctx_item(
-                                lbl_history.clone(),
-                                Some(Message::History(crate::app::HistoryMsg::Open(
-                                    bookmark_path.clone()
-                                ))),
-                            ),
-                            ctx_item(
                                 lbl_lint_fix.clone(),
                                 crate::app::splittable(&bookmark_path)
                                     .then(|| Message::LintFixFile(bookmark_path.clone())),
@@ -351,6 +351,11 @@ impl SidebarState {
                                     .then(|| Message::AskDeleteFile(bookmark_path.clone())),
                             ),
                         ]
+                        .extend(
+                            file_menus
+                                .iter()
+                                .map(|(label, msg)| ctx_item(label.clone(), Some(msg.clone()))),
+                        )
                         .spacing(1)
                         .padding(6),
                     )
@@ -449,6 +454,7 @@ impl SidebarState {
                     marked,
                     tree_view,
                     dark,
+                    &plugin_menus,
                 ))
                 .id(tree_id())
                 .on_scroll(|v| Message::TreeScrolled(v.absolute_offset().y, v.bounds().height))
@@ -522,7 +528,6 @@ struct ProjectMenuLabels {
     reveal: String,
     find: String,
     replace: String,
-    history: String,
 }
 
 impl ProjectMenuLabels {
@@ -548,7 +553,6 @@ impl ProjectMenuLabels {
             reveal: t!("sidebar.reveal").to_string(),
             find: t!("sidebar.find_here").to_string(),
             replace: t!("sidebar.replace_here").to_string(),
-            history: t!("history.show").to_string(),
             hide_ignored: if hide_ignored {
                 t!("sidebar.show_ignored").to_string()
             } else {
@@ -558,6 +562,7 @@ impl ProjectMenuLabels {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn project_tree<'a>(
     projects: &'a crate::projects::Projects,
     colors: &std::collections::BTreeMap<String, usize>,
@@ -566,6 +571,7 @@ fn project_tree<'a>(
     marked: &HashSet<PathBuf>,
     tree_view: (f32, f32),
     dark: bool,
+    plugin_menus: &std::sync::Arc<Vec<crate::plugins::MenuItem>>,
 ) -> Element<'a, Message> {
     let p = theme::palette(dark);
     // Only the lines in view (and a few around them) become widgets: a tree
@@ -665,6 +671,7 @@ fn project_tree<'a>(
             let bookmarked = marked.contains(&path);
             let hide_ignored = projects.hide_ignored;
             let menu_path = path.clone();
+            let plugin_menus = plugin_menus.clone();
             let with_menu = crate::pointer_area::context_menu(entry, move || {
                 // Built when the menu opens, not for every line of every view.
                 let lbl = ProjectMenuLabels::new(bookmarked, hide_ignored);
@@ -684,10 +691,6 @@ fn project_tree<'a>(
                         .into()
                 };
                 let mut entries: Vec<Element<'static, Message>> = Vec::new();
-                entries.push(item(
-                    lbl.history.clone(),
-                    Message::History(crate::app::HistoryMsg::Open(menu_path.clone())),
-                ));
                 if is_dir {
                     entries.push(item(
                         lbl.new_file.clone(),
@@ -759,6 +762,14 @@ fn project_tree<'a>(
                         lbl.remove.clone(),
                         Message::RemoveProject(menu_path.clone()),
                     ));
+                }
+                let kind = if is_dir {
+                    crate::plugins::Menu::Folder
+                } else {
+                    crate::plugins::Menu::File
+                };
+                for m in plugin_menus.iter().filter(|m| m.menu == kind) {
+                    entries.push(item(m.label.clone(), m.message(&menu_path)));
                 }
                 container(column(entries).spacing(1).padding(6))
                     .style(theme::card(dark))

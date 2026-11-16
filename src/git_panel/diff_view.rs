@@ -104,27 +104,24 @@ impl Nav {
         }
     }
 
-    /// The diff of the local history: its arrows put a change back.
-    pub fn history() -> Nav {
+    /// The diff of a comparison: it only reads.
+    pub fn compare() -> Nav {
         use crate::app::DiffNav;
-        use crate::app::HistoryMsg;
-        let on = |nav: DiffNav| Message::History(HistoryMsg::Diff(nav));
+        let on = |nav: DiffNav| Message::CompareDiff(nav);
         Nav {
             prev_change: on(DiffNav::PrevChange),
             next_change: on(DiffNav::NextChange),
             prev_file: on(DiffNav::PrevFile),
             next_file: on(DiffNav::NextFile),
             toggle_side: on(DiffNav::ToggleSide),
-            rollback: Some(|block| Message::History(HistoryMsg::Diff(DiffNav::Apply(block)))),
+            rollback: None,
             toggle_compare: None,
             open_file: None,
-            pick: |p| Message::History(HistoryMsg::Diff(DiffNav::Pick(p))),
+            pick: |p| Message::CompareDiff(DiffNav::Pick(p)),
             copy: on(DiffNav::CopyPicked),
             select_all: on(DiffNav::PickAll),
-            scrolled: |top, height| {
-                Message::History(HistoryMsg::Diff(DiffNav::Scrolled(top, height)))
-            },
-            stage_block: |block| Message::History(HistoryMsg::Diff(DiffNav::Apply(block))),
+            scrolled: |top, height| Message::CompareDiff(DiffNav::Scrolled(top, height)),
+            stage_block: |_| Message::CompareDiff(DiffNav::CopyPicked),
             stage_selection: on(DiffNav::CopyPicked),
             toggle_blanks: on(DiffNav::ToggleBlanks),
             cycle_context: on(DiffNav::CycleContext),

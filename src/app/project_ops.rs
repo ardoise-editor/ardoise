@@ -318,13 +318,7 @@ impl SimpleEditApp {
             *closed = moved(closed);
         }
         self.bookmarks.rename(&old, &new);
-        let days = self.config.local_history_days;
-        if days > 0 {
-            if let Some(store) = crate::local_history::Store::global() {
-                let (from, to) = (old.clone(), new.clone());
-                tasks.push(Task::future(async move { store.rename_tree(&from, &to) }).discard());
-            }
-        }
+        self.plugins_renamed(&old, &new);
         self.projects.renamed(&old, &new);
         self.save_projects();
         if let Some(path) = back {
@@ -354,26 +348,18 @@ impl SimpleEditApp {
                 self.close_path(p)
             })
             .collect();
-        let days = self.config.local_history_days;
+        self.plugins_before_delete(&dir);
         tasks.push(Task::perform(
             async move {
                 let target = dir.clone();
-                // The files are read for the history (up to 2000) and the
-                // folder removed on a thread made for blocking work, not on
-                // one of the runtime.
-                tokio::task::spawn_blocking(move || {
-                    if days > 0 {
-                        if let Some(store) = crate::local_history::Store::global() {
-                            store.record_tree(&target, crate::local_history::now());
-                        }
-                    }
-                    crate::fsutil::trash_or_remove(&target)
-                })
-                .await
-                .map_err(|e| std::io::Error::other(e.to_string()))
-                .and_then(|r| r)
-                .map(|()| dir.clone())
-                .map_err(|e| format!("{}: {e}", dir.display()))
+                // Removed on a thread made for blocking work, not on one of
+                // the runtime.
+                tokio::task::spawn_blocking(move || crate::fsutil::trash_or_remove(&target))
+                    .await
+                    .map_err(|e| std::io::Error::other(e.to_string()))
+                    .and_then(|r| r)
+                    .map(|()| dir.clone())
+                    .map_err(|e| format!("{}: {e}", dir.display()))
             },
             Message::FolderDeleted,
         ));
