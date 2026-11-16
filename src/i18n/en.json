@@ -593,16 +593,6 @@
   "palette.spell_languages": "Spelling language…",
   "prefs.spell_check": "Check the spelling",
   "shortcuts.spell_fix": "Fix the spelling of the word",
-  "remote.title": "Open a file over SSH",
-  "remote.host": "user@host",
-  "remote.folder": "Folder",
-  "remote.go": "Go",
-  "remote.loading": "Connecting…",
-  "remote.bad_host": "Give the machine as user@host (or a name of ~/.ssh/config)",
-  "remote.no_folder": "The copy of the file cannot be kept here",
-  "remote.sending": "Sending to %{host}…",
-  "remote.sent": "Sent to %{host}",
-  "remote.send_failed": "Not sent to the server (the local copy is saved)",
   "palette.open_remote": "Open a file over SSH…",
   "prefs.high_contrast": "High contrast",
   "palette.high_contrast": "Toggle high contrast",
@@ -1620,5 +1610,6 @@
   "plugins.err_read_only": "the file cannot be changed",
   "plugins.err_not_in_front": "the file is not the one in front",
   "spell.plugin_missing": "Install the Spelling plugin (Preferences › Plugins) to check the spelling",
-  "tasks.plugin_missing": "Install the Tasks plugin (Preferences › Plugins) to run the tasks of a project"
+  "tasks.plugin_missing": "Install the Tasks plugin (Preferences › Plugins) to run the tasks of a project",
+  "remote.plugin_missing": "Install the Remote Files plugin (Preferences › Plugins) to open files over SSH"
 }

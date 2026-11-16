@@ -178,7 +178,6 @@ impl SimpleEditApp {
             | ActiveOverlay::Compare(..)
             | ActiveOverlay::Spelling(_)
             | ActiveOverlay::SpellLanguages
-            | ActiveOverlay::Remote(_)
             | ActiveOverlay::Diagram(_)
             | ActiveOverlay::References(_)
             | ActiveOverlay::Shortcuts
@@ -1155,21 +1154,8 @@ impl SimpleEditApp {
                 .filter(|p| !self.is_scratch(p) && !is_virtual(p))
                 .map(|p| p.to_string_lossy().into_owned()),
             untitled_counter: self.untitled_counter,
-            remote_files: {
-                let mut links: Vec<_> = self
-                    .remote_files
-                    .iter()
-                    .filter(|(local, _)| self.sidebar.files().contains(local))
-                    .map(|(local, (file, date))| crate::session::RemoteSession {
-                        local: local.to_string_lossy().into_owned(),
-                        host: file.host.clone(),
-                        path: file.path.clone(),
-                        date: *date,
-                    })
-                    .collect();
-                links.sort_by(|a, b| a.local.cmp(&b.local));
-                links
-            },
+            // The links of the copies of remote files are the plugin's now.
+            remote_files: Vec::new(),
         }
     }
 
@@ -1291,18 +1277,10 @@ impl SimpleEditApp {
             self.file_cache.insert(path, buffer);
         }
 
-        // A copy of a remote file keeps going back to its machine on save.
-        for link in session.remote_files {
-            self.remote_files.insert(
-                PathBuf::from(link.local),
-                (
-                    crate::remote::RemoteFile {
-                        host: link.host,
-                        path: link.path,
-                    },
-                    link.date,
-                ),
-            );
+        // The copies of remote files of before the Remote Files plugin keep
+        // going back to their machine: the plugin is told of them.
+        if self.session_owner {
+            crate::plugins::migrate::carry_remote(&self.config.remote_hosts, &session.remote_files);
         }
 
         // The requests that were changed and not kept come back as tabs.

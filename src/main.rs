@@ -47,7 +47,6 @@ mod pointer_area;
 mod preferences;
 mod preview;
 mod projects;
-mod remote;
 mod scratch;
 mod search;
 mod session;

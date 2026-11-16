@@ -593,16 +593,6 @@
   "palette.spell_languages": "Langue de l'orthographe…",
   "prefs.spell_check": "Vérifier l'orthographe",
   "shortcuts.spell_fix": "Corriger l'orthographe du mot",
-  "remote.title": "Ouvrir un fichier par SSH",
-  "remote.host": "utilisateur@machine",
-  "remote.folder": "Dossier",
-  "remote.go": "Aller",
-  "remote.loading": "Connexion…",
-  "remote.bad_host": "Donnez la machine sous la forme utilisateur@machine (ou un nom de ~/.ssh/config)",
-  "remote.no_folder": "La copie du fichier ne peut pas être gardée ici",
-  "remote.sending": "Envoi à %{host}…",
-  "remote.sent": "Envoyé à %{host}",
-  "remote.send_failed": "Pas envoyé au serveur (la copie locale est enregistrée)",
   "palette.open_remote": "Ouvrir un fichier par SSH…",
   "prefs.high_contrast": "Contraste élevé",
   "palette.high_contrast": "Activer ou désactiver le contraste élevé",
@@ -1620,5 +1610,6 @@
   "plugins.err_read_only": "le fichier ne peut pas être modifié",
   "plugins.err_not_in_front": "le fichier n'est pas celui affiché",
   "spell.plugin_missing": "Installez le plugin Orthographe (Préférences › Plugins) pour vérifier l'orthographe",
-  "tasks.plugin_missing": "Installez le plugin Tâches (Préférences › Plugins) pour lancer les tâches d'un projet"
+  "tasks.plugin_missing": "Installez le plugin Tâches (Préférences › Plugins) pour lancer les tâches d'un projet",
+  "remote.plugin_missing": "Installez le plugin Fichiers distants (Préférences › Plugins) pour ouvrir des fichiers par SSH"
 }

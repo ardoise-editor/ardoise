@@ -45,6 +45,35 @@ pub fn carry_personal_dictionary() {
     }
 }
 
+/// The official Remote Files plugin.
+pub const REMOTE: &str = "simpleedit.remote";
+
+/// The machines and the links of the copies of remote files the editor
+/// kept before the Remote Files plugin: they become the plugin's, once.
+pub fn carry_remote(hosts: &[String], links: &[crate::session::RemoteSession]) {
+    if let Some(dir) = super::store::data_dir_of(REMOTE) {
+        carry_remote_to(hosts, links, &dir);
+    }
+}
+
+fn carry_remote_to(hosts: &[String], links: &[crate::session::RemoteSession], dir: &Path) {
+    let file = dir.join("remote.json");
+    if file.exists() || (hosts.is_empty() && links.is_empty()) {
+        return;
+    }
+    let links: serde_json::Map<String, serde_json::Value> = links
+        .iter()
+        .map(|l| {
+            (
+                l.local.clone(),
+                serde_json::json!({ "host": l.host, "path": l.path, "date": l.date }),
+            )
+        })
+        .collect();
+    let json = serde_json::json!({ "hosts": hosts, "links": links }).to_string();
+    let _ = crate::fsutil::write_atomic(&file, json.as_bytes(), false);
+}
+
 /// The official Tasks plugin.
 pub const TASKS: &str = "simpleedit.tasks";
 
@@ -130,6 +159,21 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(plugin.join("settings.json")).unwrap())
                 .unwrap();
         assert_eq!(days["days"], 30);
+        // The machines and links of the remote files, once.
+        let remote = dir.path().join("remote");
+        std::fs::create_dir_all(&remote).unwrap();
+        let link = crate::session::RemoteSession {
+            local: "/l/a.txt".into(),
+            host: "me@box".into(),
+            path: "/a.txt".into(),
+            date: Some(3),
+        };
+        carry_remote_to(&["me@box".to_string()], &[link], &remote);
+        let kept: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(remote.join("remote.json")).unwrap())
+                .unwrap();
+        assert_eq!(kept["hosts"][0], "me@box");
+        assert_eq!(kept["links"]["/l/a.txt"]["date"], 3);
         std::fs::write(&file, "{}").unwrap();
         carry_lint_settings_to(&config, dir.path());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");

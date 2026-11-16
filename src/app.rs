@@ -169,8 +169,6 @@ pub enum ActiveOverlay {
     Spelling(Box<spelling::Suggestion>),
     /// The languages of the dictionaries found.
     SpellLanguages,
-    /// A folder on another machine, to open a file from.
-    Remote(Box<remote_files::RemoteView>),
     /// The tables of a schema and the keys between them.
     Diagram(Box<DiagramView>),
     /// The new name of the symbol under the cursor, being typed.
@@ -315,16 +313,6 @@ pub enum Message {
     FindPickDir,
     ToggleHighContrast,
     OpenRemote,
-    RemoteHost(String),
-    RemoteDir(String),
-    RemoteConnect,
-    RemoteListed(String, Result<(String, Vec<crate::remote::Entry>), String>),
-    RemotePick(String),
-    RemoteDownloaded(
-        crate::remote::RemoteFile,
-        Result<(Vec<u8>, Option<u64>), String>,
-    ),
-    RemoteSent(PathBuf, Result<Option<u64>, String>),
     SpellFix,
     SpellChecked(Option<spelling::SpellChecked>),
     /// The dictionary of a language, read in the background.
@@ -1028,7 +1016,6 @@ pub struct SimpleEditApp {
     spell: spelling::SpellState,
     /// The local copies of remote files, where they came from and the date
     /// they had there.
-    remote_files: HashMap<PathBuf, (crate::remote::RemoteFile, Option<u64>)>,
     /// State on disk of the current file when it was last read or written,
     /// to notice edits made by other programs.
     disk_stamp: Option<DiskStamp>,
@@ -1296,7 +1283,6 @@ impl SimpleEditApp {
             symbol_token: 0,
             ipc_listening: false,
             spell: Default::default(),
-            remote_files: HashMap::new(),
             disk_stamp: None,
             saved_fp: None,
             pending_open: None,
@@ -2350,7 +2336,6 @@ impl SimpleEditApp {
                     ActiveOverlay::Compare(left, right) => self.view_compare(dark, left, right),
                     ActiveOverlay::Spelling(found) => self.view_spelling(dark, found),
                     ActiveOverlay::SpellLanguages => self.view_spell_languages(dark),
-                    ActiveOverlay::Remote(view) => self.view_remote(dark, view),
                     ActiveOverlay::Diagram(view) => self.view_diagram(dark, view),
                     ActiveOverlay::Shortcuts => self.view_shortcuts_overlay(dark),
                     ActiveOverlay::Conflicts => self.git.conflicts_card(dark),
@@ -2914,10 +2899,9 @@ impl SimpleEditApp {
                         } else {
                             Task::none()
                         };
-                        let sent = self.remote_send(&path);
                         let told = Task::future(crate::lsp::did_save(path.clone(), saved.clone()))
                             .discard();
-                        return Task::batch([panel, self.refresh_diff_tabs(), sent, told]);
+                        return Task::batch([panel, self.refresh_diff_tabs(), told]);
                     }
                     Err(e) if e == CANCELLED => self.autosaving = self.autosaving.saturating_sub(1),
                     Err(e) => {
@@ -3743,24 +3727,12 @@ impl SimpleEditApp {
                 self.load_scope_files()
             }
             Message::FindDirText(text) => self.finder_dir_typed(text),
-            Message::OpenRemote => self.open_remote(),
-            Message::RemoteHost(host) => {
-                if let ActiveOverlay::Remote(view) = &mut self.overlay {
-                    view.host = host;
-                }
-                Task::none()
-            }
-            Message::RemoteDir(dir) => {
-                if let ActiveOverlay::Remote(view) = &mut self.overlay {
-                    view.dir = dir;
-                }
-                Task::none()
-            }
-            Message::RemoteConnect => self.remote_connect(),
-            Message::RemoteListed(host, result) => self.remote_listed(host, result),
-            Message::RemotePick(name) => self.remote_pick(name),
-            Message::RemoteDownloaded(file, result) => self.remote_downloaded(file, result),
-            Message::RemoteSent(path, result) => self.remote_sent(path, result),
+            // Files over SSH are the Remote Files plugin's.
+            Message::OpenRemote => self.run_official_command(
+                crate::plugins::migrate::REMOTE,
+                "remote.open",
+                t!("remote.plugin_missing").to_string(),
+            ),
             Message::SpellFix => self.open_spell_fix(),
             Message::SpellSuggested(found) => {
                 self.spell_suggested(found);
@@ -9212,12 +9184,6 @@ impl SimpleEditApp {
             .and_then(Path::parent)
             .map(short_dir)
             .unwrap_or_default();
-        // A copy of a remote file says where it comes from.
-        let dir = self
-            .current_file
-            .as_deref()
-            .and_then(|p| self.remote_label(p))
-            .unwrap_or(dir);
 
         let on_diff = self.current_file.as_deref().is_some_and(is_virtual);
         let large_bar = |view: LargeView| -> Element<'_, Message> {
@@ -9610,7 +9576,6 @@ mod lint;
 mod plugins;
 #[path = "app/project_ops.rs"]
 mod project_ops;
-mod remote_files;
 #[path = "app/results.rs"]
 mod results;
 mod spelling;
