@@ -127,6 +127,8 @@ pub enum Row {
     Dir(PathBuf, String),
     Symbol(SymbolHit),
     Action(Entry),
+    /// A command of a plugin: the plugin, the command, its label.
+    PluginCommand(String, String, String),
     Setting(usize),
     Page(PrefsPage),
     Text(TextHit),
@@ -868,6 +870,14 @@ impl SimpleEditApp {
                     .map(|s| (s, Row::Action(e)))
             })
             .collect();
+        scored.extend(
+            self.plugin_commands()
+                .into_iter()
+                .filter_map(|(plugin, command, label)| {
+                    ew::action_score(q, &label, &[], &[])
+                        .map(|s| (s, Row::PluginCommand(plugin, command, label)))
+                }),
+        );
         if !q.is_empty() {
             scored.extend(SETTINGS.iter().enumerate().filter_map(|(i, s)| {
                 ew::action_score(q, &(s.label)(), &[], &[])
@@ -1135,6 +1145,12 @@ impl SimpleEditApp {
                 }
                 self.overlay = ActiveOverlay::None;
                 self.handle(entry.command.message())
+            }
+            Row::PluginCommand(plugin, command, _) => {
+                self.overlay = ActiveOverlay::None;
+                self.handle(Message::Plugin(crate::plugins::PluginMsg::Run(
+                    plugin, command,
+                )))
             }
             // A setting is turned on or off where it is: the list stays.
             Row::Setting(i) => {
@@ -1513,6 +1529,13 @@ impl SimpleEditApp {
                 }
                 r.into()
             }
+            Row::PluginCommand(_, _, label) => row![
+                glyph('\u{eb2c}', (0x9a, 0xa0, 0xad)),
+                text(label.clone()).size(13).color(p.text)
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into(),
             Row::Setting(i) => {
                 let setting = &SETTINGS[*i];
                 let on = (setting.get)(&self.config);

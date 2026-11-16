@@ -201,6 +201,7 @@ impl SimpleEditApp {
             | ActiveOverlay::BranchSwitch(_)
             | ActiveOverlay::GitFile(_)
             | ActiveOverlay::GitPick(_)
+            | ActiveOverlay::PluginConfirm(_)
             | ActiveOverlay::ConfirmOverwrite(_) => Space::new().height(0).into(),
         };
 
@@ -1418,6 +1419,24 @@ impl SimpleEditApp {
             .into()
         };
         let shown = |on: bool| if on { p.accent } else { p.text };
+        // The panels of the plugins: their glyph (or letter) as the icon.
+        let plugin_tools = |location| {
+            self.plugin_tools(location)
+                .into_iter()
+                .map(|(icon, open, tip, msg)| {
+                    tool(
+                        text(icon)
+                            .font(iced_fonts::NERD_FONT)
+                            .size(15)
+                            .color(shown(open))
+                            .into(),
+                        open,
+                        tip,
+                        msg,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
         // The panels of the sidebar at the top, the tools that open under the
         // editor at the bottom.
         container(
@@ -1446,7 +1465,11 @@ impl SimpleEditApp {
                     t!("sidebar.api").to_string(),
                     Message::TogglePanel(crate::sidebar::Panel::Api),
                 ),
-                Space::new().height(Length::Fill),
+            ]
+            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Sidebar))
+            .push(Space::new().height(Length::Fill))
+            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Bottom))
+            .extend([
                 tool(
                     text(">_")
                         .size(13)
@@ -1475,7 +1498,7 @@ impl SimpleEditApp {
                     t!("git.title").to_string(),
                     Message::ToggleGit,
                 ),
-            ]
+            ])
             .extend((!self.results.tabs.is_empty()).then(|| {
                 let open = self.results.open;
                 tool(

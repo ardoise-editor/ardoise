@@ -42,6 +42,7 @@ mod menu_bar;
 #[cfg(all(target_os = "macos", not(test)))]
 mod native_menu;
 mod palette;
+mod plugins;
 mod pointer_area;
 mod preferences;
 mod preview;

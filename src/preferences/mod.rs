@@ -8,6 +8,8 @@ use iced::{
     Alignment, Element, Length, Padding,
 };
 
+mod plugins;
+
 use crate::{
     app::Message,
     config::{Config, ShortcutTarget},
@@ -64,12 +66,13 @@ pub enum PrefsPage {
     Git,
     Lint,
     Servers,
+    Plugins,
     Network,
     Updates,
 }
 
 impl PrefsPage {
-    pub(crate) const ALL: [PrefsPage; 9] = [
+    pub(crate) const ALL: [PrefsPage; 10] = [
         PrefsPage::Editor,
         PrefsPage::Appearance,
         PrefsPage::Shortcuts,
@@ -77,6 +80,7 @@ impl PrefsPage {
         PrefsPage::Git,
         PrefsPage::Lint,
         PrefsPage::Servers,
+        PrefsPage::Plugins,
         PrefsPage::Network,
         PrefsPage::Updates,
     ];
@@ -90,6 +94,7 @@ impl PrefsPage {
             PrefsPage::Git => t!("prefs.nav_git"),
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
+            PrefsPage::Plugins => t!("prefs.nav_plugins"),
             PrefsPage::Network => t!("prefs.nav_network"),
             PrefsPage::Updates => t!("prefs.nav_updates"),
         }
@@ -316,13 +321,14 @@ impl PreferencesState {
     }
 
     /// The whole window: title row, navigation column, page.
-    pub fn view(
-        &self,
+    pub fn view<'a>(
+        &'a self,
         config: &Config,
         capturing: Option<ShortcutTarget>,
         servers: &ServerStatus,
         near: Option<&std::path::Path>,
-    ) -> Element<'_, Message> {
+        plugin_state: &'a crate::plugins::Plugins,
+    ) -> Element<'a, Message> {
         let dark = config.dark_mode;
         let p = theme::palette(dark);
 
@@ -403,6 +409,7 @@ impl PreferencesState {
             PrefsPage::Git => self.git_card(config, dark),
             PrefsPage::Lint => lint_page(config, dark, near),
             PrefsPage::Servers => self.servers_page(dark, servers),
+            PrefsPage::Plugins => plugins::page(plugin_state, dark),
             PrefsPage::Network => self.network_card(config, dark),
             PrefsPage::Updates => self.updates_card(dark),
         };

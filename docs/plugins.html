@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Write a plugin — SimpleEdit</title>
+  <meta name="description" content="How to write, try and publish a plugin for the SimpleEdit text editor." />
+  <meta name="color-scheme" content="dark light" />
+  <style>
+    /* Fonts are served from this site (no request to Google's servers). */
+    @font-face { font-family: 'Instrument Sans'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-Regular.ttf') format('truetype'); }
+    @font-face { font-family: 'Instrument Sans'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-Medium.ttf') format('truetype'); }
+    @font-face { font-family: 'Instrument Sans'; font-weight: 600; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-SemiBold.ttf') format('truetype'); }
+    @font-face { font-family: 'Instrument Sans'; font-weight: 700; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-Bold.ttf') format('truetype'); }
+    @font-face { font-family: 'JetBrains Mono'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Regular.ttf') format('truetype'); }
+    @font-face { font-family: 'JetBrains Mono'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Medium.ttf') format('truetype'); }
+
+    /* SimpleEdit — "Nocturne" design tokens (see design/tokens/tokens.css) */
+    :root {
+      --font-ui: 'Instrument Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+      --r-panel: 14px;  /* feature cards, code boxes */
+      --r-big: 18px;    /* editor mock-up */
+      --r-row: 10px;    /* buttons, inputs */
+      --r-sm: 8px;      /* logo, chips */
+      --r-pill: 99px;
+    }
+
+    /* Dark (default) */
+    :root, [data-theme='dark'] {
+      --bg: #07090E;
+      --side: #0F121B;
+      --panel: #121622;
+      --elev: #1A1F2E;
+      --line: #222839;
+      --line-2: #2D3550;
+      --text: #E9ECF4;
+      --mute: #8089A0;
+      --gutter: #444C64;
+      --acc: #FF9B6B;
+      --acc-ink: #1A0C05;
+      --acc-soft: rgba(255,155,107,.14);
+      --shadow-float: 0 18px 50px rgba(0,0,0,.5);
+
+      --syn-keyword: #FF9B6B;
+      --syn-string: #9BE3A4;
+      --syn-function: #7CB6FF;
+      --syn-number: #F5D07A;
+      --syn-comment: #566079;
+      --syn-type: #C4A6FF;
+    }
+
+    /* Light: follows the system unless forced with data-theme */
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme]) {
+        --bg: #E9ECF3;
+        --side: #F7F8FB;
+        --panel: #FFFFFF;
+        --elev: #FFFFFF;
+        --line: #DDE1EA;
+        --line-2: #C9CFDC;
+        --text: #131724;
+        --mute: #6B7388;
+        --gutter: #B3B9C8;
+        --acc: #D2561F;
+        --acc-ink: #FFFFFF;
+        --acc-soft: rgba(210,86,31,.10);
+        --shadow-float: 0 14px 40px rgba(30,30,50,.14);
+
+        --syn-keyword: #D2561F;
+        --syn-string: #1E8A4A;
+        --syn-function: #2563C9;
+        --syn-number: #A5780B;
+        --syn-comment: #9AA2B5;
+        --syn-type: #7A4FD0;
+      }
+    }
+    [data-theme='light'] {
+      --bg: #E9ECF3;
+      --side: #F7F8FB;
+      --panel: #FFFFFF;
+      --elev: #FFFFFF;
+      --line: #DDE1EA;
+      --line-2: #C9CFDC;
+      --text: #131724;
+      --mute: #6B7388;
+      --gutter: #B3B9C8;
+      --acc: #D2561F;
+      --acc-ink: #FFFFFF;
+      --acc-soft: rgba(210,86,31,.10);
+      --shadow-float: 0 14px 40px rgba(30,30,50,.14);
+
+      --syn-keyword: #D2561F;
+      --syn-string: #1E8A4A;
+      --syn-function: #2563C9;
+      --syn-number: #A5780B;
+      --syn-comment: #9AA2B5;
+      --syn-type: #7A4FD0;
+    }
+
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.6;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--acc); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { font-family: var(--font-mono); font-size: .92em; }
+    html[lang='fr'] [data-lang='en'],
+    html[lang='en'] [data-lang='fr'] { display: none !important; }
+
+    .nav { display: flex; align-items: center; gap: 28px; padding: 22px 56px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; color: var(--text); }
+    .brand:hover { text-decoration: none; }
+    .brand-mark { width: 26px; height: 26px; border-radius: var(--r-sm); background: var(--acc); color: var(--acc-ink); display: grid; place-items: center; font-size: 14px; }
+    .nav-spacer { flex: 1; }
+    .nav a.link { color: var(--mute); font-size: 13px; }
+    .nav a.link:hover { color: var(--text); text-decoration: none; }
+    .lang-switch { display: flex; padding: 2px; gap: 2px; background: var(--elev); border: 1px solid var(--line); border-radius: var(--r-pill); font-size: 12px; }
+    .lang-btn { font: inherit; color: var(--mute); background: none; border: none; padding: 3px 10px; border-radius: var(--r-pill); cursor: pointer; }
+    .lang-btn:hover { color: var(--text); }
+    .lang-btn.active { background: var(--acc-soft); color: var(--acc); }
+
+    .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; padding: 24px 56px 64px; max-width: 1180px; margin: 0 auto; }
+    .toc { position: sticky; top: 24px; align-self: start; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+    .toc a { color: var(--mute); padding: 3px 0; }
+    .toc a:hover { color: var(--text); text-decoration: none; }
+    article { min-width: 0; }
+    h1 { font-size: 40px; line-height: 1.1; letter-spacing: -.03em; margin-bottom: 14px; }
+    .lead { color: var(--mute); font-size: 16px; max-width: 680px; margin-bottom: 30px; }
+    h2 { font-size: 22px; letter-spacing: -.01em; margin: 44px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+    h3 { font-size: 15px; margin: 26px 0 8px; }
+    p, ul, ol { margin: 10px 0; max-width: 760px; }
+    ul, ol { padding-left: 22px; }
+    li { margin: 4px 0; }
+    pre {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-panel);
+      padding: 14px 16px; overflow-x: auto; margin: 12px 0; font-size: 12.5px; line-height: 1.55;
+    }
+    pre code { font-size: inherit; }
+    p code, li code, td code { background: var(--elev); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+    th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+    th { color: var(--mute); font-weight: 600; }
+    .table-wrap { overflow-x: auto; }
+    .note { background: var(--acc-soft); border: 1px solid var(--line); border-radius: var(--r-panel); padding: 12px 16px; margin: 14px 0; max-width: 760px; }
+    footer { padding: 22px 56px; display: flex; gap: 16px; flex-wrap: wrap; color: var(--mute); font-size: 12px; border-top: 1px solid var(--line); }
+    footer .grow { flex: 1; }
+    footer a { color: inherit; }
+
+    @media (max-width: 900px) {
+      .nav { padding: 18px 16px; gap: 16px; flex-wrap: wrap; }
+      .nav a.link { display: none; }
+      .layout { grid-template-columns: 1fr; padding: 16px 16px 48px; gap: 16px; }
+      .toc { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px 14px; }
+      h1 { font-size: 30px; }
+      footer { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="index.html"><span class="brand-mark">S</span>SimpleEdit</a>
+  <div class="nav-spacer"></div>
+  <a class="link" href="index.html"><span data-lang="en">Home</span><span data-lang="fr">Accueil</span></a>
+  <a class="link" href="https://github.com/simple-edit-app/plugin-template">Template</a>
+  <a class="link" href="https://github.com/simple-edit-app/plugin-sdk">SDK</a>
+  <div class="lang-switch" role="group" aria-label="Language">
+    <button class="lang-btn" data-set-lang="en" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" data-set-lang="fr" onclick="setLang('fr')">FR</button>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="Contents">
+  <a href="#what"><span data-lang="en">What a plugin is</span><span data-lang="fr">Ce qu'est un plugin</span></a>
+  <a href="#start"><span data-lang="en">Start from the template</span><span data-lang="fr">Partir du modèle</span></a>
+  <a href="#manifest">plugin.json</a>
+  <a href="#protocol"><span data-lang="en">The protocol</span><span data-lang="fr">Le protocole</span></a>
+  <a href="#ui"><span data-lang="en">Panels</span><span data-lang="fr">Les panneaux</span></a>
+  <a href="#other"><span data-lang="en">Other languages</span><span data-lang="fr">Autres langages</span></a>
+  <a href="#try"><span data-lang="en">Try it</span><span data-lang="fr">L'essayer</span></a>
+  <a href="#publish"><span data-lang="en">Publish it</span><span data-lang="fr">Le publier</span></a>
+  <a href="#official"><span data-lang="en">Official plugins</span><span data-lang="fr">Plugins officiels</span></a>
+</nav>
+
+<article>
+<h1><span data-lang="en">Write a plugin</span><span data-lang="fr">Créer un plugin</span></h1>
+<p class="lead">
+  <span data-lang="en">SimpleEdit is a plain editor; plugins add the rest. Anyone can write one, in any language, and anyone can install it from <b>Preferences › Plugins</b>.</span>
+  <span data-lang="fr">SimpleEdit est un éditeur simple ; les plugins ajoutent le reste. Tout le monde peut en écrire un, dans n'importe quel langage, et tout le monde peut l'installer depuis <b>Préférences › Plugins</b>.</span>
+</p>
+
+<h2 id="what"><span data-lang="en">What a plugin is</span><span data-lang="fr">Ce qu'est un plugin</span></h2>
+<p data-lang="en">A plugin is a folder with a <code>plugin.json</code> and a program. The editor starts the program and talks to it over its standard input and output with <a href="https://www.jsonrpc.org/specification">JSON-RPC 2.0</a>, as language servers do. A plugin can add:</p>
+<p data-lang="fr">Un plugin est un dossier avec un <code>plugin.json</code> et un programme. L'éditeur lance le programme et lui parle par son entrée et sa sortie standard en <a href="https://www.jsonrpc.org/specification">JSON-RPC 2.0</a>, comme le font les serveurs de langage. Un plugin peut ajouter :</p>
+<ul data-lang="en">
+  <li><b>commands</b>, found in the search for actions (<code>Ctrl/Cmd+Shift+A</code>);</li>
+  <li><b>panels</b>, in the sidebar or under the editor, with a button in the activity bar;</li>
+  <li><b>items of the status bar</b>, which run a command when clicked;</li>
+  <li>and follow the <b>files</b> opened, saved and closed.</li>
+</ul>
+<ul data-lang="fr">
+  <li>des <b>commandes</b>, trouvées dans la recherche d'actions (<code>Ctrl/Cmd+Maj+A</code>) ;</li>
+  <li>des <b>panneaux</b>, dans la barre latérale ou sous l'éditeur, avec un bouton dans la barre d'activité ;</li>
+  <li>des <b>éléments de la barre d'état</b>, qui lancent une commande au clic ;</li>
+  <li>et suivre les <b>fichiers</b> ouverts, enregistrés et fermés.</li>
+</ul>
+<p data-lang="en">A panel is described, not drawn: the plugin sends a tree of nodes (columns, texts, buttons, fields, lists, trees…) and the editor draws it with its own widgets, in its theme. What the user does there comes back to the plugin as events.</p>
+<p data-lang="fr">Un panneau est décrit, pas dessiné : le plugin envoie un arbre de nœuds (colonnes, textes, boutons, champs, listes, arbres…) et l'éditeur le dessine avec ses propres widgets, dans son thème. Ce que l'utilisateur y fait revient au plugin sous forme d'événements.</p>
+
+<h2 id="start"><span data-lang="en">Start from the template</span><span data-lang="fr">Partir du modèle</span></h2>
+<p data-lang="en"><a href="https://github.com/simple-edit-app/plugin-template">plugin-template</a> is a plugin written in Rust with the <a href="https://github.com/simple-edit-app/plugin-sdk">SDK</a>: a command and a panel, its tests, and the workflow that publishes its releases. Click <b>Use this template</b> on GitHub, then set <code>id</code>, <code>name</code> and <code>repository</code> in <code>plugin.json</code>.</p>
+<p data-lang="fr"><a href="https://github.com/simple-edit-app/plugin-template">plugin-template</a> est un plugin écrit en Rust avec le <a href="https://github.com/simple-edit-app/plugin-sdk">SDK</a> : une commande et un panneau, ses tests, et le workflow qui publie ses releases. Cliquez sur <b>Use this template</b> sur GitHub, puis renseignez <code>id</code>, <code>name</code> et <code>repository</code> dans <code>plugin.json</code>.</p>
+<pre><code>use simpleedit_plugin::protocol::{Context, UiEvent};
+use simpleedit_plugin::ui::*;
+use simpleedit_plugin::{run, Host, Plugin};
+
+#[derive(Default)]
+struct Hello { name: String }
+
+impl Plugin for Hello {
+    fn command(&amp;mut self, host: &amp;Host, command: &amp;str, _: &amp;Context) {
+        if command == "hello.greet" {
+            host.notify("Hello from a plugin!");
+        }
+    }
+    fn panel_opened(&amp;mut self, host: &amp;Host, panel: &amp;str) {
+        host.render(panel, column([
+            text("Hello").style(TextStyle::Heading),
+            input("name", &amp;self.name, "Your name").on_submit("greet"),
+            button("Say hello", "greet").button_style(ButtonStyle::Primary),
+        ]));
+    }
+    fn ui_event(&amp;mut self, host: &amp;Host, event: &amp;UiEvent) {
+        match event.action.as_str() {
+            "name" =&gt; self.name = event.text().unwrap_or_default().to_string(),
+            "greet" =&gt; host.notify(format!("Hello, {}!", self.name)),
+            _ =&gt; {}
+        }
+    }
+}
+
+fn main() -&gt; std::io::Result&lt;()&gt; {
+    run(Hello::default())
+}</code></pre>
+<div class="note">
+  <span data-lang="en">The standard output belongs to the protocol: print with <code>eprintln!</code> (it goes to the plugin's log), never <code>println!</code>.</span>
+  <span data-lang="fr">La sortie standard appartient au protocole : affichez avec <code>eprintln!</code> (cela va dans le journal du plugin), jamais <code>println!</code>.</span>
+</div>
+
+<h2 id="manifest">plugin.json</h2>
+<pre><code>{
+  "id": "acme.hello",
+  "name": { "en": "Hello", "fr": "Bonjour" },
+  "version": "0.1.0",
+  "api": 1,
+  "description": { "en": "Says hello", "fr": "Dit bonjour" },
+  "author": "Acme",
+  "repository": "acme/hello",
+  "license": "MIT",
+  "command": ["bin/hello"],
+  "events": ["file_saved"],
+  "contributes": {
+    "commands": [{ "id": "hello.greet", "title": "Say hello" }],
+    "panels": [{ "id": "hello", "title": "Hello", "icon": "H", "location": "sidebar" }]
+  }
+}</code></pre>
+<div class="table-wrap"><table>
+  <tr><th><span data-lang="en">Field</span><span data-lang="fr">Champ</span></th><th><span data-lang="en">What it is</span><span data-lang="fr">Ce que c'est</span></th></tr>
+  <tr><td><code>id</code></td><td><span data-lang="en">Unique: lowercase words, dot-separated, the first being the author (<code>acme.hello</code>). <code>simpleedit.*</code> is kept for the official plugins.</span><span data-lang="fr">Unique : des mots en minuscules séparés par des points, le premier étant l'auteur (<code>acme.hello</code>). <code>simpleedit.*</code> est réservé aux plugins officiels.</span></td></tr>
+  <tr><td><code>name</code>, <code>description</code></td><td><span data-lang="en">A text, or a text per language: <code>{"en": "…", "fr": "…"}</code>. The editor shows the one of its language, else English.</span><span data-lang="fr">Un texte, ou un texte par langue : <code>{"en": "…", "fr": "…"}</code>. L'éditeur montre celui de sa langue, sinon l'anglais.</span></td></tr>
+  <tr><td><code>version</code></td><td><code>MAJOR.MINOR.PATCH</code>; <span data-lang="en">the tag of its release is <code>vMAJOR.MINOR.PATCH</code>.</span><span data-lang="fr">le tag de sa release est <code>vMAJEUR.MINEUR.CORRECTIF</code>.</span></td></tr>
+  <tr><td><code>api</code></td><td><span data-lang="en">The version of the protocol: <code>1</code>.</span><span data-lang="fr">La version du protocole : <code>1</code>.</span></td></tr>
+  <tr><td><code>command</code></td><td><span data-lang="en">The program and its arguments. A first word with a <code>/</code> is a file of the plugin (<code>bin/hello</code>); otherwise it is looked for on the <code>PATH</code> (<code>["python3", "main.py"]</code>). It runs in the plugin's folder.</span><span data-lang="fr">Le programme et ses arguments. Un premier mot avec un <code>/</code> est un fichier du plugin (<code>bin/hello</code>) ; sinon il est cherché dans le <code>PATH</code> (<code>["python3", "main.py"]</code>). Il tourne dans le dossier du plugin.</span></td></tr>
+  <tr><td><code>events</code></td><td><span data-lang="en">What it follows: <code>startup</code>, <code>file_opened</code>, <code>file_saved</code>, <code>file_closed</code>. A plugin with events starts with the editor; the others when first needed (a command, a panel).</span><span data-lang="fr">Ce qu'il suit : <code>startup</code>, <code>file_opened</code>, <code>file_saved</code>, <code>file_closed</code>. Un plugin avec des événements démarre avec l'éditeur ; les autres au premier besoin (une commande, un panneau).</span></td></tr>
+  <tr><td><code>contributes.commands</code></td><td><code>id</code>, <code>title</code>.</td></tr>
+  <tr><td><code>contributes.panels</code></td><td><span data-lang="en"><code>id</code>, <code>title</code>, <code>icon</code> (one character: a <a href="https://www.nerdfonts.com/cheat-sheet">Nerd Fonts</a> glyph or a symbol), <code>location</code>: <code>sidebar</code> (default) or <code>bottom</code>.</span><span data-lang="fr"><code>id</code>, <code>title</code>, <code>icon</code> (un caractère : un glyphe <a href="https://www.nerdfonts.com/cheat-sheet">Nerd Fonts</a> ou un symbole), <code>location</code> : <code>sidebar</code> (par défaut) ou <code>bottom</code>.</span></td></tr>
+</table></div>
+
+<h2 id="protocol"><span data-lang="en">The protocol</span><span data-lang="fr">Le protocole</span></h2>
+<p data-lang="en">Each message is a JSON-RPC 2.0 object preceded by a header and an empty line, as in LSP:</p>
+<p data-lang="fr">Chaque message est un objet JSON-RPC 2.0 précédé d'un en-tête et d'une ligne vide, comme en LSP :</p>
+<pre><code>Content-Length: 52\r\n
+\r\n
+{"jsonrpc":"2.0","method":"ui/event","params":{...}}</code></pre>
+<p data-lang="en">The editor sends <code>initialize</code> first and waits for its answer; it sends <code>shutdown</code> last, then closes the input (and stops the program 2 seconds later if it is still there). A plugin that stops by itself is shown as stopped, with a button to start it again.</p>
+<p data-lang="fr">L'éditeur envoie d'abord <code>initialize</code> et attend sa réponse ; il envoie <code>shutdown</code> en dernier, puis ferme l'entrée (et arrête le programme 2 secondes plus tard s'il est toujours là). Un plugin qui s'arrête de lui-même est montré comme arrêté, avec un bouton pour le relancer.</p>
+
+<h3><span data-lang="en">From the editor</span><span data-lang="fr">De l'éditeur</span></h3>
+<div class="table-wrap"><table>
+  <tr><th><span data-lang="en">Method</span><span data-lang="fr">Méthode</span></th><th><span data-lang="en">Kind</span><span data-lang="fr">Type</span></th><th><span data-lang="en">Parameters</span><span data-lang="fr">Paramètres</span></th></tr>
+  <tr><td><code>initialize</code></td><td><span data-lang="en">request</span><span data-lang="fr">requête</span></td><td><code>{"api": 1, "app_version", "settings": {"locale", "dark"}, "workspace": [dirs], "plugin_dir", "data_dir"}</code></td></tr>
+  <tr><td><code>shutdown</code></td><td><span data-lang="en">request</span><span data-lang="fr">requête</span></td><td>—</td></tr>
+  <tr><td><code>command</code></td><td>notification</td><td><code>{"command", "context": {"file", "workspace"}}</code></td></tr>
+  <tr><td><code>panel/opened</code>, <code>panel/closed</code></td><td>notification</td><td><code>{"panel"}</code> — <span data-lang="en">answer an opening with <code>ui/render</code>.</span><span data-lang="fr">répondez à une ouverture par <code>ui/render</code>.</span></td></tr>
+  <tr><td><code>ui/event</code></td><td>notification</td><td><code>{"panel", "action", "value"}</code> — <span data-lang="en">see <a href="#ui">panels</a>.</span><span data-lang="fr">voir <a href="#ui">les panneaux</a>.</span></td></tr>
+  <tr><td><code>event/fileOpened</code>, <code>event/fileSaved</code>, <code>event/fileClosed</code></td><td>notification</td><td><code>{"path"}</code> — <span data-lang="en">only for the events of the manifest.</span><span data-lang="fr">seulement pour les événements du manifeste.</span></td></tr>
+  <tr><td><code>event/settingsChanged</code></td><td>notification</td><td><code>{"locale", "dark"}</code></td></tr>
+</table></div>
+
+<h3><span data-lang="en">From the plugin</span><span data-lang="fr">Du plugin</span></h3>
+<div class="table-wrap"><table>
+  <tr><th><span data-lang="en">Method</span><span data-lang="fr">Méthode</span></th><th><span data-lang="en">Kind</span><span data-lang="fr">Type</span></th><th><span data-lang="en">Parameters → answer</span><span data-lang="fr">Paramètres → réponse</span></th></tr>
+  <tr><td><code>ui/render</code></td><td>notification</td><td><code>{"panel", "root": node}</code> — <span data-lang="en">what the panel shows, whole.</span><span data-lang="fr">ce que montre le panneau, en entier.</span></td></tr>
+  <tr><td><code>window/notify</code></td><td>notification</td><td><code>{"message", "level": "info" | "error"}</code> — <span data-lang="en">a message in the status bar.</span><span data-lang="fr">un message dans la barre d'état.</span></td></tr>
+  <tr><td><code>statusBar/set</code></td><td>notification</td><td><code>{"id", "text", "tooltip", "command"}</code> — <span data-lang="en">without <code>text</code>, the item is removed.</span><span data-lang="fr">sans <code>text</code>, l'élément est retiré.</span></td></tr>
+  <tr><td><code>window/confirm</code></td><td><span data-lang="en">request</span><span data-lang="fr">requête</span></td><td><code>{"message", "confirm"}</code> → <code>true</code> | <code>false</code></td></tr>
+  <tr><td><code>editor/openFile</code></td><td><span data-lang="en">request</span><span data-lang="fr">requête</span></td><td><code>{"path", "line"}</code> → <code>null</code> (<span data-lang="en">lines from 1</span><span data-lang="fr">lignes à partir de 1</span>)</td></tr>
+  <tr><td><code>editor/activeFile</code></td><td><span data-lang="en">request</span><span data-lang="fr">requête</span></td><td>→ <code>{"path", "text", "selection", "language"}</code></td></tr>
+</table></div>
+<p data-lang="en">Unknown methods are answered with the error <code>-32601</code>; a question the user closes is answered <code>false</code>.</p>
+<p data-lang="fr">Les méthodes inconnues reçoivent l'erreur <code>-32601</code> ; une question que l'utilisateur ferme reçoit <code>false</code>.</p>
+
+<h2 id="ui"><span data-lang="en">Panels</span><span data-lang="fr">Les panneaux</span></h2>
+<p data-lang="en">A node is an object with a <code>type</code>. Controls send <code>ui/event</code>: a button its <code>action</code>, the others their <code>id</code> with what they hold in <code>value</code>.</p>
+<p data-lang="fr">Un nœud est un objet avec un <code>type</code>. Les contrôles envoient <code>ui/event</code> : un bouton son <code>action</code>, les autres leur <code>id</code> avec ce qu'ils contiennent dans <code>value</code>.</p>
+<div class="table-wrap"><table>
+  <tr><th><code>type</code></th><th><span data-lang="en">Fields</span><span data-lang="fr">Champs</span></th><th><code>value</code></th></tr>
+  <tr><td><code>column</code>, <code>row</code></td><td><code>children</code>, <code>spacing</code>, <code>padding</code> (column)</td><td>—</td></tr>
+  <tr><td><code>text</code></td><td><code>text</code>, <code>style</code>: <code>normal</code> | <code>muted</code> | <code>error</code> | <code>bold</code> | <code>heading</code> | <code>mono</code></td><td>—</td></tr>
+  <tr><td><code>button</code></td><td><code>label</code>, <code>action</code>, <code>style</code>: <code>primary</code> | <code>outline</code> | <code>ghost</code> | <code>danger</code>, <code>enabled</code></td><td>—</td></tr>
+  <tr><td><code>input</code></td><td><code>id</code>, <code>value</code>, <code>placeholder</code>, <code>submit</code> (<span data-lang="en">action sent on Enter</span><span data-lang="fr">action envoyée sur Entrée</span>), <code>secret</code></td><td><span data-lang="en">the text, at each change and on Enter</span><span data-lang="fr">le texte, à chaque changement et sur Entrée</span></td></tr>
+  <tr><td><code>checkbox</code></td><td><code>id</code>, <code>label</code>, <code>checked</code></td><td><code>true</code> | <code>false</code></td></tr>
+  <tr><td><code>select</code></td><td><code>id</code>, <code>options</code>, <code>selected</code>, <code>placeholder</code></td><td><span data-lang="en">the option</span><span data-lang="fr">l'option</span></td></tr>
+  <tr><td><code>list</code></td><td><code>id</code>, <code>items</code>: <code>[{"id", "label", "detail", "icon"}]</code>, <code>selected</code></td><td><span data-lang="en">the id of the row</span><span data-lang="fr">l'id de la ligne</span></td></tr>
+  <tr><td><code>tree</code></td><td><code>id</code>, <code>items</code>: <code>[{"id", "label", "detail", "icon", "children", "expandable", "expanded"}]</code></td><td><code>{"item", "kind": "click" | "toggle"}</code></td></tr>
+  <tr><td><code>separator</code>, <code>space</code></td><td><code>height</code> (space)</td><td>—</td></tr>
+  <tr><td><code>scroll</code></td><td><code>child</code></td><td>—</td></tr>
+</table></div>
+<p data-lang="en">A tree opens nothing by itself: on <code>toggle</code>, the plugin sends the tree again with the row <code>expanded</code> (it may load its children then). What is typed in a field stays as typed until the plugin sends a different <code>value</code> for it.</p>
+<p data-lang="fr">Un arbre n'ouvre rien tout seul : sur <code>toggle</code>, le plugin renvoie l'arbre avec la ligne <code>expanded</code> (il peut charger ses enfants à ce moment-là). Ce qui est saisi dans un champ reste tel quel jusqu'à ce que le plugin envoie une autre <code>value</code> pour lui.</p>
+
+<h2 id="other"><span data-lang="en">Other languages</span><span data-lang="fr">Autres langages</span></h2>
+<p data-lang="en">Anything that reads its input and writes its output will do. In Python, with <code>"command": ["python3", "main.py"]</code>:</p>
+<p data-lang="fr">Tout ce qui lit son entrée et écrit sa sortie convient. En Python, avec <code>"command": ["python3", "main.py"]</code> :</p>
+<pre><code>import json, sys
+
+def read():
+    length = None
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        line = line.strip()
+        if not line and length is not None:
+            break
+        if line.lower().startswith(b"content-length:"):
+            length = int(line.split(b":")[1])
+    return json.loads(sys.stdin.buffer.read(length))
+
+def send(message):
+    body = json.dumps({"jsonrpc": "2.0", **message}).encode()
+    sys.stdout.buffer.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+    sys.stdout.buffer.flush()
+
+while (message := read()) is not None:
+    method = message.get("method")
+    if method in ("initialize", "shutdown"):
+        send({"id": message["id"], "result": None})
+        if method == "shutdown":
+            break
+    elif method == "command" and message["params"]["command"] == "hello.greet":
+        send({"method": "window/notify", "params": {"message": "Hello from Python!"}})
+    elif method == "panel/opened":
+        send({"method": "ui/render", "params": {
+            "panel": message["params"]["panel"],
+            "root": {"type": "text", "text": "Hello from Python"},
+        }})</code></pre>
+<p data-lang="en">A plugin that needs no build is published as one archive for every system, <code>&lt;name&gt;-&lt;tag&gt;-any.tar.gz</code>.</p>
+<p data-lang="fr">Un plugin qui n'a pas besoin d'être compilé est publié en une seule archive pour tous les systèmes, <code>&lt;nom&gt;-&lt;tag&gt;-any.tar.gz</code>.</p>
+
+<h2 id="try"><span data-lang="en">Try it</span><span data-lang="fr">L'essayer</span></h2>
+<ol data-lang="en">
+  <li>Build it, with the program where <code>command</code> says (<code>bin/hello</code>).</li>
+  <li>In SimpleEdit, <b>Preferences › Plugins › Link a folder…</b>, and pick the folder of <code>plugin.json</code>. The plugin runs from there.</li>
+  <li>After a new build: <b>Uninstall</b> and link it again, or restart the editor.</li>
+</ol>
+<ol data-lang="fr">
+  <li>Compilez-le, avec le programme là où <code>command</code> l'indique (<code>bin/hello</code>).</li>
+  <li>Dans SimpleEdit, <b>Préférences › Plugins › Lier un dossier…</b>, puis choisissez le dossier de <code>plugin.json</code>. Le plugin tourne depuis cet endroit.</li>
+  <li>Après une nouvelle compilation : <b>Désinstaller</b> puis le lier à nouveau, ou redémarrer l'éditeur.</li>
+</ol>
+<p data-lang="en">What the plugin writes to its standard error is in <code>plugin.log</code>, in its data folder (also given as <code>data_dir</code> and in <code>SIMPLEEDIT_PLUGIN_DATA</code>): <code>~/.local/share/simpleedit/plugin-data/&lt;id&gt;/</code> on Linux, <code>~/Library/Application Support/simpleedit/plugin-data/&lt;id&gt;/</code> on macOS. That folder stays when the plugin is uninstalled.</p>
+<p data-lang="fr">Ce que le plugin écrit sur sa sortie d'erreur est dans <code>plugin.log</code>, dans son dossier de données (aussi donné par <code>data_dir</code> et <code>SIMPLEEDIT_PLUGIN_DATA</code>) : <code>~/.local/share/simpleedit/plugin-data/&lt;id&gt;/</code> sous Linux, <code>~/Library/Application Support/simpleedit/plugin-data/&lt;id&gt;/</code> sous macOS. Ce dossier reste quand le plugin est désinstallé.</p>
+
+<h2 id="publish"><span data-lang="en">Publish it</span><span data-lang="fr">Le publier</span></h2>
+<p data-lang="en">The editor installs the latest release of a GitHub repository. It must hold:</p>
+<p data-lang="fr">L'éditeur installe la dernière release d'un dépôt GitHub. Elle doit contenir :</p>
+<ul data-lang="en">
+  <li>an archive per system, <code>&lt;name&gt;-&lt;tag&gt;-x86_64-linux.tar.gz</code> and <code>&lt;name&gt;-&lt;tag&gt;-aarch64-apple-darwin.tar.gz</code>, or one for all, <code>&lt;name&gt;-&lt;tag&gt;-any.tar.gz</code>, with <code>plugin.json</code> at its top (or in its one folder);</li>
+  <li><code>SHA256SUMS</code>, as <code>sha256sum</code> writes it: the editor checks the archive against it.</li>
+</ul>
+<ul data-lang="fr">
+  <li>une archive par système, <code>&lt;nom&gt;-&lt;tag&gt;-x86_64-linux.tar.gz</code> et <code>&lt;nom&gt;-&lt;tag&gt;-aarch64-apple-darwin.tar.gz</code>, ou une pour tous, <code>&lt;nom&gt;-&lt;tag&gt;-any.tar.gz</code>, avec <code>plugin.json</code> à sa racine (ou dans son unique dossier) ;</li>
+  <li><code>SHA256SUMS</code>, tel que <code>sha256sum</code> l'écrit : l'éditeur vérifie l'archive avec.</li>
+</ul>
+<p data-lang="en">The template's <b>Release</b> workflow does all this when a tag <code>vX.Y.Z</code> is pushed. People then install the plugin from <b>Preferences › Plugins</b> by typing <code>owner/name</code>: the editor shows its name, author, what it adds, and warns that it runs with their rights before installing it. <b>Check for updates</b> finds newer releases.</p>
+<p data-lang="fr">Le workflow <b>Release</b> du modèle fait tout cela quand un tag <code>vX.Y.Z</code> est poussé. On installe ensuite le plugin depuis <b>Préférences › Plugins</b> en saisissant <code>propriétaire/nom</code> : l'éditeur montre son nom, son auteur, ce qu'il ajoute, et avertit qu'il tourne avec les droits de l'utilisateur avant de l'installer. <b>Rechercher des mises à jour</b> trouve les releases plus récentes.</p>
+<div class="note">
+  <span data-lang="en">An archive may hold only files and folders: a link, or a path that leaves the plugin's folder, is refused.</span>
+  <span data-lang="fr">Une archive ne peut contenir que des fichiers et des dossiers : un lien, ou un chemin qui sort du dossier du plugin, est refusé.</span>
+</div>
+
+<h2 id="official"><span data-lang="en">Official plugins</span><span data-lang="fr">Plugins officiels</span></h2>
+<p data-lang="en">The official plugins are listed in <a href="https://github.com/simple-edit-app/plugins">simple-edit-app/plugins</a>. Their ids start with <code>simpleedit.</code>, their repositories are in the <code>simple-edit-app</code> organization, and their <code>SHA256SUMS</code> is signed (<code>SHA256SUMS.sig</code>) with the key of SimpleEdit's own releases: the editor refuses an official plugin whose signature is wrong.</p>
+<p data-lang="fr">Les plugins officiels sont listés dans <a href="https://github.com/simple-edit-app/plugins">simple-edit-app/plugins</a>. Leurs identifiants commencent par <code>simpleedit.</code>, leurs dépôts sont dans l'organisation <code>simple-edit-app</code>, et leur <code>SHA256SUMS</code> est signé (<code>SHA256SUMS.sig</code>) avec la clé des releases de SimpleEdit : l'éditeur refuse un plugin officiel dont la signature est fausse.</p>
+</article>
+</div>
+
+<footer>
+  <span class="grow">© SimpleEdit · <span data-lang="en">MIT License</span><span data-lang="fr">Licence MIT</span></span>
+  <span>
+    <a href="https://github.com/simple-edit-app/simpleedit">GitHub</a> ·
+    <a href="https://github.com/simple-edit-app/plugin-sdk">SDK</a> ·
+    <a href="https://github.com/simple-edit-app/plugin-template">Template</a> ·
+    <a href="https://github.com/simple-edit-app/plugins">Registry</a>
+  </span>
+</footer>
+
+<script>
+  function setLang(lang) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-set-lang]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.setLang === lang);
+    });
+    try { localStorage.setItem('lang', lang); } catch (e) {}
+  }
+  (function () {
+    let lang = null;
+    try { lang = localStorage.getItem('lang'); } catch (e) {}
+    if (lang !== 'fr' && lang !== 'en') {
+      lang = (navigator.language || 'en').toLowerCase().startsWith('fr') ? 'fr' : 'en';
+    }
+    setLang(lang);
+  })();
+</script>
+</body>
+</html>

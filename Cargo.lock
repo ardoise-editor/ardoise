@@ -1396,6 +1396,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "filetime"
+version = "0.2.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+dependencies = [
+ "cfg-if",
+ "libc",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5042,6 +5052,7 @@ dependencies = [
  "chrono",
  "dirs",
  "ed25519-dalek",
+ "flate2",
  "iced",
  "iced_aw",
  "iced_fonts",
@@ -5067,9 +5078,11 @@ dependencies = [
  "serde_norway",
  "sha2 0.10.9",
  "similar",
+ "simpleedit-plugin",
  "spellbook",
  "sqlformat",
  "syntect",
+ "tar",
  "tempfile",
  "tokio",
  "tokio-postgres-rustls",
@@ -5079,6 +5092,15 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "vt100",
+]
+
+[[package]]
+name = "simpleedit-plugin"
+version = "0.1.0"
+source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.1.0#ccfcb379070bc67ace1a9fbeb44304451e1ef032"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -5408,6 +5430,16 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
 dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
  "libc",
 ]
 

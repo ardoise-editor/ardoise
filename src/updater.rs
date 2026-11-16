@@ -37,7 +37,7 @@ fn is_newer(latest: &str, current: &str) -> bool {
     }
 }
 
-fn client(timeout: Duration) -> Result<reqwest::Client, String> {
+pub(crate) fn client(timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("simpleedit-updater")
         .timeout(timeout)
@@ -48,7 +48,11 @@ fn client(timeout: Duration) -> Result<reqwest::Client, String> {
 /// Fetches `url` and reads at most `max` bytes of the body: a declared length
 /// over the cap is refused up front, and an undeclared one is cut off as soon
 /// as it grows past it, rather than buffering whatever the server sends.
-async fn fetch_limited(client: &reqwest::Client, url: &str, max: usize) -> Result<Vec<u8>, String> {
+pub(crate) async fn fetch_limited(
+    client: &reqwest::Client,
+    url: &str,
+    max: usize,
+) -> Result<Vec<u8>, String> {
     let mut response = client
         .get(url)
         .send()
@@ -167,14 +171,14 @@ fn install_supported() -> Result<(), String> {
 
 /// The hash `SHA256SUMS` lists for `asset` (`<hash>  <name>` or
 /// `<hash> *<name>` lines, as `sha256sum` writes them).
-fn expected_hash(sums: &str, asset: &str) -> Option<String> {
+pub(crate) fn expected_hash(sums: &str, asset: &str) -> Option<String> {
     sums.lines().find_map(|line| {
         let (hash, name) = line.split_once(char::is_whitespace)?;
         (name.trim().trim_start_matches('*') == asset).then(|| hash.to_ascii_lowercase())
     })
 }
 
-fn verify_signature(message: &[u8], signature: &[u8]) -> bool {
+pub(crate) fn verify_signature(message: &[u8], signature: &[u8]) -> bool {
     use ed25519_dalek::{Signature, VerifyingKey};
     let (Ok(key), Ok(sig)) = (
         VerifyingKey::from_bytes(&SIGNING_PUBLIC_KEY),
@@ -185,7 +189,7 @@ fn verify_signature(message: &[u8], signature: &[u8]) -> bool {
     key.verify_strict(message, &sig).is_ok()
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -193,7 +197,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Largest `SHA256SUMS` or signature worth reading.
-const MAX_SUMS: usize = 64 * 1024;
+pub(crate) const MAX_SUMS: usize = 64 * 1024;
 
 /// Downloads `asset` of the release `version` and checks it against the
 /// release's `SHA256SUMS`, itself checked against the signing key.

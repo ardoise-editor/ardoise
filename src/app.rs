@@ -232,6 +232,8 @@ pub enum ActiveOverlay {
     BranchSwitch(String),
     /// The Git actions of a file.
     GitFile(PathBuf),
+    /// A question of a plugin.
+    PluginConfirm(Box<plugins::PluginQuestion>),
     /// A branch, tag or revision to compare a file with.
     GitPick(Box<git_file::Pick>),
 }
@@ -239,6 +241,8 @@ pub enum ActiveOverlay {
 #[derive(Debug, Clone)]
 pub enum Message {
     EditorAction(text_editor::Action),
+    /// The plugins, and the Plugins page of the preferences.
+    Plugin(crate::plugins::PluginMsg),
     Sidebar(SidebarMessage),
     Search(SearchMessage),
     Preferences(PreferencesMessage),
@@ -937,6 +941,7 @@ pub struct SimpleEditApp {
     status_message: String,
     terminal: crate::terminal::Panel,
     scratch: crate::scratch::Panel,
+    plugins: crate::plugins::Plugins,
     bookmark_panel: bookmark_panel::Panel,
     git: crate::git_panel::Panel,
     diff_tabs: HashMap<PathBuf, DiffTabState>,
@@ -1253,6 +1258,7 @@ impl SimpleEditApp {
             status_message: t!("status.ready").to_string(),
             terminal: Default::default(),
             scratch: crate::scratch::Panel::new(&config.scratch_dir),
+            plugins: Default::default(),
             bookmark_panel: Default::default(),
             git: Default::default(),
             diff_tabs: HashMap::new(),
@@ -1384,6 +1390,8 @@ impl SimpleEditApp {
             );
         }
         app.announce_new_version();
+        app.plugins = crate::plugins::Plugins::load();
+        app.plugins_start();
 
         // This window takes the files that other commands name.
         app.ipc_listening = owner && crate::ipc::listen();
@@ -1406,6 +1414,7 @@ impl SimpleEditApp {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.update_message(message);
+        self.plugins_follow_settings();
         // The tests run off the main thread, where the system menu is off limits.
         #[cfg(all(target_os = "macos", not(test)))]
         self.sync_native_menu();
@@ -1737,6 +1746,7 @@ impl SimpleEditApp {
         if self.terminal.open {
             subscriptions.push(crate::terminal::changes());
         }
+        subscriptions.push(crate::plugins::host::events());
         #[cfg(all(target_os = "macos", not(test)))]
         subscriptions.push(crate::native_menu::subscription());
         iced::Subscription::batch(subscriptions)
@@ -1813,6 +1823,7 @@ impl SimpleEditApp {
                 crate::lint::color(&self.config, crate::lint::Severity::Warning),
             ),
             lint_hint: self.lint_hint(),
+            plugin_items: self.plugin_status_items(),
         });
 
         let error_panel: Option<Element<Message>> = if self.show_error_panel {
@@ -1910,6 +1921,9 @@ impl SimpleEditApp {
         if self.tasks.open {
             panel = panel.push(self.tasks_panel(dark));
         }
+        if let Some(bottom) = self.plugin_bottom(dark) {
+            panel = panel.push(bottom);
+        }
         let editor_panel = container(panel.push(status_bar))
             .width(Length::Fill)
             .height(Length::Fill)
@@ -1919,13 +1933,17 @@ impl SimpleEditApp {
         // and the editor is the handle that resizes the list.
         let mut main_row = row![].height(Length::Fill);
         main_row = main_row.push(self.activity_bar(dark)).push(vrule(dark));
+        let plugin_sidebar = self.plugin_sidebar(dark);
         if self.show_sidebar
             && (self.panels.files
                 || self.panels.projects
                 || self.panels.database
-                || self.panels.api)
+                || self.panels.api
+                || plugin_sidebar.is_some())
         {
-            let panel: Element<Message> = if self.panels.database {
+            let panel: Element<Message> = if let Some(panel) = plugin_sidebar {
+                panel
+            } else if self.panels.database {
                 crate::database::view::sidebar(&self.db, dark)
             } else if self.panels.api {
                 crate::api::view::sidebar(&self.api, &self.api_tabs, dark)
@@ -2135,6 +2153,7 @@ impl SimpleEditApp {
                 self.capturing,
                 &self.servers,
                 self.current_file.as_deref(),
+                &self.plugins,
             ))
             .width(Length::Fill)
             .height(Length::Fill)
@@ -2355,6 +2374,7 @@ impl SimpleEditApp {
                     }
                     ActiveOverlay::ConfirmClose(path) => self.view_confirm_overlay(dark, path),
                     ActiveOverlay::GitFile(path) => self.git_file_overlay(dark, path),
+                    ActiveOverlay::PluginConfirm(q) => self.view_plugin_question(dark, q),
                     ActiveOverlay::GitPick(pick) => self.git_pick_overlay(dark, pick),
                     ActiveOverlay::BranchSwitch(filter) => self.branch_switch_overlay(dark, filter),
                     ActiveOverlay::ConfirmFileDelete(path, from_git) => {
@@ -2462,6 +2482,14 @@ impl Message {
                 crate::database::DbMsg::Scrolled(..) | crate::database::DbMsg::DriverProbed(..)
             ),
             Message::History(msg) => msg.is_background(),
+            Message::Plugin(msg) => matches!(
+                msg,
+                crate::plugins::PluginMsg::Incoming(_)
+                    | crate::plugins::PluginMsg::RegistryLoaded(_)
+                    | crate::plugins::PluginMsg::Installed(..)
+                    | crate::plugins::PluginMsg::UpdatesChecked(_)
+                    | crate::plugins::PluginMsg::Fetched(_)
+            ),
             Message::BlameLoaded(..)
             | Message::MarksBase(..)
             | Message::SpellChecked(_)
@@ -2834,6 +2862,10 @@ impl SimpleEditApp {
                 match result {
                     Ok((path, saved)) => {
                         self.history_record(&path, &saved);
+                        self.plugins_file_event(
+                            simpleedit_plugin::manifest::Event::FileSaved,
+                            &path,
+                        );
                         self.size_for = None;
                         // The tab the save started from may no longer be the
                         // active one (the dialog is asynchronous).
@@ -4269,6 +4301,7 @@ impl SimpleEditApp {
             Message::FindUndoReplace => self.undo_replacement(),
             Message::FindToWindow => self.finder_to_window(),
             Message::Results(msg) => self.results_update(msg),
+            Message::Plugin(msg) => self.plugin_update(msg),
             Message::OpenTabList(at) => {
                 self.tab_list = Some(at);
                 Task::none()
@@ -4300,6 +4333,7 @@ impl SimpleEditApp {
                 if !was_open {
                     self.show_sidebar = true;
                     self.config.show_sidebar = true;
+                    self.plugin_sidebar_yield();
                 }
                 self.config.show_files_panel = self.panels.files;
                 self.config.show_projects_panel = self.panels.projects;
@@ -4552,6 +4586,22 @@ impl SimpleEditApp {
                     msg,
                     PreferencesMessage::PageSelected(crate::preferences::PrefsPage::Servers)
                 );
+                // The Plugins page: the list of the official ones and the
+                // updates are looked up when it is shown.
+                if matches!(
+                    msg,
+                    PreferencesMessage::PageSelected(crate::preferences::PrefsPage::Plugins)
+                ) {
+                    let _ = self.preferences.update(msg, &mut self.config);
+                    let list =
+                        if matches!(self.plugins.registry, crate::plugins::Registry::Loaded(_)) {
+                            Task::none()
+                        } else {
+                            self.plugin_update(crate::plugins::PluginMsg::LoadRegistry)
+                        };
+                    let updates = self.plugin_update(crate::plugins::PluginMsg::CheckUpdates);
+                    return Task::batch([list, updates]);
+                }
                 if self.preferences.update(msg, &mut self.config) {
                     self.config_dirty = true;
                     crate::api::http::set_network(crate::api::http::Network {
@@ -4605,6 +4655,7 @@ impl SimpleEditApp {
                     self.api.save_environments_now();
                     crate::tasks::stop_all();
                     crate::lsp::stop_servers();
+                    crate::plugins::host::stop_all();
                     std::process::exit(0)
                 }
                 // Unsaved buffers live on in the session file; if it can't be
@@ -4621,6 +4672,7 @@ impl SimpleEditApp {
                 self.api.save_environments_now();
                 crate::tasks::stop_all();
                 crate::lsp::stop_servers();
+                crate::plugins::host::stop_all();
                 std::process::exit(0)
             }
             Message::ContextCopy => {
@@ -5002,6 +5054,7 @@ impl SimpleEditApp {
             // --- Overlays ---
             Message::CloseOverlay => {
                 if self.overlay_is_dismissable() {
+                    self.dismiss_plugin_question();
                     self.capturing = None;
                     self.overlay = ActiveOverlay::None;
                 }
@@ -8060,6 +8113,9 @@ impl SimpleEditApp {
         // The session is written by the next tick (in the background), not
         // here: closing many tabs would otherwise write it once per tab.
         self.session_rev = self.rev.wrapping_sub(1);
+        if index.is_some() {
+            self.plugins_file_event(simpleedit_plugin::manifest::Event::FileClosed, &path);
+        }
         if index.is_some() && !is_untitled(&path) && !is_virtual(&path) {
             // The language servers that had it open let go of it.
             let closed = Task::future(crate::lsp::did_close(path)).discard();
@@ -8443,6 +8499,7 @@ impl SimpleEditApp {
     /// Makes a file just read the active tab.
     fn open_loaded(&mut self, loaded: Loaded) {
         let path = loaded.path.clone();
+        self.plugins_file_event(simpleedit_plugin::manifest::Event::FileOpened, &path);
         self.pending_open = None;
         if self.current_file.as_ref() == Some(&path) {
             // Opening the file being edited again: bring it up to date, but
@@ -9590,6 +9647,8 @@ mod git_file;
 mod lint;
 #[path = "app/local_history.rs"]
 mod local_history;
+#[path = "app/plugins.rs"]
+mod plugins;
 #[path = "app/project_ops.rs"]
 mod project_ops;
 mod remote_files;

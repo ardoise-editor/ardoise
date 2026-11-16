@@ -592,6 +592,8 @@ pub mod statusbar {
         /// A language server that could be installed: its language, and
         /// what the button sends.
         pub offer: Option<(String, String, Message)>,
+        /// The items the plugins put there: text, tooltip, what a click sends.
+        pub plugin_items: Vec<(String, Option<String>, Option<Message>)>,
     }
 
     pub(super) fn size_label(b: u64) -> String {
@@ -653,6 +655,31 @@ pub mod statusbar {
                 .into()
         };
         let mut right = row![].spacing(10).align_y(Alignment::Center);
+        for (label, tip, on) in info.plugin_items {
+            let item = button(text(label).size(11.5).color(muted))
+                .padding([1, 8])
+                .on_press_maybe(on)
+                .style(
+                    (theme::GhostButton {
+                        dark,
+                        active: false,
+                    })
+                    .style(),
+                );
+            right = right.push(match tip {
+                Some(tip) => Element::from(
+                    iced::widget::tooltip(
+                        item,
+                        container(text(tip).size(12))
+                            .padding([4, 8])
+                            .style(theme::tooltip(dark)),
+                        iced::widget::tooltip::Position::Top,
+                    )
+                    .gap(6),
+                ),
+                None => item.into(),
+            });
+        }
         if let Some(hint) = info.lint_hint {
             right = right.push(
                 button(text(hint).size(11.5).color(muted))
