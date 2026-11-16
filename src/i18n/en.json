@@ -1444,6 +1444,7 @@
   "lint.plugin_missing": "Without a linter, only the language servers find problems. Install the Lint plugin for ESLint, ruff, ShellCheck and the others.",
   "plugins.settings": "Settings",
   "plugins.not_running": "the plugin %{id} is not running",
+  "plugins.no_conflict": "there is no conflict in this text",
   "plugins.no_answer": "the plugin %{id} did not answer in time",
   "plugins.err_read_only": "the file cannot be changed",
   "plugins.err_not_in_front": "the file is not the one in front",

@@ -107,6 +107,9 @@ pub type MergeTabs = HashMap<PathBuf, crate::git_panel::merge::MergeTab>;
 pub struct DiffTabState {
     pub repo: PathBuf,
     pub viewer: crate::git_panel::Viewer,
+    /// A tab of a plugin: the plugin, its id for the tab, and the file on
+    /// the disk of each diff. Its buttons go to the plugin.
+    pub owner: Option<(String, String, Vec<Option<PathBuf>>)>,
 }
 
 /// The blame column of a file: what is drawn, and the commit of each line.
@@ -7527,6 +7530,7 @@ impl SimpleEditApp {
                 return Task::none();
             }
             let (repo, relative, text) = (tab.repo.clone(), tab.path.clone(), tab.merge.render());
+            let owner = tab.owner.clone();
             // The merge was read from the disk: changes not saved in an
             // editor tab of the same file would be lost under it.
             if self.is_path_dirty(&repo.join(&relative)) {
@@ -7535,6 +7539,14 @@ impl SimpleEditApp {
                     true,
                 );
                 return Task::none();
+            }
+            // A plugin's conflict: the file is written, the plugin does the rest.
+            if let Some((plugin, tab_id)) = owner {
+                let file = repo.join(&relative);
+                return Task::perform(
+                    plugins::merge_written(plugin, tab_id, file, text),
+                    move |result| Message::MergeApplied(path.clone(), result),
+                );
             }
             return Task::perform(
                 async move { crate::git::resolve_with(&repo, &relative, &text).await },
@@ -7658,6 +7670,7 @@ impl SimpleEditApp {
             DiffTabState {
                 repo: tab.repo,
                 viewer,
+                owner: None,
             },
         );
         self.sidebar.add_file(path.clone());
@@ -7674,6 +7687,63 @@ impl SimpleEditApp {
             return Task::none();
         };
         let repo = tab.repo.clone();
+        // The buttons of a tab of a plugin go to it.
+        if let Some((plugin, tab_id, files)) = tab.owner.clone() {
+            let file = tab.viewer.index.unwrap_or(0);
+            let action = match nav {
+                DiffNav::StageBlock(_) | DiffNav::StageSelection => {
+                    let block = match nav {
+                        DiffNav::StageBlock(b) => Some(b),
+                        _ => None,
+                    };
+                    tab.viewer.index_patch(block).map(|(patch, reverse)| {
+                        simpleedit_plugin::protocol::DiffAction::ApplyToIndex { patch, reverse }
+                    })
+                }
+                DiffNav::Apply(block) => {
+                    Some(simpleedit_plugin::protocol::DiffAction::Rollback { block })
+                }
+                DiffNav::ToggleBlanks => {
+                    tab.viewer.ignore_blanks = !tab.viewer.ignore_blanks;
+                    Some(simpleedit_plugin::protocol::DiffAction::Options {
+                        ignore_blanks: tab.viewer.ignore_blanks,
+                        context: tab.viewer.context,
+                    })
+                }
+                DiffNav::CycleContext => {
+                    tab.viewer.cycle_context();
+                    Some(simpleedit_plugin::protocol::DiffAction::Options {
+                        ignore_blanks: tab.viewer.ignore_blanks,
+                        context: tab.viewer.context,
+                    })
+                }
+                DiffNav::ToggleCompare => {
+                    Some(simpleedit_plugin::protocol::DiffAction::ToggleCompare)
+                }
+                DiffNav::OpenFile => {
+                    return match files.get(file).cloned().flatten().filter(|f| f.is_file()) {
+                        Some(f) => self.activate(f),
+                        None => {
+                            self.set_status(t!("git.file_gone"), true);
+                            Task::none()
+                        }
+                    };
+                }
+                _ => None,
+            };
+            if let Some(action) = action {
+                crate::plugins::host::notify(
+                    &plugin,
+                    simpleedit_plugin::protocol::methods::DIFF_ACTION,
+                    simpleedit_plugin::protocol::DiffActionParams {
+                        tab: tab_id,
+                        file,
+                        action,
+                    },
+                );
+                return Task::none();
+            }
+        }
         match nav {
             DiffNav::NextChange => tab.viewer.next_change(&repo),
             DiffNav::PrevChange => tab.viewer.prev_change(&repo),

@@ -33,6 +33,9 @@ pub struct MergeTab {
     future: Vec<Merge>,
     /// When the last typing was, so a burst of keys is one step.
     typed_at: Option<Instant>,
+    /// A conflict a plugin gave: the plugin and its id for the tab. Once
+    /// resolved, the file is written and the plugin told.
+    pub owner: Option<(String, String)>,
 }
 
 impl MergeTab {
@@ -122,6 +125,7 @@ impl MergeTab {
             past: Vec::new(),
             future: Vec::new(),
             typed_at: None,
+            owner: None,
         };
         tab.sync_contents();
         tab

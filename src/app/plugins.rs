@@ -12,10 +12,11 @@ use serde_json::Value;
 use simpleedit_plugin::manifest::{Event, Location};
 use simpleedit_plugin::protocol::{
     self as rpc, codes, methods, ActiveFile, ActiveFileParams, AnnotateParams, CommandParams,
-    ConfirmParams, Context, CopyParams, DecorateParams, DiffParams, FileParams, InitializeParams,
-    Level, Message as Rpc, NotifyParams, OpenFileParams, PanelParams, PickFileParams,
-    PublishParams, RenameParams, RenderParams, ReplaceTextParams, RpcError, SaveFileParams,
-    SetBaseParams, Settings, StatusParams, TabDirtyParams, TabParams, UiEvent,
+    ConfirmParams, Context, CopyParams, DecorateParams, DiffParams, DiffTabParams, FileParams,
+    InitializeParams, Level, MergeParams, Message as Rpc, NotifyParams, OpenFileParams,
+    PanelParams, PickFileParams, PublishParams, RenameParams, RenderParams, ReplaceTextParams,
+    RpcError, SaveFileParams, SetBaseParams, Settings, StatusParams, TabDirtyParams, TabParams,
+    UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -395,6 +396,114 @@ impl SimpleEditApp {
             return Task::none();
         }
         self.plugin_update(PluginMsg::Run(id.to_string(), command.to_string()))
+    }
+
+    /// A file in conflict a plugin gives, to resolve in a merge tab (none:
+    /// there is no conflict in the text).
+    fn plugin_merge(&mut self, plugin: String, p: MergeParams) -> Option<Task<Message>> {
+        let merge = crate::git::conflicts::parse(&p.text, false)?;
+        let dir = p.path.parent().map(Path::to_path_buf).unwrap_or_default();
+        let name = p.path.file_name()?.to_string_lossy().to_string();
+        let existing = self
+            .merge_tabs
+            .iter()
+            .find(|(_, t)| {
+                t.owner
+                    .as_ref()
+                    .is_some_and(|(o, tab)| *o == plugin && *tab == p.tab)
+            })
+            .map(|(path, _)| path.clone());
+        let path = existing.unwrap_or_else(|| {
+            self.merge_counter += 1;
+            PathBuf::from(format!("merge://{}/{}", self.merge_counter, name))
+        });
+        let mut tab = crate::git_panel::merge::MergeTab::new(dir, name, merge);
+        tab.owner = Some((plugin, p.tab));
+        self.merge_tabs.insert(path.clone(), tab);
+        self.sidebar.add_file(path.clone());
+        Some(self.activate(path))
+    }
+
+    /// Diffs a plugin gives, in a diff tab of its own (the one it had, if
+    /// the id is the same: what it shows is replaced, where it is).
+    fn plugin_diff_tab(&mut self, plugin: String, p: DiffTabParams) -> Task<Message> {
+        use simpleedit_plugin::protocol::DiffMode;
+        let mut entries = Vec::new();
+        let mut diffs = Vec::new();
+        let mut files = Vec::new();
+        for f in p.files {
+            let parsed = crate::git::diff::parse_diff(&f.patch)
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| crate::git::FileDiff {
+                    path: f.path.clone(),
+                    ..crate::git::FileDiff::default()
+                });
+            let source = match f.mode {
+                DiffMode::Plain => crate::git::Source::Untracked,
+                DiffMode::Unstaged => crate::git::Source::Unstaged,
+                DiffMode::Staged => crate::git::Source::Staged,
+                DiffMode::Commit => crate::git::Source::Commit("HEAD".into()),
+            };
+            entries.push(crate::git_panel::Entry {
+                source,
+                change: crate::git::Change {
+                    path: f.path,
+                    from: f.from,
+                    kind: crate::git::Kind::Modified,
+                },
+                staged: f.mode == DiffMode::Staged,
+            });
+            diffs.push(parsed);
+            files.push(f.file);
+        }
+        let owner = Some((plugin.clone(), p.tab.clone(), files));
+        let existing = self
+            .diff_tabs
+            .iter()
+            .find(|(_, t)| {
+                t.owner
+                    .as_ref()
+                    .is_some_and(|(o, tab, _)| *o == plugin && *tab == p.tab)
+            })
+            .map(|(path, _)| path.clone());
+        let start = p.start.min(entries.len().saturating_sub(1));
+        if let Some(path) = existing {
+            // The same tab: its diffs are replaced, the file in view kept.
+            if let Some(tab) = self.diff_tabs.get_mut(&path) {
+                let index = tab
+                    .viewer
+                    .index
+                    .unwrap_or(start)
+                    .min(entries.len().saturating_sub(1));
+                let change = tab.viewer.change;
+                tab.viewer.entries = entries;
+                tab.viewer.provided = Some(diffs);
+                tab.owner = owner;
+                let task = tab
+                    .viewer
+                    .open(Path::new(""), index, crate::git_panel::Land::First);
+                tab.viewer.change = change.min(tab.viewer.changes().saturating_sub(1));
+                return task;
+            }
+        }
+        self.diff_counter += 1;
+        let path = PathBuf::from(format!("diff://{}/{}", self.diff_counter, p.title));
+        let mut viewer = crate::git_panel::Viewer::default();
+        viewer.entries = entries;
+        viewer.provided = Some(diffs);
+        let load = viewer.open(Path::new(""), start, crate::git_panel::Land::First);
+        self.diff_tabs.insert(
+            path.clone(),
+            super::DiffTabState {
+                repo: PathBuf::new(),
+                viewer,
+                owner,
+            },
+        );
+        self.sidebar.add_file(path.clone());
+        let show = self.activate(path);
+        Task::batch([show, load])
     }
 
     /// What the plugins say of how files stand, in the tree and the tabs.
@@ -1217,6 +1326,33 @@ impl SimpleEditApp {
                         Task::none()
                     }
                 },
+                methods::OPEN_MERGE => match serde_json::from_value::<MergeParams>(params) {
+                    Ok(p) => match self.plugin_merge(id.clone(), p) {
+                        Some(task) => {
+                            host::respond(&id, request, Ok(Value::Null));
+                            task
+                        }
+                        None => {
+                            let error = invalid(t!("plugins.no_conflict"));
+                            host::respond(&id, request, Err(error));
+                            Task::none()
+                        }
+                    },
+                    Err(e) => {
+                        host::respond(&id, request, Err(invalid(e)));
+                        Task::none()
+                    }
+                },
+                methods::OPEN_DIFF_TAB => match serde_json::from_value::<DiffTabParams>(params) {
+                    Ok(p) => {
+                        host::respond(&id, request, Ok(Value::Null));
+                        self.plugin_diff_tab(id, p)
+                    }
+                    Err(e) => {
+                        host::respond(&id, request, Err(invalid(e)));
+                        Task::none()
+                    }
+                },
                 methods::OPEN_TAB => match serde_json::from_value::<TabParams>(params) {
                     Ok(p) => match self.plugin_open_tab(&id, p) {
                         Ok(task) => {
@@ -1824,6 +1960,28 @@ while True:
     }
 }
 
+/// A conflict of a plugin was resolved: the file is written, the plugin told.
+pub(super) async fn merge_written(
+    plugin: String,
+    tab: String,
+    file: PathBuf,
+    text: String,
+) -> Result<(), String> {
+    tokio::fs::write(&file, &text)
+        .await
+        .map_err(|e| e.to_string())?;
+    host::notify(
+        &plugin,
+        methods::MERGE_RESOLVED,
+        MergeParams {
+            tab,
+            path: file,
+            text,
+        },
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tab_tests {
     use super::*;
@@ -2008,5 +2166,114 @@ mod tab_tests {
         );
         assert!(app.blame.is_none());
         assert!(!app.plugin_annotation_clicked(1));
+    }
+
+    #[test]
+    fn a_plugin_shows_its_diffs_in_a_tab_and_replaces_them_in_place() {
+        let mut app = app_with_plugin();
+        let patch =
+            "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO\n";
+        let open = |app: &mut SimpleEditApp, patch: &str| {
+            from_plugin(
+                app,
+                Rpc::request(
+                    7,
+                    methods::OPEN_DIFF_TAB,
+                    serde_json::json!({"tab": "changes", "title": "Changes", "files": [
+                        {"path": "a.rs", "patch": patch, "mode": "unstaged", "file": "/repo/a.rs"},
+                        {"path": "b.rs", "patch": "", "mode": "plain"}
+                    ]}),
+                ),
+            );
+        };
+        open(&mut app, patch);
+        let path = app.current_file.clone().expect("a tab in front");
+        let tab = app.diff_tabs.get(&path).expect("a diff tab");
+        assert_eq!(tab.viewer.entries.len(), 2);
+        let diff = tab.viewer.file_diff().expect("its diff, given");
+        assert_eq!(diff.path, "a.rs");
+        assert_eq!(tab.viewer.changes(), 1);
+        assert!(tab
+            .owner
+            .as_ref()
+            .is_some_and(|(p, t, _)| p == "test.tabs" && t == "changes"));
+        // Its buttons go to the plugin: Git is not asked.
+        let _ = app.update(Message::DiffTab(DiffNav::ToggleBlanks));
+        assert!(app.diff_tabs[&path].viewer.ignore_blanks);
+        // The same tab id: what it shows is replaced, no new tab.
+        let tabs = app.diff_tabs.len();
+        open(&mut app, &patch.replace("TWO", "2"));
+        assert_eq!(app.diff_tabs.len(), tabs);
+        let tab = &app.diff_tabs[&path];
+        assert!(format!("{:?}", tab.viewer.file_diff()).contains('2'));
+        // Moving to the next file reads the given diff, not Git.
+        let _ = app.update(Message::DiffTab(DiffNav::NextFile));
+        assert_eq!(app.diff_tabs[&path].viewer.index, Some(1));
+        assert!(matches!(app.diff_tabs[&path].viewer.diff, Some(Ok(_))));
+    }
+
+    #[test]
+    fn a_plugin_gives_a_conflict_that_is_resolved_in_a_tab_and_written() {
+        let mut app = app_with_plugin();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        let text = "top\n<<<<<<< ours\nmine\n=======\ntheirs\n>>>>>>> other\nend\n";
+        std::fs::write(&file, text).unwrap();
+        // No conflict in it: refused.
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                8,
+                methods::OPEN_MERGE,
+                serde_json::json!({"tab": "m", "path": file, "text": "plain\n"}),
+            ),
+        );
+        assert!(app.merge_tabs.is_empty());
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                9,
+                methods::OPEN_MERGE,
+                serde_json::json!({"tab": "m", "path": file, "text": text}),
+            ),
+        );
+        let path = app.current_file.clone().expect("a merge tab in front");
+        let tab = app.merge_tabs.get_mut(&path).expect("a merge tab");
+        assert_eq!(tab.merge.unresolved(), 1);
+        assert_eq!(tab.owner, Some(("test.tabs".to_string(), "m".to_string())));
+        // The same tab id: no second tab.
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                10,
+                methods::OPEN_MERGE,
+                serde_json::json!({"tab": "m", "path": file, "text": text}),
+            ),
+        );
+        assert_eq!(app.merge_tabs.len(), 1);
+        // Resolved: written to the disk.
+        let tab = app.merge_tabs.get_mut(&path).unwrap();
+        for chunk in tab.merge.conflicts_mut() {
+            chunk.set(
+                crate::git::conflicts::Side::Yours,
+                crate::git::conflicts::Pick::Taken,
+            );
+            chunk.set(
+                crate::git::conflicts::Side::Theirs,
+                crate::git::conflicts::Pick::Ignored,
+            );
+        }
+        assert_eq!(app.merge_tabs[&path].merge.unresolved(), 0);
+        let rendered = app.merge_tabs[&path].merge.render();
+        let tokio = tokio::runtime::Runtime::new().unwrap();
+        tokio
+            .block_on(merge_written(
+                "test.tabs".into(),
+                "m".into(),
+                file.clone(),
+                rendered,
+            ))
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "top\nmine\nend\n");
     }
 }

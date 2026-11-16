@@ -91,6 +91,9 @@ pub struct Viewer {
     dragging: bool,
     /// The last press, to tell a double click.
     last_press: Option<(std::time::Instant, Pos)>,
+    /// The diffs of its files, given (by a plugin) rather than read from
+    /// Git: one per entry.
+    pub provided: Option<Vec<FileDiff>>,
 }
 
 /// A place in the diff: a row and a character of its text (tabs counted as
@@ -211,6 +214,7 @@ impl Default for Viewer {
             context: 3,
             dragging: false,
             last_press: None,
+            provided: None,
         }
     }
 }
@@ -474,6 +478,19 @@ impl Viewer {
     /// Opens an entry: its diff is asked for, the answer comes as
     /// [`GitMsg::DiffLoaded`].
     pub fn open(&mut self, repo: &Path, index: usize, land: Land) -> Task<Message> {
+        // Given diffs: no Git to ask.
+        if let Some(diff) = self.provided.as_ref().and_then(|p| p.get(index)).cloned() {
+            self.index = Some(index);
+            self.diff = Some(Ok(diff));
+            self.diff_rev += 1;
+            self.selection = None;
+            self.change = match land {
+                Land::First => 0,
+                Land::Last => self.changes().saturating_sub(1),
+            };
+            self.view_top.set(0.0);
+            return self.scroll_to_change();
+        }
         let Some(entry) = self.entries.get(index) else {
             return Task::none();
         };
@@ -533,6 +550,10 @@ impl Viewer {
     /// Looks at the open file again, quietly: the diff changes on screen only
     /// if the file did (a save, a stage, a rollback made elsewhere).
     pub fn refresh(&mut self, repo: &Path) -> Task<Message> {
+        // Given diffs: the one who gave them sends them again.
+        if self.provided.is_some() {
+            return Task::none();
+        }
         let Some(entry) = self.current().cloned() else {
             return Task::none();
         };
