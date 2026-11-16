@@ -94,6 +94,10 @@ pub struct Session {
     /// The local copies of files of another machine, to send back on save.
     #[serde(default)]
     pub remote_files: Vec<RemoteSession>,
+    /// The tabs of plugins among the files (their paths): each plugin keeps
+    /// what they hold.
+    #[serde(default)]
+    pub plugin_tabs: Vec<String>,
 }
 
 /// The link of a local copy to the file it came from (over SSH).
@@ -234,6 +238,7 @@ mod tests {
             untitled_counter: 3,
             api_tabs: vec![],
             remote_files: vec![],
+            plugin_tabs: vec![],
         };
         let back: Session = serde_json::from_str(&session.to_json().unwrap()).unwrap();
         assert_eq!(back.files[0].path(), PathBuf::from("/a/b.txt"));

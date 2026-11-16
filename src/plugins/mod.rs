@@ -28,6 +28,38 @@ pub use store::Installed;
 /// A panel of a plugin: the plugin's id, the panel's id.
 pub type PanelKey = (String, String);
 
+/// A tab of a plugin among the files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginTab {
+    pub plugin: String,
+    pub tab: String,
+    /// It holds changes not kept.
+    pub dirty: bool,
+    /// The plugin was asked what it shows (or showed it already).
+    pub asked: bool,
+}
+
+/// The path a tab of a plugin goes by: `plugin://<plugin>/<tab>/<title>`.
+pub fn tab_path(plugin: &str, tab: &str, title: &str) -> PathBuf {
+    let title = title.replace('/', "∕");
+    PathBuf::from(format!("plugin://{plugin}/{tab}/{title}"))
+}
+
+/// The title of a tab of a plugin, from its path.
+pub fn tab_title(path: &std::path::Path) -> Option<String> {
+    let rest = path.to_str()?.strip_prefix("plugin://")?;
+    let mut parts = rest.splitn(3, '/');
+    let (_, _, title) = (parts.next()?, parts.next()?, parts.next()?);
+    Some(title.replace('∕', "/"))
+}
+
+/// The plugin and the tab of a path of a tab of a plugin.
+pub fn tab_of(path: &std::path::Path) -> Option<(String, String)> {
+    let rest = path.to_str()?.strip_prefix("plugin://")?;
+    let mut parts = rest.splitn(3, '/');
+    Some((parts.next()?.to_string(), parts.next()?.to_string()))
+}
+
 /// A command of a plugin in a context menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MenuItem {
@@ -62,6 +94,9 @@ pub enum PluginMsg {
     Ui(String, String, String, Option<Value>),
     /// A field of a panel typed in: the plugin, the panel, the field, the text.
     Input(String, String, String, String),
+    /// Something done in an editor of a panel: the plugin, the panel, the
+    /// editor, the action.
+    EditorAction(String, String, String, iced::widget::text_editor::Action),
     /// A command of a plugin, run from the search for actions.
     Run(String, String),
     /// A command of a plugin, run from the context menu of a file or folder.
@@ -164,6 +199,11 @@ pub struct Plugins {
     pub settings_open: Option<PanelKey>,
     /// The screen that has the keyboard: its panel and its id.
     pub screen_focus: Option<(PanelKey, String)>,
+    /// The tabs of the plugins among the files, by path.
+    pub tabs: BTreeMap<PathBuf, PluginTab>,
+    /// The text of the editors of the panels, and the value each had in the
+    /// last render.
+    pub editors: HashMap<(PanelKey, String), (iced::widget::text_editor::Content, String)>,
     /// The items of the status bar: (plugin, item).
     pub status: BTreeMap<(String, String), StatusParams>,
     /// The plugins that stopped by themselves, and why.
@@ -234,6 +274,25 @@ impl Plugins {
             }
         }
         self.rendered_inputs.insert(key.clone(), now);
+        // The editors: their text follows the plugin's when it changes it.
+        let mut editors = Vec::new();
+        collect_editors(&root, &mut editors);
+        for (id, value) in editors {
+            let slot = (key.clone(), id);
+            match self.editors.get_mut(&slot) {
+                Some((content, last)) if *last == value => {
+                    let _ = content;
+                }
+                Some((content, last)) => {
+                    *content = iced::widget::text_editor::Content::with_text(&value);
+                    *last = value;
+                }
+                None => {
+                    let content = iced::widget::text_editor::Content::with_text(&value);
+                    self.editors.insert(slot, (content, value));
+                }
+            }
+        }
         self.views.insert(key, root);
     }
 
@@ -241,6 +300,7 @@ impl Plugins {
     pub fn forget(&mut self, id: &str) {
         self.views.retain(|k, _| k.0 != id);
         self.inputs.retain(|k, _| k.0 .0 != id);
+        self.editors.retain(|k, _| k.0 .0 != id);
         self.rendered_inputs.retain(|k, _| k.0 != id);
         self.status.retain(|k, _| k.0 != id);
         for by_plugin in self.published.values_mut() {
@@ -280,6 +340,19 @@ impl Plugins {
             .panels
             .iter()
             .find(|p| p.location == Location::Settings)
+    }
+}
+
+fn collect_editors(node: &Node, out: &mut Vec<(String, String)>) {
+    match node {
+        Node::Editor { id, value, .. } => out.push((id.clone(), value.clone())),
+        Node::Column { children, .. } | Node::Row { children, .. } => {
+            for child in children {
+                collect_editors(child, out);
+            }
+        }
+        Node::Scroll { child, .. } => collect_editors(child, out),
+        _ => {}
     }
 }
 

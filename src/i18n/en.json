@@ -1609,5 +1609,6 @@
   "spell.plugin_missing": "Install the Spelling plugin (Preferences › Plugins) to check the spelling",
   "tasks.plugin_missing": "Install the Tasks plugin (Preferences › Plugins) to run the tasks of a project",
   "remote.plugin_missing": "Install the Remote Files plugin (Preferences › Plugins) to open files over SSH",
-  "terminal.plugin_missing": "Install the Terminal plugin (Preferences › Plugins) to have a terminal"
+  "terminal.plugin_missing": "Install the Terminal plugin (Preferences › Plugins) to have a terminal",
+  "plugins.err_tab": "A tab needs an id (letters, digits, . - _) and a title"
 }

@@ -795,6 +795,7 @@ mod behavior_tests {
             untitled_counter: 1,
             api_tabs: vec![],
             remote_files: vec![],
+            plugin_tabs: vec![],
         };
         let mut fs = crate::session::FileSession {
             path: String::new(),

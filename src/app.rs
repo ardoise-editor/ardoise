@@ -1372,6 +1372,7 @@ impl SimpleEditApp {
         let task = self.update_message(message);
         self.plugins_follow_settings();
         self.plugins_follow_active();
+        self.plugins_follow_tab();
         // The tests run off the main thread, where the system menu is off limits.
         #[cfg(all(target_os = "macos", not(test)))]
         self.sync_native_menu();
@@ -2694,6 +2695,21 @@ impl SimpleEditApp {
                 Task::none()
             }
             Message::SaveFile => {
+                // A tab of a plugin is the plugin's to keep.
+                if let Some(tab) = self
+                    .current_file
+                    .as_ref()
+                    .and_then(|p| self.plugins.tabs.get(p))
+                {
+                    crate::plugins::host::notify(
+                        &tab.plugin,
+                        simpleedit_plugin::protocol::methods::TAB_SAVE,
+                        simpleedit_plugin::protocol::PanelParams {
+                            panel: tab.tab.clone(),
+                        },
+                    );
+                    return Task::none();
+                }
                 // A request of the API panel is kept in its collection.
                 if let Some(path) = self
                     .current_file
@@ -6920,10 +6936,14 @@ impl SimpleEditApp {
             .get(path)
             .is_some_and(|t| !t.pending.is_empty())
             || self.api_tabs.get(path).is_some_and(|t| t.changed())
+            || self.plugins.tabs.get(path).is_some_and(|t| t.dirty)
         {
             return true;
         }
-        if self.db_tabs.contains_key(path) || self.api_tabs.contains_key(path) {
+        if self.db_tabs.contains_key(path)
+            || self.api_tabs.contains_key(path)
+            || self.plugins.tabs.contains_key(path)
+        {
             return false;
         }
         if self.current_file.as_deref() == Some(path) {
@@ -7871,6 +7891,16 @@ impl SimpleEditApp {
         self.merge_tabs.remove(&path);
         self.db_tabs.remove(&path);
         self.api_tabs.remove(&path);
+        if let Some(tab) = self.plugins.tabs.remove(&path) {
+            crate::plugins::host::notify(
+                &tab.plugin,
+                simpleedit_plugin::protocol::methods::TAB_CLOSED,
+                simpleedit_plugin::protocol::PanelParams {
+                    panel: tab.tab.clone(),
+                },
+            );
+            self.plugins.views.remove(&(tab.plugin, tab.tab));
+        }
         self.sidebar.remove_path(&path);
         // An untitled file is gone for good once closed; a saved one keeps
         // its bookmarks for the next time it is opened.
@@ -8987,6 +9017,13 @@ impl SimpleEditApp {
         if let Some(tab) = self
             .current_file
             .as_ref()
+            .and_then(|p| self.plugins.tabs.get(p))
+        {
+            return self.plugin_tab_view(tab, dark);
+        }
+        if let Some(tab) = self
+            .current_file
+            .as_ref()
             .and_then(|p| self.diff_tabs.get(p))
         {
             return crate::git_panel::diff_view::view(
@@ -9476,6 +9513,8 @@ pub fn display_name(path: &Path) -> String {
         let rest = path.to_str().unwrap_or("").trim_start_matches("db://");
         let title = rest.split_once('/').map_or(rest, |(_, t)| t);
         format!("▦ {title}")
+    } else if let Some(title) = crate::plugins::tab_title(path) {
+        title
     } else if is_api(path) {
         // api://3/title
         let rest = path.to_str().unwrap_or("").trim_start_matches("api://");
@@ -9817,6 +9856,7 @@ pub fn is_untitled(path: &Path) -> bool {
                 || s.starts_with("rev://")
                 || s.starts_with("db://")
                 || s.starts_with("api://")
+                || s.starts_with("plugin://")
         })
         .unwrap_or(false)
 }
@@ -9844,7 +9884,12 @@ pub fn is_merge(path: &Path) -> bool {
 
 /// A tab that is not a file and is never saved or remembered.
 pub fn is_virtual(path: &Path) -> bool {
-    is_diff(path) || is_merge(path) || is_db(path) || is_api(path)
+    is_diff(path) || is_merge(path) || is_db(path) || is_api(path) || is_plugin_tab(path)
+}
+
+/// A tab of a plugin (`plugin://<plugin>/<tab>/<title>`).
+pub fn is_plugin_tab(path: &Path) -> bool {
+    path.to_str().is_some_and(|s| s.starts_with("plugin://"))
 }
 
 /// A tab that holds a request to an API (`api://N/title`).

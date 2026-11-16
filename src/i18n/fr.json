@@ -1609,5 +1609,6 @@
   "spell.plugin_missing": "Installez le plugin Orthographe (Préférences › Plugins) pour vérifier l'orthographe",
   "tasks.plugin_missing": "Installez le plugin Tâches (Préférences › Plugins) pour lancer les tâches d'un projet",
   "remote.plugin_missing": "Installez le plugin Fichiers distants (Préférences › Plugins) pour ouvrir des fichiers par SSH",
-  "terminal.plugin_missing": "Installez le plugin Terminal (Préférences › Plugins) pour avoir un terminal"
+  "terminal.plugin_missing": "Installez le plugin Terminal (Préférences › Plugins) pour avoir un terminal",
+  "plugins.err_tab": "Un onglet a besoin d'un identifiant (lettres, chiffres, . - _) et d'un titre"
 }

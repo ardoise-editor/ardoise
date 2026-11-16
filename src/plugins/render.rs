@@ -172,6 +172,41 @@ fn draw<'a>(
             .width(Length::Fill)
             .into()
         }
+        Node::Editor {
+            id,
+            language,
+            read_only,
+            height,
+            ..
+        } => {
+            let Some((content, _)) = plugins.editors.get(&(key.clone(), id.clone())) else {
+                return Space::new().into();
+            };
+            let (k, id) = (key.clone(), id.clone());
+            let read_only = *read_only;
+            let editor = iced::widget::text_editor(content)
+                .on_action(move |action| {
+                    Message::Plugin(PluginMsg::EditorAction(
+                        k.0.clone(),
+                        k.1.clone(),
+                        id.clone(),
+                        action,
+                    ))
+                })
+                .font(se_theme::MONO)
+                .size(12.5)
+                .padding(8)
+                .height(height.map_or(Length::Fill, Length::Fixed))
+                .highlight_with::<crate::editor::highlighter::Highlighter>(
+                    crate::editor::highlighter::Settings {
+                        dark,
+                        extension: language.clone(),
+                    },
+                    crate::editor::highlighter::to_format,
+                );
+            let _ = read_only;
+            container(editor).width(Length::Fill).into()
+        }
         Node::Screen(grid) => {
             let focused = plugins
                 .screen_focus

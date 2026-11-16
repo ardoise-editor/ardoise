@@ -1021,8 +1021,17 @@ impl SimpleEditApp {
             })
             .collect();
         api_tabs.sort_by(|a, b| a.0.cmp(b.0));
+        // The tabs of plugins, in the order of the tabs.
+        let plugin_tabs: Vec<String> = self
+            .sidebar
+            .files()
+            .iter()
+            .filter(|p| self.plugins.tabs.contains_key(*p))
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
         Session {
             files,
+            plugin_tabs,
             api_tabs: api_tabs.into_iter().map(|(_, s)| s).collect(),
             active_file: self
                 .current_file
@@ -1151,6 +1160,25 @@ impl SimpleEditApp {
             };
             self.sidebar.add_file(path.clone());
             self.file_cache.insert(path, buffer);
+        }
+
+        // The tabs of plugins come back; each asks its plugin when shown.
+        for path in &session.plugin_tabs {
+            let path = PathBuf::from(path);
+            if let Some((plugin, tab)) = crate::plugins::tab_of(&path) {
+                if self.plugins.get(&plugin).is_some() {
+                    self.plugins.tabs.insert(
+                        path.clone(),
+                        crate::plugins::PluginTab {
+                            plugin,
+                            tab,
+                            dirty: false,
+                            asked: false,
+                        },
+                    );
+                    self.sidebar.add_file(path);
+                }
+            }
         }
 
         // The copies of remote files of before the Remote Files plugin keep

@@ -14,7 +14,7 @@ use simpleedit_plugin::protocol::{
     self as rpc, codes, methods, ActiveFile, ActiveFileParams, CommandParams, ConfirmParams,
     Context, DiffParams, FileParams, InitializeParams, Level, Message as Rpc, NotifyParams,
     OpenFileParams, PanelParams, PublishParams, RenameParams, RenderParams, ReplaceTextParams,
-    RpcError, SaveFileParams, Settings, StatusParams, UiEvent,
+    RpcError, SaveFileParams, Settings, StatusParams, TabDirtyParams, TabParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -166,6 +166,86 @@ impl SimpleEditApp {
             host::notify(plugin.id(), methods::SETTINGS_CHANGED, &now);
         }
         self.plugins.sent_settings = Some(now);
+    }
+
+    /// A tab of a plugin in front that has nothing to show yet (it came back
+    /// with the session): its plugin is asked for it.
+    pub(super) fn plugins_follow_tab(&mut self) {
+        let Some(path) = self.current_file.clone() else {
+            return;
+        };
+        let Some(tab) = self.plugins.tabs.get(&path).filter(|t| !t.asked).cloned() else {
+            return;
+        };
+        if let Some(t) = self.plugins.tabs.get_mut(&path) {
+            t.asked = true;
+        }
+        if self.plugin_ensure(&tab.plugin) {
+            host::notify(
+                &tab.plugin,
+                methods::PANEL_OPENED,
+                PanelParams { panel: tab.tab },
+            );
+        }
+    }
+
+    /// What a tab of a plugin shows.
+    pub(super) fn plugin_tab_view<'a>(
+        &'a self,
+        tab: &crate::plugins::PluginTab,
+        dark: bool,
+    ) -> Element<'a, Message> {
+        let key: PanelKey = (tab.plugin.clone(), tab.tab.clone());
+        container(self.plugin_panel_body(&key, dark))
+            .padding([10, 14])
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
+    /// Opens (or brings in front) a tab of a plugin.
+    fn plugin_open_tab(&mut self, plugin: &str, p: TabParams) -> Result<Task<Message>, String> {
+        let good = !p.tab.is_empty()
+            && p.tab.len() <= 64
+            && p.tab
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'));
+        if !good || p.title.trim().is_empty() {
+            return Err(t!("plugins.err_tab").to_string());
+        }
+        let path = crate::plugins::tab_path(plugin, &p.tab, p.title.trim());
+        let old = self
+            .plugins
+            .tabs
+            .iter()
+            .find(|(_, t)| t.plugin == plugin && t.tab == p.tab)
+            .map(|(path, _)| path.clone());
+        match old {
+            // A new title: the tab is renamed where it is.
+            Some(old) if old != path => {
+                if let Some(tab) = self.plugins.tabs.remove(&old) {
+                    self.plugins.tabs.insert(path.clone(), tab);
+                }
+                self.sidebar.rename_file(&old, path.clone());
+                if self.current_file.as_ref() == Some(&old) {
+                    self.current_file = Some(path.clone());
+                }
+            }
+            Some(_) => {}
+            None => {
+                self.plugins.tabs.insert(
+                    path.clone(),
+                    crate::plugins::PluginTab {
+                        plugin: plugin.to_string(),
+                        tab: p.tab,
+                        dirty: false,
+                        asked: true,
+                    },
+                );
+                self.sidebar.add_file(path.clone());
+            }
+        }
+        Ok(self.activate(path))
     }
 
     /// The file in front changed: the plugins that follow it hear of it.
@@ -456,6 +536,35 @@ impl SimpleEditApp {
                         value,
                     },
                 );
+                Task::none()
+            }
+            PluginMsg::EditorAction(plugin, panel, id, action) => {
+                let read_only = self
+                    .plugins
+                    .views
+                    .get(&(plugin.clone(), panel.clone()))
+                    .is_some_and(|root| editor_read_only(root, &id));
+                if read_only && action.is_edit() {
+                    return Task::none();
+                }
+                let slot = ((plugin.clone(), panel.clone()), id.clone());
+                let Some((content, _)) = self.plugins.editors.get_mut(&slot) else {
+                    return Task::none();
+                };
+                let edit = action.is_edit();
+                content.perform(action);
+                if edit {
+                    let text = content.text();
+                    host::notify(
+                        &plugin,
+                        methods::UI_EVENT,
+                        UiEvent {
+                            panel,
+                            action: id,
+                            value: Some(Value::String(text)),
+                        },
+                    );
+                }
                 Task::none()
             }
             PluginMsg::Input(plugin, panel, field, value) => {
@@ -858,7 +967,11 @@ impl SimpleEditApp {
                                     .panels
                                     .iter()
                                     .any(|q| q.id == p.panel)
-                            });
+                            }) || self
+                                .plugins
+                                .tabs
+                                .values()
+                                .any(|t| t.plugin == id && t.tab == p.panel);
                             if known {
                                 self.plugins.set_view((id, p.panel), p.root);
                             }
@@ -867,6 +980,31 @@ impl SimpleEditApp {
                     methods::NOTIFY => {
                         if let Ok(p) = serde_json::from_value::<NotifyParams>(params) {
                             self.set_status(p.message, p.level == Level::Error);
+                        }
+                    }
+                    methods::TAB_DIRTY => {
+                        if let Ok(p) = serde_json::from_value::<TabDirtyParams>(params) {
+                            if let Some(tab) = self
+                                .plugins
+                                .tabs
+                                .values_mut()
+                                .find(|t| t.plugin == id && t.tab == p.tab)
+                            {
+                                tab.dirty = p.dirty;
+                            }
+                        }
+                    }
+                    methods::CLOSE_TAB => {
+                        if let Ok(p) = serde_json::from_value::<PanelParams>(params) {
+                            let path = self
+                                .plugins
+                                .tabs
+                                .iter()
+                                .find(|(_, t)| t.plugin == id && t.tab == p.panel)
+                                .map(|(path, _)| path.clone());
+                            if let Some(path) = path {
+                                return self.close_path(path);
+                            }
                         }
                     }
                     methods::SHOW_PANEL => {
@@ -933,6 +1071,22 @@ impl SimpleEditApp {
                             len: 0,
                         })
                     }
+                    Err(e) => {
+                        host::respond(&id, request, Err(invalid(e)));
+                        Task::none()
+                    }
+                },
+                methods::OPEN_TAB => match serde_json::from_value::<TabParams>(params) {
+                    Ok(p) => match self.plugin_open_tab(&id, p) {
+                        Ok(task) => {
+                            host::respond(&id, request, Ok(Value::Null));
+                            task
+                        }
+                        Err(e) => {
+                            host::respond(&id, request, Err(invalid(e)));
+                            Task::none()
+                        }
+                    },
                     Err(e) => {
                         host::respond(&id, request, Err(invalid(e)));
                         Task::none()
@@ -1291,6 +1445,23 @@ impl SimpleEditApp {
     }
 }
 
+/// Whether the editor `id` of a tree of nodes is only read.
+fn editor_read_only(node: &simpleedit_plugin::ui::Node, id: &str) -> bool {
+    use simpleedit_plugin::ui::Node;
+    match node {
+        Node::Editor {
+            id: this,
+            read_only,
+            ..
+        } => this == id && *read_only,
+        Node::Column { children, .. } | Node::Row { children, .. } => {
+            children.iter().any(|c| editor_read_only(c, id))
+        }
+        Node::Scroll { child, .. } => editor_read_only(child, id),
+        _ => false,
+    }
+}
+
 /// The files under `dir` (not in hidden folders), at most `max`.
 fn walk_files(dir: &Path, max: usize) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -1508,5 +1679,129 @@ while True:
         }));
         let _ = app.update(Message::CloseOverlay);
         assert!(matches!(app.overlay, ActiveOverlay::None));
+    }
+}
+
+#[cfg(test)]
+mod tab_tests {
+    use super::*;
+    use simpleedit_plugin::ui::{column, editor};
+
+    fn app_with_plugin() -> SimpleEditApp {
+        let mut app = SimpleEditApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "test.tabs", "name": "Tabs", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+        app
+    }
+
+    fn from_plugin(app: &mut SimpleEditApp, message: Rpc) {
+        let _ = app.update(Message::Plugin(PluginMsg::Incoming(Incoming::Rpc(
+            "test.tabs".into(),
+            message,
+        ))));
+    }
+
+    #[test]
+    fn a_plugin_opens_a_tab_shows_an_editor_in_it_and_keeps_it_in_the_session() {
+        let mut app = app_with_plugin();
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                4,
+                methods::OPEN_TAB,
+                serde_json::json!({"tab": "req-1", "title": "GET /items"}),
+            ),
+        );
+        let path = crate::plugins::tab_path("test.tabs", "req-1", "GET /items");
+        assert_eq!(app.current_file.as_ref(), Some(&path));
+        assert!(app.sidebar.files().contains(&path));
+        assert_eq!(display_name(&path), "GET /items");
+        assert!(is_virtual(&path) && is_untitled(&path));
+        // What it renders for the tab, with an editor.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::RENDER,
+                RenderParams {
+                    panel: "req-1".into(),
+                    root: column([editor("body", "{}", "json")]),
+                },
+            ),
+        );
+        let slot = (
+            ("test.tabs".to_string(), "req-1".to_string()),
+            "body".to_string(),
+        );
+        assert_eq!(app.plugins.editors[&slot].0.text(), "{}");
+        let _ = app.update(Message::Plugin(PluginMsg::EditorAction(
+            "test.tabs".into(),
+            "req-1".into(),
+            "body".into(),
+            text_editor::Action::Edit(text_editor::Edit::Insert('x')),
+        )));
+        assert_eq!(app.plugins.editors[&slot].0.text(), "x{}");
+        // A render with the same value keeps what was typed.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::RENDER,
+                RenderParams {
+                    panel: "req-1".into(),
+                    root: column([editor("body", "{}", "json")]),
+                },
+            ),
+        );
+        assert_eq!(app.plugins.editors[&slot].0.text(), "x{}");
+        // Changes not kept: the tab says so.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::TAB_DIRTY,
+                serde_json::json!({"tab": "req-1", "dirty": true}),
+            ),
+        );
+        assert!(app.is_path_dirty(&path));
+        // The same tab again with a new title is renamed, not doubled.
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                5,
+                methods::OPEN_TAB,
+                serde_json::json!({"tab": "req-1", "title": "POST /items"}),
+            ),
+        );
+        let renamed = crate::plugins::tab_path("test.tabs", "req-1", "POST /items");
+        assert_eq!(app.plugins.tabs.len(), 1);
+        assert_eq!(app.current_file.as_ref(), Some(&renamed));
+        let session = app.build_session();
+        assert_eq!(
+            session.plugin_tabs,
+            vec![renamed.to_string_lossy().into_owned()]
+        );
+        // A bad id is refused.
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                6,
+                methods::OPEN_TAB,
+                serde_json::json!({"tab": "a/b", "title": "x"}),
+            ),
+        );
+        assert_eq!(app.plugins.tabs.len(), 1);
+        // The plugin closes it.
+        from_plugin(
+            &mut app,
+            Rpc::notification(methods::CLOSE_TAB, serde_json::json!({"panel": "req-1"})),
+        );
+        assert!(app.plugins.tabs.is_empty());
+        assert!(!app.sidebar.files().contains(&renamed));
     }
 }
