@@ -485,6 +485,35 @@ pub(crate) mod tests {
         assert!(root.path().join("acme.hello/bin/run").is_file());
     }
 
+    /// Made as the release workflow of the template makes it:
+    /// `tar czf <archive> -C dist/plugin .` (entries start with `./`).
+    #[cfg(unix)]
+    #[test]
+    fn an_archive_made_by_the_release_workflow_installs() {
+        let work = tempfile::tempdir().unwrap();
+        let dist = work.path().join("dist/plugin");
+        std::fs::create_dir_all(dist.join("bin")).unwrap();
+        std::fs::write(dist.join("plugin.json"), manifest_json("acme.tar", "1.0.0")).unwrap();
+        std::fs::write(dist.join("bin/run"), "#!/bin/sh\n").unwrap();
+        let archive = work.path().join("p.tar.gz");
+        let made = std::process::Command::new("tar")
+            .arg("czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&dist)
+            .arg(".")
+            .status();
+        if !made.is_ok_and(|s| s.success()) {
+            return;
+        }
+        let bytes = std::fs::read(&archive).unwrap();
+        assert_eq!(manifest_in_archive(&bytes).unwrap().id, "acme.tar");
+        let root = tempfile::tempdir().unwrap();
+        let installed = install_archive_in(root.path(), &bytes, from("acme/tar"), None).unwrap();
+        assert!(installed.dir.join("bin/run").is_file());
+        assert!(installed.program().is_some());
+    }
+
     #[test]
     fn archives_that_reach_out_are_refused() {
         let root = tempfile::tempdir().unwrap();

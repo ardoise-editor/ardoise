@@ -570,8 +570,8 @@ pub struct Config {
     pub lint_enabled: bool,
     /// Whether they are underlined in the editor.
     pub lint_highlight: bool,
-    /// The languages (groups of `lint::tools`) the user turned the lint on
-    /// for: none to begin with.
+    /// The languages the user turned the lint on for, before the linters
+    /// became the Lint plugin: carried over to its settings, no longer used.
     pub lint_languages: std::collections::BTreeSet<String>,
     /// Which problems "fix them all" fixes: errors only to begin with.
     pub lint_fix_level: crate::lint::Level,
@@ -611,11 +611,11 @@ pub struct Config {
     pub lint_level: crate::lint::Level,
     /// Fixes are applied when a file is saved.
     pub lint_fix_on_save: bool,
-    /// The tools chosen by hand for a language (a group of `lint::tools`):
-    /// none listed means whatever is ready by itself.
+    /// The tools chosen by hand for a language, before the Lint plugin
+    /// (carried over to its settings, no longer used).
     pub lint_tools: std::collections::BTreeMap<String, Vec<String>>,
-    /// The path of a tool chosen by the user (by tool id): it wins over the
-    /// search in the project and the system.
+    /// The paths of tools chosen by the user, before the Lint plugin
+    /// (carried over to its settings, no longer used).
     pub lint_programs: std::collections::BTreeMap<String, String>,
     /// Size of the window when it was last closed or resized.
     pub window_width: f32,

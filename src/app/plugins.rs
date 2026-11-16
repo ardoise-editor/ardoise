@@ -101,7 +101,7 @@ impl SimpleEditApp {
     }
 
     /// Starts the plugin if it is not running; `false` if it can't be.
-    fn plugin_ensure(&mut self, id: &str) -> bool {
+    pub(super) fn plugin_ensure(&mut self, id: &str) -> bool {
         if host::is_running(id) {
             return true;
         }
@@ -201,6 +201,22 @@ impl SimpleEditApp {
         }
     }
 
+    /// The settings of a linter changed: the file is looked at again.
+    fn plugin_settings_touched(&mut self, plugin: &str, panel: &str) {
+        let linter = self
+            .plugins
+            .get(plugin)
+            .is_some_and(|p| p.manifest.contributes.linter.is_some());
+        if linter
+            && self
+                .plugins
+                .settings_panel(plugin)
+                .is_some_and(|p| p.id == panel)
+        {
+            self.lint.force = true;
+        }
+    }
+
     fn open_plugin_panel(&mut self, key: &PanelKey) {
         if self.plugin_ensure(&key.0) {
             host::notify(
@@ -259,6 +275,9 @@ impl SimpleEditApp {
                 self.open_plugin_panel(&key);
                 self.plugins.bottom = Some(key);
             }
+            Some(Location::Settings) => {
+                let _ = self.plugin_update(PluginMsg::ToggleSettings(key.0));
+            }
             None => {}
         }
     }
@@ -299,6 +318,7 @@ impl SimpleEditApp {
                 Task::none()
             }
             PluginMsg::Ui(plugin, panel, action, value) => {
+                self.plugin_settings_touched(&plugin, &panel);
                 host::notify(
                     &plugin,
                     methods::UI_EVENT,
@@ -311,6 +331,7 @@ impl SimpleEditApp {
                 Task::none()
             }
             PluginMsg::Input(plugin, panel, field, value) => {
+                self.plugin_settings_touched(&plugin, &panel);
                 self.plugins.inputs.insert(
                     ((plugin.clone(), panel.clone()), field.clone()),
                     value.clone(),
@@ -342,14 +363,32 @@ impl SimpleEditApp {
                 host::respond(&plugin, request, Ok(Value::Bool(yes)));
                 Task::none()
             }
+            PluginMsg::ToggleSettings(id) => {
+                let Some(panel) = self.plugins.settings_panel(&id).map(|p| p.id.clone()) else {
+                    return Task::none();
+                };
+                let key = (id, panel);
+                if let Some(old) = self.plugins.settings_open.take() {
+                    self.close_plugin_panel(&old);
+                    if old == key {
+                        return Task::none();
+                    }
+                }
+                self.open_plugin_panel(&key);
+                self.plugins.settings_open = Some(key);
+                Task::none()
+            }
             PluginMsg::Restart(id) => {
                 if self.plugin_ensure(&id) {
-                    let open: Vec<PanelKey> =
-                        [self.plugins.sidebar.clone(), self.plugins.bottom.clone()]
-                            .into_iter()
-                            .flatten()
-                            .filter(|k| k.0 == id)
-                            .collect();
+                    let open: Vec<PanelKey> = [
+                        self.plugins.sidebar.clone(),
+                        self.plugins.bottom.clone(),
+                        self.plugins.settings_open.clone(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .filter(|k| k.0 == id)
+                    .collect();
                     for key in open {
                         host::notify(&key.0, methods::PANEL_OPENED, PanelParams { panel: key.1 });
                     }
@@ -443,7 +482,11 @@ impl SimpleEditApp {
                                 .iter()
                                 .any(|p| p.id == k.1)
                         };
-                        for slot in [&mut self.plugins.sidebar, &mut self.plugins.bottom] {
+                        for slot in [
+                            &mut self.plugins.sidebar,
+                            &mut self.plugins.bottom,
+                            &mut self.plugins.settings_open,
+                        ] {
                             if slot.as_ref().is_some_and(|k| k.0 == id && !has(k)) {
                                 *slot = None;
                             }
@@ -468,7 +511,11 @@ impl SimpleEditApp {
                         self.plugins.crashed.remove(&id);
                         self.plugins.updates.remove(&id);
                         self.plugins.errors.remove(&id);
-                        for slot in [&mut self.plugins.sidebar, &mut self.plugins.bottom] {
+                        for slot in [
+                            &mut self.plugins.sidebar,
+                            &mut self.plugins.bottom,
+                            &mut self.plugins.settings_open,
+                        ] {
                             if slot.as_ref().is_some_and(|k| k.0 == id) {
                                 *slot = None;
                             }
@@ -716,6 +763,8 @@ impl SimpleEditApp {
         let open = match location {
             Location::Sidebar => self.plugins.sidebar.as_ref().filter(|_| self.show_sidebar),
             Location::Bottom => self.plugins.bottom.as_ref(),
+            // No button: the settings are in the preferences.
+            Location::Settings => return Vec::new(),
         };
         let locale = rust_i18n::locale();
         self.plugins
@@ -994,6 +1043,10 @@ while True:
         send({'id': 7, 'method': 'window/confirm', 'params': {'message': 'Sure?'}})
     elif method is None and 'id' in m:
         send({'method': 'window/notify', 'params': {'message': 'answer %s' % json.dumps(m.get('result'))}})
+    elif method == 'lint/run':
+        n = len(m['params']['text'])
+        send({'id': m['id'], 'result': {'diagnostics': [{'line': 0, 'col': 0, 'end_line': 0, 'end_col': n,
+              'severity': 'error', 'message': 'bad', 'source': 'Fake'}], 'ran': ['Fake']}})
     elif method == 'ui/event' and m['params']['action'] == 'die':
         sys.exit(3)
 "#;
@@ -1073,6 +1126,29 @@ while True:
         let incoming = next(&mut rx);
         let _ = app.update(Message::Plugin(PluginMsg::Incoming(incoming)));
         assert_eq!(app.status_message, "answer true");
+
+        // The editor asks, and the answer comes back to whoever waits.
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let params = serde_json::json!({"path": "/x/a.json", "text": "abc"});
+        let answer = runtime
+            .block_on(host::request(
+                &id,
+                methods::LINT_RUN,
+                &params,
+                Duration::from_secs(20),
+            ))
+            .unwrap();
+        let result: simpleedit_plugin::lint::LintResult = serde_json::from_value(answer).unwrap();
+        assert_eq!(result.diagnostics[0].end_col, 3);
+        assert_eq!(result.ran, vec!["Fake".to_string()]);
+        // A question it never answers is given up on.
+        let silent = runtime.block_on(host::request(
+            &id,
+            "lint/nothing",
+            Value::Null,
+            Duration::from_millis(300),
+        ));
+        assert!(silent.is_err());
 
         // It dies: what it showed goes, the panel offers to start it again.
         let _ = app.update(Message::Plugin(PluginMsg::Ui(

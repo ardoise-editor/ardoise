@@ -5,6 +5,7 @@
 //! drawn by [`render`].
 
 pub mod host;
+pub mod migrate;
 pub mod remote;
 pub mod render;
 pub mod store;
@@ -45,6 +46,8 @@ pub enum PluginMsg {
     Answer(String, i64, bool),
     /// Starts a plugin that stopped, and opens again its panels.
     Restart(String),
+    /// Shows or hides the settings of a plugin in Preferences › Plugins.
+    ToggleSettings(String),
 
     // ── The Plugins page ───────────────────────────────────────────────
     LoadRegistry,
@@ -117,6 +120,8 @@ pub struct Plugins {
     /// The panel of a plugin shown in the sidebar, and the one under the editor.
     pub sidebar: Option<PanelKey>,
     pub bottom: Option<PanelKey>,
+    /// The settings panel open in Preferences › Plugins.
+    pub settings_open: Option<PanelKey>,
     /// The items of the status bar: (plugin, item).
     pub status: BTreeMap<(String, String), StatusParams>,
     /// The plugins that stopped by themselves, and why.
@@ -203,8 +208,19 @@ impl Plugins {
 
     /// Whether a panel of this plugin is open.
     pub fn has_open_panel(&self, id: &str) -> bool {
-        self.sidebar.as_ref().is_some_and(|k| k.0 == id)
-            || self.bottom.as_ref().is_some_and(|k| k.0 == id)
+        [&self.sidebar, &self.bottom, &self.settings_open]
+            .into_iter()
+            .any(|k| k.as_ref().is_some_and(|k| k.0 == id))
+    }
+
+    /// The panel of a plugin's settings, if it has one.
+    pub fn settings_panel(&self, id: &str) -> Option<&simpleedit_plugin::manifest::Panel> {
+        self.get(id)?
+            .manifest
+            .contributes
+            .panels
+            .iter()
+            .find(|p| p.location == Location::Settings)
     }
 }
 

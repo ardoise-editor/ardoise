@@ -22,8 +22,12 @@ pub enum Incoming {
     Crashed(String, String),
 }
 
+type Waiter = tokio::sync::oneshot::Sender<Result<Value, RpcError>>;
+
 struct Process {
     stdin: Mutex<Option<ChildStdin>>,
+    /// The requests of the editor waiting for their answer.
+    pending: Mutex<HashMap<i64, Waiter>>,
     child: Mutex<Child>,
     next_id: AtomicI64,
     /// It is being stopped on purpose: its end is no crash.
@@ -135,6 +139,7 @@ pub fn start(plugin: &Installed, init: InitializeParams) -> Result<(), String> {
     static RUNS: AtomicU64 = AtomicU64::new(0);
     let process = Arc::new(Process {
         stdin: Mutex::new(Some(stdin)),
+        pending: Mutex::default(),
         child: Mutex::new(child),
         next_id: AtomicI64::new(1),
         stopping: AtomicBool::new(false),
@@ -159,15 +164,21 @@ fn read_loop(id: String, process: Arc<Process>, stdout: std::process::ChildStdou
     let mut reason = None;
     loop {
         match protocol::read_message(&mut input) {
+            // A refusal of `initialize` (the first request) is the plugin
+            // failing to start.
             Ok(Some(Rpc::Response {
-                result: Err(error), ..
+                id: 1,
+                result: Err(error),
             })) => {
-                // Only `initialize` and `shutdown` are asked: a refusal of
-                // `initialize` is the plugin failing to start.
                 reason = Some(error.message);
                 break;
             }
-            Ok(Some(Rpc::Response { .. })) => {}
+            Ok(Some(Rpc::Response { id, result })) => {
+                let waiter = process.pending.lock().ok().and_then(|mut p| p.remove(&id));
+                if let Some(waiter) = waiter {
+                    let _ = waiter.send(result);
+                }
+            }
             Ok(Some(message)) => emit(Incoming::Rpc(id.clone(), message)),
             Ok(None) => break,
             Err(e) => {
@@ -177,6 +188,10 @@ fn read_loop(id: String, process: Arc<Process>, stdout: std::process::ChildStdou
         }
     }
     // The end of its output: the plugin is done, one way or another.
+    // Whoever waits for an answer hears that none will come.
+    if let Ok(mut pending) = process.pending.lock() {
+        pending.clear();
+    }
     let status = process.child.lock().ok().and_then(|mut c| {
         let _ = c.kill();
         c.wait().ok()
@@ -201,6 +216,38 @@ fn read_loop(id: String, process: Arc<Process>, stdout: std::process::ChildStdou
 pub fn notify(id: &str, method: &str, params: impl serde::Serialize) -> bool {
     let process = processes().lock().ok().and_then(|p| p.get(id).cloned());
     process.is_some_and(|p| p.send(&Rpc::notification(method, params)))
+}
+
+/// Asks a running plugin and waits for its answer (at most `wait`).
+pub async fn request(
+    id: &str,
+    method: &str,
+    params: impl serde::Serialize,
+    wait: Duration,
+) -> Result<Value, String> {
+    let process = processes()
+        .lock()
+        .ok()
+        .and_then(|p| p.get(id).cloned())
+        .ok_or_else(|| t!("plugins.not_running", id = id).to_string())?;
+    let request = process.next_id.fetch_add(1, Ordering::Relaxed);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    if let Ok(mut pending) = process.pending.lock() {
+        pending.insert(request, tx);
+    }
+    if !process.send(&Rpc::request(request, method, params)) {
+        return Err(t!("plugins.not_running", id = id).to_string());
+    }
+    let answer = tokio::time::timeout(wait, rx).await;
+    if let Ok(mut pending) = process.pending.lock() {
+        pending.remove(&request);
+    }
+    match answer {
+        Ok(Ok(result)) => result.map_err(|e| e.message),
+        // The plugin stopped before it answered.
+        Ok(Err(_)) => Err(t!("plugins.not_running", id = id).to_string()),
+        Err(_) => Err(t!("plugins.no_answer", id = id).to_string()),
+    }
 }
 
 /// Answers a request of a plugin.

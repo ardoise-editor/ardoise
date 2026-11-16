@@ -1390,6 +1390,9 @@ impl SimpleEditApp {
             );
         }
         app.announce_new_version();
+        if owner {
+            crate::plugins::migrate::carry_lint_settings(&app.config);
+        }
         app.plugins = crate::plugins::Plugins::load();
         app.plugins_start();
 
@@ -2152,7 +2155,6 @@ impl SimpleEditApp {
                 &self.config,
                 self.capturing,
                 &self.servers,
-                self.current_file.as_deref(),
                 &self.plugins,
             ))
             .width(Length::Fill)
@@ -3380,10 +3382,6 @@ impl SimpleEditApp {
                 }
             }
             Message::Lint(setting) => {
-                // Turning a language on looks at the file at once.
-                if matches!(setting, crate::lint::Setting::Language(_, true)) {
-                    self.lint.force = true;
-                }
                 crate::lint::apply_setting(&mut self.config, setting);
                 self.config_dirty = true;
                 Task::none()
@@ -9338,7 +9336,6 @@ impl SimpleEditApp {
         let lbl_lint_fix = t!("menu.lint_fix").to_string();
         let lbl_lint_now = t!("menu.lint_check").to_string();
         let has_problems = !self.lint.diagnostics.is_empty();
-        let lint_off = self.lint_group_off();
         let lbl_format_sel = t!("ctx.format_selection").to_string();
         let lbl_format_all = t!("ctx.format_all").to_string();
         let has_fmt_ctx = self
@@ -9509,16 +9506,7 @@ impl SimpleEditApp {
                 None => disabled_item(lbl_git.clone(), dark),
             });
             ctx_items.push(separator(dark));
-            if let Some(group) = lint_off {
-                ctx_items.push(item(
-                    t!("lint.turn_on", name = group.name).to_string(),
-                    None,
-                    dark,
-                    Message::Lint(crate::lint::Setting::Language(group.id, true)),
-                ));
-            } else {
-                ctx_items.push(item(lbl_lint_now.clone(), None, dark, Message::LintNow));
-            }
+            ctx_items.push(item(lbl_lint_now.clone(), None, dark, Message::LintNow));
             ctx_items.push(if has_problems {
                 item(lbl_lint_fix.clone(), None, dark, Message::LintFixAll)
             } else {

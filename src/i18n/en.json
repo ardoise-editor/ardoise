@@ -214,15 +214,8 @@
   "lint.level_all": "Everything",
   "lint.fix_on_save": "Fix problems when saving",
   "lint.fix_level": "Fix them all fixes",
-  "lint.languages_hint": "Nothing is checked until you turn a language on. Each one then uses the linters it finds ready by itself; turn Automatic off to choose them.",
-  "lint.automatic": "Automatic",
   "lint.failed": "Lint",
   "lint.no_tool": "lint: no tool found",
-  "lint.turn_on": "Turn on the lint for %{name}",
-  "lint.status_ready": "ready",
-  "lint.status_no_config": "installed, no configuration in the project",
-  "lint.status_missing": "not installed",
-  "lint.path_placeholder": "Path of the program (found by itself if empty)",
   "menu.lint_check": "Check for problems",
   "menu.lint_fix": "Fix the problems of the file",
   "menu.lint_next": "Next problem",
@@ -1652,5 +1645,10 @@
   "plugins.err_program_missing": "the program %{program} was not found",
   "plugins.err_release": "The latest release has no version number (vMAJOR.MINOR.PATCH)",
   "plugins.err_repo": "Type a GitHub repository: owner/name",
-  "plugins.err_taken": "Another plugin with this id is installed (from %{from}): uninstall it first"
+  "plugins.err_taken": "Another plugin with this id is installed (from %{from}): uninstall it first",
+  "lint.plugin_settings": "The linters (ESLint, ruff, ShellCheck…) and the languages they look at are set in the Lint plugin's settings.",
+  "lint.plugin_missing": "Without a linter, only the language servers find problems. Install the Lint plugin for ESLint, ruff, ShellCheck and the others.",
+  "plugins.settings": "Settings",
+  "plugins.not_running": "the plugin %{id} is not running",
+  "plugins.no_answer": "the plugin %{id} did not answer in time"
 }

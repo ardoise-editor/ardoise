@@ -214,15 +214,8 @@
   "lint.level_all": "Tout",
   "lint.fix_on_save": "Corriger les problèmes à l'enregistrement",
   "lint.fix_level": "« Tout corriger » corrige",
-  "lint.languages_hint": "Rien n'est vérifié tant que tu n'actives pas un langage. Chacun utilise alors les linters qu'il trouve prêts ; désactive Automatique pour les choisir.",
-  "lint.automatic": "Automatique",
   "lint.failed": "Lint",
   "lint.no_tool": "lint : aucun outil trouvé",
-  "lint.turn_on": "Activer le lint pour %{name}",
-  "lint.status_ready": "prêt",
-  "lint.status_no_config": "installé, pas de configuration dans le projet",
-  "lint.status_missing": "non installé",
-  "lint.path_placeholder": "Chemin du programme (cherché automatiquement si vide)",
   "menu.lint_check": "Rechercher les problèmes",
   "menu.lint_fix": "Corriger les problèmes du fichier",
   "menu.lint_next": "Problème suivant",
@@ -1652,5 +1645,10 @@
   "plugins.err_program_missing": "le programme %{program} est introuvable",
   "plugins.err_release": "La dernière release n'a pas de numéro de version (vMAJEUR.MINEUR.CORRECTIF)",
   "plugins.err_repo": "Saisissez un dépôt GitHub : propriétaire/nom",
-  "plugins.err_taken": "Un autre plugin avec cet identifiant est installé (depuis %{from}) : désinstallez-le d'abord"
+  "plugins.err_taken": "Un autre plugin avec cet identifiant est installé (depuis %{from}) : désinstallez-le d'abord",
+  "lint.plugin_settings": "Les linters (ESLint, ruff, ShellCheck…) et les langages qu'ils examinent se règlent dans les réglages du plugin Lint.",
+  "lint.plugin_missing": "Sans linter, seuls les serveurs de langage trouvent des problèmes. Installez le plugin Lint pour ESLint, ruff, ShellCheck et les autres.",
+  "plugins.settings": "Réglages",
+  "plugins.not_running": "le plugin %{id} ne tourne pas",
+  "plugins.no_answer": "le plugin %{id} n'a pas répondu à temps"
 }

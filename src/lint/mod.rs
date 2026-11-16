@@ -1,13 +1,12 @@
 //! Lint: the problems that linters and language servers find in a file,
 //! shown in the editor with a fix for those that have one.
 //!
-//! A *tool* (eslint, ruff, shellcheck, …) is run on the file as typed (or as
-//! saved, for those that read the disk) and its report is turned into
-//! [`Diagnostic`]s. Language servers give theirs through `crate::lsp`.
+//! The linters (eslint, ruff, shellcheck, …) are plugins that declare
+//! `contributes.linter` (the official one is `simpleedit.lint`); they answer
+//! `lint/run` with [`Diagnostic`]s. Language servers give theirs through
+//! `crate::lsp`.
 
-pub mod parse;
-pub mod run;
-pub mod tools;
+use std::path::Path;
 
 /// How bad a problem is; the order is the order of importance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -172,17 +171,9 @@ pub enum Setting {
     FixLevel(Level),
     /// The color of a severity, as typed (empty: the default).
     Color(Severity, String),
-    /// The lint is turned on or off for a language group.
-    Language(&'static str, bool),
     Trigger(Trigger),
     Level(Level),
     FixOnSave(bool),
-    /// A language group goes back to automatic (true) or is chosen by hand.
-    Auto(&'static str, bool),
-    /// A tool of a language group is chosen or not.
-    Tool(&'static str, &'static str, bool),
-    /// The path of a tool, typed by the user (empty: found by itself).
-    Program(&'static str, String),
 }
 
 /// The settings with `setting` applied.
@@ -206,50 +197,9 @@ pub fn apply_setting(config: &mut crate::config::Config, setting: Setting) {
                     .insert(color_key(severity).to_string(), text);
             }
         }
-        Setting::Language(group, on) => {
-            if on {
-                config.lint_languages.insert(group.to_string());
-            } else {
-                config.lint_languages.remove(group);
-            }
-        }
         Setting::Trigger(t) => config.lint_trigger = t,
         Setting::Level(l) => config.lint_level = l,
         Setting::FixOnSave(on) => config.lint_fix_on_save = on,
-        Setting::Auto(group, true) => {
-            config.lint_tools.remove(group);
-        }
-        Setting::Auto(group, false) => {
-            // By hand starts from what was automatic.
-            let chosen = tools::GROUPS
-                .iter()
-                .find(|g| g.id == group)
-                .map(|g| {
-                    g.tools
-                        .iter()
-                        .copied()
-                        .filter(|id| tools::tool_by_id(id).is_some_and(|t| t.auto))
-                        .chain(std::iter::once(tools::LSP))
-                        .map(str::to_string)
-                        .collect()
-                })
-                .unwrap_or_default();
-            config.lint_tools.insert(group.to_string(), chosen);
-        }
-        Setting::Program(tool, path) => {
-            if path.trim().is_empty() {
-                config.lint_programs.remove(tool);
-            } else {
-                config.lint_programs.insert(tool.to_string(), path);
-            }
-        }
-        Setting::Tool(group, tool, on) => {
-            let list = config.lint_tools.entry(group.to_string()).or_default();
-            list.retain(|t| t != tool);
-            if on {
-                list.push(tool.to_string());
-            }
-        }
     }
 }
 
@@ -335,18 +285,6 @@ pub fn offset_of(text: &str, line: usize, col: usize) -> usize {
     at
 }
 
-/// The (line, byte column) of byte `offset` in `text`.
-pub fn position_of(text: &str, offset: usize) -> (usize, usize) {
-    let offset = offset.min(text.len());
-    let before = &text.as_bytes()[..offset];
-    let line = before.iter().filter(|b| **b == b'\n').count();
-    let start = before
-        .iter()
-        .rposition(|b| *b == b'\n')
-        .map_or(0, |i| i + 1);
-    (line, offset - start)
-}
-
 /// `text` with the fixes applied. A fix that touches what another one
 /// already changed is left out (it applies on the next run). Returns the new
 /// text and how many fixes went in.
@@ -406,41 +344,141 @@ pub fn fixes_at(diagnostics: &[Diagnostic], level: Level) -> Vec<&Fix> {
         .collect()
 }
 
+// ─── What the linters of the plugins say ─────────────────────────────────
+
+use simpleedit_plugin::lint as from;
+
+impl From<from::Severity> for Severity {
+    fn from(s: from::Severity) -> Self {
+        match s {
+            from::Severity::Hint => Severity::Hint,
+            from::Severity::Info => Severity::Info,
+            from::Severity::Warning => Severity::Warning,
+            from::Severity::Error => Severity::Error,
+        }
+    }
+}
+
+impl From<Level> for from::Level {
+    fn from(l: Level) -> Self {
+        match l {
+            Level::Errors => from::Level::Errors,
+            Level::Warnings => from::Level::Warnings,
+            Level::All => from::Level::All,
+        }
+    }
+}
+
+impl From<from::Fix> for Fix {
+    fn from(f: from::Fix) -> Self {
+        Fix {
+            title: f.title,
+            safe: f.safe,
+            edits: f
+                .edits
+                .into_iter()
+                .map(|e| Edit {
+                    line: e.line,
+                    col: e.col,
+                    end_line: e.end_line,
+                    end_col: e.end_col,
+                    text: e.text,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<from::Diagnostic> for Diagnostic {
+    fn from(d: from::Diagnostic) -> Self {
+        Diagnostic {
+            line: d.line,
+            col: d.col,
+            end_line: d.end_line.max(d.line),
+            end_col: d.end_col,
+            severity: d.severity.into(),
+            message: d.message,
+            code: d.code,
+            source: d.source,
+            fixes: d.fixes.into_iter().map(Fix::from).collect(),
+            raw: None,
+        }
+    }
+}
+
+/// Whether a language server may give the problems of this extension.
+pub fn server_ready(ext: &str) -> bool {
+    let ext = ext.to_ascii_lowercase();
+    crate::lsp::spec_for(&ext).is_some() && crate::lsp::installed(&ext)
+}
+
+/// `text` with the safe fixes the language server has for the problems
+/// that `level` covers (of `source` only, if given): one per problem.
+pub async fn lsp_fix(
+    ext: &str,
+    path: &Path,
+    text: String,
+    level: Level,
+    source: Option<&str>,
+) -> String {
+    let Ok(problems) = crate::lsp::diagnostics(ext, path, &text).await else {
+        return text;
+    };
+    let wanted: Vec<_> = problems
+        .iter()
+        .filter(|d| level.shows(d.severity) && source.is_none_or(|s| s == d.source))
+        .take(300)
+        .collect();
+    let fixes: Vec<_> = crate::lsp::first_fixes(ext, path, &text, &wanted)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|f| f.safe)
+        .collect();
+    let refs: Vec<&Fix> = fixes.iter().collect();
+    apply(&text, &refs).0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn settings_change_the_config_and_a_language_goes_by_hand_from_what_was_automatic() {
+    fn the_problems_of_a_plugin_keep_their_place_rule_and_fixes() {
+        let d = from::Diagnostic {
+            line: 2,
+            col: 1,
+            end_line: 2,
+            end_col: 4,
+            severity: from::Severity::Warning,
+            message: "m".into(),
+            code: Some("E1".into()),
+            source: "ruff".into(),
+            fixes: vec![from::Fix {
+                title: "t".into(),
+                edits: vec![from::Edit {
+                    line: 2,
+                    col: 1,
+                    end_line: 2,
+                    end_col: 4,
+                    text: "x".into(),
+                }],
+                safe: true,
+            }],
+        };
+        let ours = Diagnostic::from(d);
+        assert_eq!((ours.line, ours.col, ours.end_col), (2, 1, 4));
+        assert_eq!(ours.severity, Severity::Warning);
+        assert_eq!(ours.code.as_deref(), Some("E1"));
+        assert!(ours.fixes[0].safe && ours.fixes[0].edits[0].text == "x");
+        assert_eq!(from::Level::from(Level::Errors), from::Level::Errors);
+    }
+
+    #[test]
+    fn settings_change_the_config() {
         let mut config = crate::config::Config::default();
-        assert!(
-            config.lint_languages.is_empty(),
-            "nothing is on to begin with"
-        );
-        apply_setting(&mut config, Setting::Language("py", true));
-        assert!(config.lint_languages.contains("py"));
-        apply_setting(&mut config, Setting::Language("py", false));
-        assert!(config.lint_languages.is_empty());
-        apply_setting(&mut config, Setting::Auto("py", false));
-        assert_eq!(
-            config.lint_tools["py"],
-            vec!["ruff".to_string(), "lsp".to_string()]
-        );
-        apply_setting(&mut config, Setting::Tool("py", "flake8", true));
-        apply_setting(&mut config, Setting::Tool("py", "ruff", false));
-        assert_eq!(
-            config.lint_tools["py"],
-            vec!["lsp".to_string(), "flake8".to_string()]
-        );
-        apply_setting(&mut config, Setting::Auto("py", true));
-        assert!(config.lint_tools.is_empty());
-        apply_setting(
-            &mut config,
-            Setting::Program("flake8", "/opt/flake8".into()),
-        );
-        assert_eq!(config.lint_programs["flake8"], "/opt/flake8");
-        apply_setting(&mut config, Setting::Program("flake8", "  ".into()));
-        assert!(config.lint_programs.is_empty());
+        apply_setting(&mut config, Setting::FixOnSave(true));
+        assert!(config.lint_fix_on_save);
         apply_setting(&mut config, Setting::Enabled(false));
         apply_setting(&mut config, Setting::Level(Level::Errors));
         assert!(!config.lint_enabled && config.lint_level == Level::Errors);
@@ -553,10 +591,9 @@ mod tests {
     }
 
     #[test]
-    fn offsets_and_positions_go_both_ways() {
+    fn offsets_are_found_in_the_lines() {
         let text = "ab\ncde\n\nf";
         assert_eq!(offset_of(text, 1, 2), 5);
-        assert_eq!(position_of(text, 5), (1, 2));
         assert_eq!(offset_of(text, 3, 0), 8);
         assert_eq!(offset_of(text, 9, 0), text.len());
         // A column past the end of a line stays on the line.

@@ -326,7 +326,6 @@ impl PreferencesState {
         config: &Config,
         capturing: Option<ShortcutTarget>,
         servers: &ServerStatus,
-        near: Option<&std::path::Path>,
         plugin_state: &'a crate::plugins::Plugins,
     ) -> Element<'a, Message> {
         let dark = config.dark_mode;
@@ -407,7 +406,14 @@ impl PreferencesState {
             PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing),
             PrefsPage::Language => self.language_card(config, dark),
             PrefsPage::Git => self.git_card(config, dark),
-            PrefsPage::Lint => lint_page(config, dark, near),
+            PrefsPage::Lint => lint_page(
+                config,
+                dark,
+                plugin_state
+                    .installed
+                    .iter()
+                    .any(|p| p.manifest.contributes.linter.is_some()),
+            ),
             PrefsPage::Servers => self.servers_page(dark, servers),
             PrefsPage::Plugins => plugins::page(plugin_state, dark),
             PrefsPage::Network => self.network_card(config, dark),
@@ -1305,17 +1311,11 @@ pub fn shortcuts_list(
     .into()
 }
 
-/// The Lint page: whether and how problems are shown, then the tools of
-/// each language.
-fn lint_page<'a>(
-    config: &Config,
-    dark: bool,
-    near: Option<&std::path::Path>,
-) -> Element<'a, Message> {
-    use crate::lint::tools::{availability, Availability, GROUPS, LSP};
+/// The Lint page: whether and how problems are shown. The linters are a
+/// plugin, with its own settings (Preferences › Plugins).
+fn lint_page<'a>(config: &Config, dark: bool, has_linter: bool) -> Element<'a, Message> {
     use crate::lint::Setting;
     let p = theme::palette(dark);
-    let near = near.unwrap_or(std::path::Path::new("/"));
     let general = card_of_rows(
         dark,
         vec![
@@ -1389,7 +1389,6 @@ fn lint_page<'a>(
             ),
         ],
     );
-    let note = |label: String| text(label).size(12).color(p.muted);
     let colors = card_of_rows(
         dark,
         [
@@ -1450,103 +1449,31 @@ fn lint_page<'a>(
         })
         .collect(),
     );
-    let mut blocks = column![
+    let hint = if has_linter {
+        t!("lint.plugin_settings")
+    } else {
+        t!("lint.plugin_missing")
+    };
+    column![
         general,
         colors,
-        text(t!("lint.languages_hint").to_string())
-            .size(12.5)
-            .color(p.muted)
+        row![
+            text(hint.to_string())
+                .size(12.5)
+                .color(p.muted)
+                .width(Length::Fill),
+            button(text(t!("prefs.nav_plugins").to_string()).size(12))
+                .padding([6, 12])
+                .on_press(Message::Preferences(PreferencesMessage::PageSelected(
+                    PrefsPage::Plugins
+                )))
+                .style((theme::Outline { dark }).style()),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center),
     ]
-    .spacing(14);
-    for group in GROUPS {
-        let on = config.lint_languages.contains(group.id);
-        let by_hand = config.lint_tools.get(group.id).filter(|_| on);
-        let mut rows = vec![setting_row(
-            group.name.to_string(),
-            switch(dark, on, Message::Lint(Setting::Language(group.id, !on))),
-        )];
-        if on {
-            rows.push(setting_row(
-                format!("    {}", t!("lint.automatic")),
-                switch(
-                    dark,
-                    by_hand.is_none(),
-                    Message::Lint(Setting::Auto(group.id, by_hand.is_some())),
-                ),
-            ));
-        }
-        if let Some(chosen) = by_hand {
-            let mut entries: Vec<(&'static str, String, String)> = group
-                .tools
-                .iter()
-                .filter_map(|id| crate::lint::tools::tool_by_id(id))
-                .map(|tool| {
-                    let chosen = config.lint_programs.get(tool.id).map(String::as_str);
-                    let state = match availability(tool, near, chosen) {
-                        Availability::Ready(_) => t!("lint.status_ready"),
-                        Availability::NoConfig(_) => t!("lint.status_no_config"),
-                        Availability::NoProgram => t!("lint.status_missing"),
-                    };
-                    (tool.id, tool.name.to_string(), state.to_string())
-                })
-                .collect();
-            if group.exts.iter().any(|e| crate::lint::tools::has_server(e)) {
-                let state = if group.exts.iter().any(|e| crate::lsp::installed(e)) {
-                    t!("lint.status_ready")
-                } else {
-                    t!("lint.status_missing")
-                };
-                entries.push((
-                    LSP,
-                    t!("lint.language_server").to_string(),
-                    state.to_string(),
-                ));
-            }
-            for (id, name, state) in entries {
-                // The path of the tool, when it is not where it is looked for.
-                let program: Element<Message> =
-                    match crate::lint::tools::tool_by_id(id).filter(|t| !t.program.is_empty()) {
-                        Some(tool) => {
-                            let value = config.lint_programs.get(id).cloned().unwrap_or_default();
-                            let placeholder = crate::lint::tools::program_path(tool, near, None)
-                                .map_or_else(
-                                    || t!("lint.path_placeholder").to_string(),
-                                    |p| p.display().to_string(),
-                                );
-                            iced::widget::text_input(&placeholder, &value)
-                                .on_input(move |t| Message::Lint(Setting::Program(id, t)))
-                                .size(12)
-                                .padding([5, 8])
-                                .width(260)
-                                .style(theme::Field::new(dark).style())
-                                .into()
-                        }
-                        None => Space::new().width(0).into(),
-                    };
-                rows.push(setting_row(
-                    format!("    {name}"),
-                    row![
-                        program,
-                        note(state),
-                        switch(
-                            dark,
-                            chosen.iter().any(|c| c == id),
-                            Message::Lint(Setting::Tool(
-                                group.id,
-                                id,
-                                !chosen.iter().any(|c| c == id),
-                            )),
-                        ),
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Center)
-                    .into(),
-                ));
-            }
-        }
-        blocks = blocks.push(card_of_rows(dark, rows));
-    }
-    blocks.into()
+    .spacing(14)
+    .into()
 }
 
 #[cfg(test)]
