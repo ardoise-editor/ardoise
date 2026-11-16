@@ -28,6 +28,15 @@ pub use store::Installed;
 /// A panel of a plugin: the plugin's id, the panel's id.
 pub type PanelKey = (String, String);
 
+/// What a file is compared with to mark its changed lines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Base {
+    /// This text (none: the file is new, every line added).
+    Text(Option<String>),
+    /// No marks at all.
+    None,
+}
+
 /// A tab of a plugin among the files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginTab {
@@ -199,6 +208,13 @@ pub struct Plugins {
     pub settings_open: Option<PanelKey>,
     /// The screen that has the keyboard: its panel and its id.
     pub screen_focus: Option<(PanelKey, String)>,
+    /// How files stand, as each plugin said it.
+    pub decorations: BTreeMap<String, Vec<simpleedit_plugin::protocol::FileDecoration>>,
+    /// The texts files are compared with to mark their changed lines: the
+    /// text (none: new), or no marks at all.
+    pub bases: HashMap<PathBuf, Base>,
+    /// The plugin whose annotations are the column of the file in front.
+    pub annotations_of: Option<String>,
     /// The tabs of the plugins among the files, by path.
     pub tabs: BTreeMap<PathBuf, PluginTab>,
     /// The text of the editors of the panels, and the value each had in the

@@ -7022,6 +7022,11 @@ impl SimpleEditApp {
             self.marks = None;
             return Task::none();
         };
+        // A plugin said what the file is compared with.
+        if let Some(base) = self.plugins.bases.get(&path).cloned() {
+            self.plugin_base_loaded(path, base);
+            return Task::none();
+        }
         Task::perform(
             async move {
                 // Not in a repository: no answer at all.
@@ -7326,6 +7331,9 @@ impl SimpleEditApp {
 
     /// A click on a line of the blame column shows its commit in the Git panel.
     fn blame_line_clicked(&mut self, line: usize) -> Task<Message> {
+        if self.plugin_annotation_clicked(line) {
+            return Task::none();
+        }
         let Some(blame) = &self.blame else {
             return Task::none();
         };

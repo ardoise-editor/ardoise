@@ -11,11 +11,11 @@ use crate::plugins::{
 use serde_json::Value;
 use simpleedit_plugin::manifest::{Event, Location};
 use simpleedit_plugin::protocol::{
-    self as rpc, codes, methods, ActiveFile, ActiveFileParams, CommandParams, ConfirmParams,
-    Context, CopyParams, DiffParams, FileParams, InitializeParams, Level, Message as Rpc,
-    NotifyParams, OpenFileParams, PanelParams, PickFileParams, PublishParams, RenameParams,
-    RenderParams, ReplaceTextParams, RpcError, SaveFileParams, Settings, StatusParams,
-    TabDirtyParams, TabParams, UiEvent,
+    self as rpc, codes, methods, ActiveFile, ActiveFileParams, AnnotateParams, CommandParams,
+    ConfirmParams, Context, CopyParams, DecorateParams, DiffParams, FileParams, InitializeParams,
+    Level, Message as Rpc, NotifyParams, OpenFileParams, PanelParams, PickFileParams,
+    PublishParams, RenameParams, RenderParams, ReplaceTextParams, RpcError, SaveFileParams,
+    SetBaseParams, Settings, StatusParams, TabDirtyParams, TabParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -395,6 +395,96 @@ impl SimpleEditApp {
             return Task::none();
         }
         self.plugin_update(PluginMsg::Run(id.to_string(), command.to_string()))
+    }
+
+    /// What the plugins say of how files stand, in the tree and the tabs.
+    fn plugins_decorate(&mut self) {
+        use simpleedit_plugin::protocol::FileState as S;
+        let states = self
+            .plugins
+            .decorations
+            .values()
+            .flatten()
+            .map(|d| {
+                let state = match d.state {
+                    S::Modified => crate::git::FileState::Modified,
+                    S::Added => crate::git::FileState::Added,
+                    S::Untracked => crate::git::FileState::Untracked,
+                    S::Conflicted => crate::git::FileState::Conflicted,
+                    S::Ignored => crate::git::FileState::Ignored,
+                };
+                (d.path.clone(), state, d.folder)
+            })
+            .collect();
+        self.file_marks.set_git(states);
+    }
+
+    /// The text the file in front is compared with came from a plugin.
+    pub(super) fn plugin_base_loaded(&mut self, path: PathBuf, base: crate::plugins::Base) {
+        match base {
+            crate::plugins::Base::Text(text) => self.marks_base_loaded(path, Some(text)),
+            crate::plugins::Base::None => self.marks_base_loaded(path, None),
+        }
+    }
+
+    /// A column of annotations of a plugin (a blame), or none.
+    fn plugin_annotate(&mut self, plugin: String, p: AnnotateParams) {
+        let Some(found) = p.annotations else {
+            if self.plugins.annotations_of.as_deref() == Some(plugin.as_str())
+                && self.blame.as_ref().is_some_and(|b| b.path == p.path)
+            {
+                self.blame = None;
+                self.plugins.annotations_of = None;
+            }
+            return;
+        };
+        let dark = self.config.dark_mode;
+        let palette = se_theme::palette(dark);
+        let lines = found
+            .lines
+            .into_iter()
+            .map(|l| crate::code_editor::Annotation {
+                text: l.text,
+                tint: l.tint.map_or(iced::Color::TRANSPARENT, |[r, g, b]| {
+                    iced::Color::from_rgba8(r, g, b, 0.16)
+                }),
+                details: l.detail,
+            })
+            .collect();
+        self.blame = Some(super::BlameState {
+            path: p.path,
+            repo: PathBuf::new(),
+            relative: String::new(),
+            annotations: crate::code_editor::Annotations {
+                lines: Arc::new(lines),
+                text: palette.muted,
+                details: Arc::new(found.details),
+                link: palette.accent,
+                card_text: palette.text,
+                card_background: palette.elevated,
+                card_border: palette.border_strong,
+            },
+            shas: Vec::new(),
+        });
+        self.plugins.annotations_of = Some(plugin);
+    }
+
+    /// A click on a line of the annotations of a plugin: it hears of it.
+    pub(super) fn plugin_annotation_clicked(&mut self, line: usize) -> bool {
+        let (Some(plugin), Some(blame)) =
+            (self.plugins.annotations_of.clone(), self.blame.as_ref())
+        else {
+            return false;
+        };
+        host::notify(
+            &plugin,
+            methods::ANNOTATION_CLICKED,
+            simpleedit_plugin::protocol::LineParams {
+                path: blame.path.clone(),
+                line,
+            },
+        );
+        true
     }
 
     /// The settings of a linter changed: the file is looked at again.
@@ -980,6 +1070,30 @@ impl SimpleEditApp {
                     methods::NOTIFY => {
                         if let Ok(p) = serde_json::from_value::<NotifyParams>(params) {
                             self.set_status(p.message, p.level == Level::Error);
+                        }
+                    }
+                    methods::DECORATE => {
+                        if let Ok(p) = serde_json::from_value::<DecorateParams>(params) {
+                            self.plugins.decorations.insert(id, p.files);
+                            self.plugins_decorate();
+                        }
+                    }
+                    methods::SET_BASE => {
+                        if let Ok(p) = serde_json::from_value::<SetBaseParams>(params) {
+                            let base = if p.none {
+                                crate::plugins::Base::None
+                            } else {
+                                crate::plugins::Base::Text(p.text)
+                            };
+                            self.plugins.bases.insert(p.path.clone(), base.clone());
+                            if self.current_file.as_ref() == Some(&p.path) {
+                                self.plugin_base_loaded(p.path, base);
+                            }
+                        }
+                    }
+                    methods::ANNOTATE => {
+                        if let Ok(p) = serde_json::from_value::<AnnotateParams>(params) {
+                            self.plugin_annotate(id, p);
                         }
                     }
                     methods::COPY => {
@@ -1831,5 +1945,68 @@ mod tab_tests {
         );
         assert!(app.plugins.tabs.is_empty());
         assert!(!app.sidebar.files().contains(&renamed));
+    }
+
+    #[test]
+    fn a_plugin_colors_files_marks_changed_lines_and_annotates_them() {
+        let mut app = app_with_plugin();
+        let file = PathBuf::from("/repo/src/a.rs");
+        let _ = app.update(Message::TabRead(Ok(Loaded {
+            path: file.clone(),
+            text: "one\nTWO\nthree\nfour\n".into(),
+            format: TextFormat::default(),
+            stamp: None,
+        })));
+        // How files stand: in the tree and on the tabs.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::DECORATE,
+                serde_json::json!({"files": [{"path": "/repo/src/a.rs", "state": "modified"}]}),
+            ),
+        );
+        assert_eq!(
+            app.file_marks.git(&file, false),
+            Some(crate::git::FileState::Modified)
+        );
+        assert!(
+            app.file_marks.git(Path::new("/repo/src"), true).is_some(),
+            "its folder too"
+        );
+        // What the file is compared with: its changed lines are marked.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::SET_BASE,
+                serde_json::json!({"path": "/repo/src/a.rs", "text": "one\ntwo\nthree\n"}),
+            ),
+        );
+        let marks = app.marks.as_ref().expect("marks");
+        assert_eq!(marks.marks.modified, vec![1]);
+        assert_eq!(marks.marks.added, vec![3]);
+        // A column of annotations, and a click on it goes to the plugin.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::ANNOTATE,
+                serde_json::json!({"path": "/repo/src/a.rs", "annotations": {
+                    "lines": [{"text": "ada 2026"}, {"text": "bob 2025", "tint": [1, 2, 3], "detail": 0}],
+                    "details": [["abc123", "fix"]]
+                }}),
+            ),
+        );
+        let blame = app.blame.as_ref().expect("a column");
+        assert_eq!(blame.annotations.lines[1].text, "bob 2025");
+        assert!(app.plugin_annotation_clicked(1));
+        // The plugin takes it away.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::ANNOTATE,
+                serde_json::json!({"path": "/repo/src/a.rs"}),
+            ),
+        );
+        assert!(app.blame.is_none());
+        assert!(!app.plugin_annotation_clicked(1));
     }
 }
