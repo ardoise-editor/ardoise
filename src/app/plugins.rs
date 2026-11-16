@@ -302,6 +302,20 @@ impl SimpleEditApp {
         }
     }
 
+    /// Runs a command of an official plugin, or says it is not installed.
+    pub(super) fn run_official_command(
+        &mut self,
+        id: &str,
+        command: &str,
+        missing: String,
+    ) -> Task<Message> {
+        if self.plugins.get(id).is_none() {
+            self.set_status(missing, true);
+            return Task::none();
+        }
+        self.plugin_update(PluginMsg::Run(id.to_string(), command.to_string()))
+    }
+
     /// The settings of a linter changed: the file is looked at again.
     fn plugin_settings_touched(&mut self, plugin: &str, panel: &str) {
         let linter = self

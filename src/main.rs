@@ -41,6 +41,7 @@ mod menu_bar;
 #[cfg(all(target_os = "macos", not(test)))]
 mod native_menu;
 mod palette;
+mod places;
 mod plugins;
 mod pointer_area;
 mod preferences;
@@ -54,7 +55,6 @@ mod sidebar;
 mod ssh_trust;
 mod tab_strip;
 mod tabs;
-mod tasks;
 mod terminal;
 mod text_ops;
 mod theme;

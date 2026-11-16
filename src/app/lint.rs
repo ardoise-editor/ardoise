@@ -239,18 +239,11 @@ impl SimpleEditApp {
                     d
                 }),
         );
-        // What the last task and the plugins said about this file too, unless
-        // a tool already says it on that line.
+        // What the plugins said about this file too (the output of a task),
+        // unless a tool already says it on that line.
         if let Some(file) = &self.lint.file {
             let published = self.plugins.published_for(file);
-            for p in self
-                .tasks
-                .problems
-                .get(file)
-                .into_iter()
-                .flatten()
-                .chain(&published)
-            {
+            for p in &published {
                 if !found
                     .iter()
                     .any(|d| d.line == p.line && d.severity == p.severity)

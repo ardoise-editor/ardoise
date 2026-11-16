@@ -45,6 +45,9 @@ pub fn carry_personal_dictionary() {
     }
 }
 
+/// The official Tasks plugin.
+pub const TASKS: &str = "simpleedit.tasks";
+
 /// The official Local History plugin.
 pub const HISTORY: &str = "simpleedit.history";
 

@@ -566,20 +566,7 @@
   "prefs.format_on_save": "Formater les fichiers à l'enregistrement",
   "status.err_no_formatter": "Pas de formateur ni de serveur de langage pour ce langage",
   "palette.new_window": "Nouvelle fenêtre",
-  "tasks.title": "Tâches",
-  "tasks.run": "Lancer une tâche…",
-  "tasks.rerun": "Relancer",
-  "tasks.stop": "Arrêter",
-  "tasks.clear": "Effacer",
-  "tasks.running": "en cours…",
-  "tasks.exit": "terminée (code %{code})",
-  "tasks.killed": "terminée (sans code)",
-  "tasks.stopped": "arrêtée",
-  "tasks.none": "Aucune tâche dans ce projet (Cargo, npm, Make, Go, ou .simpleedit/tasks.json)",
-  "tasks.picker_title": "Lancer une tâche",
   "palette.run_task": "Lancer une tâche…",
-  "palette.stop_task": "Arrêter la tâche",
-  "palette.toggle_tasks": "Afficher la sortie des tâches",
   "shortcuts.run_task": "Lancer une tâche",
   "todo.looking": "Recherche des commentaires TODO…",
   "todo.none": "Aucun commentaire TODO, FIXME, HACK, XXX ou BUG",
@@ -1632,5 +1619,6 @@
   "plugins.no_answer": "le plugin %{id} n'a pas répondu à temps",
   "plugins.err_read_only": "le fichier ne peut pas être modifié",
   "plugins.err_not_in_front": "le fichier n'est pas celui affiché",
-  "spell.plugin_missing": "Installez le plugin Orthographe (Préférences › Plugins) pour vérifier l'orthographe"
+  "spell.plugin_missing": "Installez le plugin Orthographe (Préférences › Plugins) pour vérifier l'orthographe",
+  "tasks.plugin_missing": "Installez le plugin Tâches (Préférences › Plugins) pour lancer les tâches d'un projet"
 }

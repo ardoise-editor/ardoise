@@ -566,20 +566,7 @@
   "prefs.format_on_save": "Format files when saving",
   "status.err_no_formatter": "No formatter or language server for this language",
   "palette.new_window": "New window",
-  "tasks.title": "Tasks",
-  "tasks.run": "Run a task…",
-  "tasks.rerun": "Run again",
-  "tasks.stop": "Stop",
-  "tasks.clear": "Clear",
-  "tasks.running": "running…",
-  "tasks.exit": "finished (code %{code})",
-  "tasks.killed": "finished (no code)",
-  "tasks.stopped": "stopped",
-  "tasks.none": "No tasks in this project (Cargo, npm, Make, Go, or .simpleedit/tasks.json)",
-  "tasks.picker_title": "Run a task",
   "palette.run_task": "Run a task…",
-  "palette.stop_task": "Stop the task",
-  "palette.toggle_tasks": "Show the output of tasks",
   "shortcuts.run_task": "Run a task",
   "todo.looking": "Looking for TODO comments…",
   "todo.none": "No TODO, FIXME, HACK, XXX or BUG comment",
@@ -1632,5 +1619,6 @@
   "plugins.no_answer": "the plugin %{id} did not answer in time",
   "plugins.err_read_only": "the file cannot be changed",
   "plugins.err_not_in_front": "the file is not the one in front",
-  "spell.plugin_missing": "Install the Spelling plugin (Preferences › Plugins) to check the spelling"
+  "spell.plugin_missing": "Install the Spelling plugin (Preferences › Plugins) to check the spelling",
+  "tasks.plugin_missing": "Install the Tasks plugin (Preferences › Plugins) to run the tasks of a project"
 }

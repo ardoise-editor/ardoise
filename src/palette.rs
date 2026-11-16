@@ -69,8 +69,6 @@ pub enum PaletteCommand {
     UndoRename,
     NewWindow,
     RunTask,
-    StopTask,
-    ToggleTasks,
     Todos,
     CompareClipboard,
     CompareDisk,
@@ -254,8 +252,6 @@ impl PaletteCommand {
             PaletteCommand::CompareClipboard => Message::AskCompareClipboard,
             PaletteCommand::CompareDisk => Message::CompareDisk,
             PaletteCommand::CompareFile => Message::ComparePickFile,
-            PaletteCommand::StopTask => Message::TaskStop,
-            PaletteCommand::ToggleTasks => Message::TaskToggle,
             PaletteCommand::UndoRename => Message::FindUndoReplace,
         }
     }
@@ -586,18 +582,6 @@ pub fn entries(config: &Config, has_formatter: bool, language_enabled: bool) -> 
             PaletteCommand::RunTask,
             t!("palette.run_task").to_string(),
             Some(sh.run_task.display()),
-            true,
-        ),
-        entry(
-            PaletteCommand::StopTask,
-            t!("palette.stop_task").to_string(),
-            None,
-            true,
-        ),
-        entry(
-            PaletteCommand::ToggleTasks,
-            t!("palette.toggle_tasks").to_string(),
-            None,
             true,
         ),
         entry(

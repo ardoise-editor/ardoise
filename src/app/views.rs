@@ -175,7 +175,6 @@ impl SimpleEditApp {
             | ActiveOverlay::LanguagePicker
             | ActiveOverlay::TextOptions(_)
             | ActiveOverlay::Rename(_)
-            | ActiveOverlay::TaskPicker
             | ActiveOverlay::Compare(..)
             | ActiveOverlay::Spelling(_)
             | ActiveOverlay::SpellLanguages

@@ -628,10 +628,7 @@ mod behavior_tests {
         );
         let _ = app.handle(Message::DeleteFile(loose.clone(), false));
         assert!(matches!(app.overlay, ActiveOverlay::None));
-        assert_eq!(
-            block(super::delete_file(loose.clone(), false)),
-            Ok(false)
-        );
+        assert_eq!(block(super::delete_file(loose.clone(), false)), Ok(false));
         assert!(!loose.exists());
         // Tracked by git: the box is there, checked.
         let repo = Repo::new();
@@ -5856,7 +5853,6 @@ mod diagram_window_tests {
 #[cfg(test)]
 mod keyboard_list_tests {
     use super::*;
-    use crate::tasks::TaskSpec;
 
     fn key(app: &mut SimpleEditApp, name: &str) {
         let _ = app.update(Message::KeyPressed {
@@ -5877,31 +5873,24 @@ mod keyboard_list_tests {
     #[test]
     fn the_arrows_and_enter_pick_a_row_of_a_small_list() {
         let mut app = app();
-        app.tasks.choices = ["a", "b", "c"]
-            .iter()
-            .map(|name| TaskSpec {
-                name: name.to_string(),
-                command: "true".into(),
-                dir: PathBuf::from("/tmp"),
-                custom: None,
-            })
-            .collect();
+        app.spell.choices = vec!["a".into(), "b".into(), "c".into()];
         let _ = app.update(Message::OpenTextOptions(TextOption::Indent));
-        app.overlay = ActiveOverlay::TaskPicker;
-        // The window just changed: the first row is the one on.
+        app.overlay = ActiveOverlay::SpellLanguages;
+        // The window just changed: the first row (automatic) is the one on.
         let _ = app.update(Message::CloseMenu);
         assert_eq!(app.overlay_pick, 0);
         key(&mut app, "ArrowDown");
         key(&mut app, "ArrowDown");
         assert_eq!(app.overlay_pick, 2);
         key(&mut app, "ArrowDown");
+        key(&mut app, "ArrowDown");
         assert_eq!(app.overlay_pick, 0, "it wraps around");
         key(&mut app, "ArrowUp");
-        assert_eq!(app.overlay_pick, 2);
+        assert_eq!(app.overlay_pick, 3);
         key(&mut app, "ArrowUp");
         key(&mut app, "Return");
         assert_eq!(app.overlay, ActiveOverlay::None, "the row was taken");
-        assert_eq!(app.tasks.task.as_ref().map(|t| t.name.as_str()), Some("b"));
+        assert_eq!(app.config.spell_language, "b");
     }
 
     #[test]

@@ -163,8 +163,6 @@ pub enum ActiveOverlay {
     None,
     /// The encoding, line endings or indentation of the file.
     TextOptions(TextOption),
-    /// The tasks of the project, to pick one.
-    TaskPicker,
     /// Two texts side by side (their names).
     Compare(String, String),
     /// A misspelled word, and what could replace it.
@@ -353,15 +351,6 @@ pub enum Message {
     OpenTodos,
     TodosFound(Result<Vec<finder::Occurrence>, String>),
     OpenTaskPicker,
-    RunTask(usize),
-    TaskEvent(u64, crate::tasks::Event),
-    /// The task log was scrolled: offset, viewport height, content height.
-    TaskScrolled(f32, f32, f32),
-    TaskStop,
-    TaskRerun,
-    TaskClear,
-    TaskToggle,
-    TaskOpenAt(crate::tasks::Location),
     IpcPoll,
     TargetOpened(crate::ipc::Target, Result<Loaded, String>),
     NewWindow,
@@ -1036,7 +1025,6 @@ pub struct SimpleEditApp {
     symbol_token: u64,
     /// Other commands hand their files to this window.
     ipc_listening: bool,
-    tasks: tasks::TaskPanel,
     spell: spelling::SpellState,
     /// The local copies of remote files, where they came from and the date
     /// they had there.
@@ -1307,7 +1295,6 @@ impl SimpleEditApp {
             symbol_card: None,
             symbol_token: 0,
             ipc_listening: false,
-            tasks: Default::default(),
             spell: Default::default(),
             remote_files: HashMap::new(),
             disk_stamp: None,
@@ -1460,7 +1447,6 @@ impl SimpleEditApp {
                     | Message::SessionWritten(_)
                     | Message::PreviewTick
                     | Message::TerminalTick
-                    | Message::TaskScrolled(..)
                     | Message::WindowResized(..)
                     | Message::WindowFocus(_)
                     | Message::Git(crate::git_panel::GitMsg::Pick(_))
@@ -1921,9 +1907,6 @@ impl SimpleEditApp {
         if self.results.open && !self.results.tabs.is_empty() {
             panel = panel.push(self.results_view(dark));
         }
-        if self.tasks.open {
-            panel = panel.push(self.tasks_panel(dark));
-        }
         if let Some(bottom) = self.plugin_bottom(dark) {
             panel = panel.push(bottom);
         }
@@ -2364,7 +2347,6 @@ impl SimpleEditApp {
                     ActiveOverlay::LanguagePicker => self.view_language_picker_overlay(dark),
                     ActiveOverlay::TextOptions(which) => self.view_text_options(dark, *which),
                     ActiveOverlay::Rename(name) => self.view_rename(dark, name),
-                    ActiveOverlay::TaskPicker => self.view_task_picker(dark),
                     ActiveOverlay::Compare(left, right) => self.view_compare(dark, left, right),
                     ActiveOverlay::Spelling(found) => self.view_spelling(dark, found),
                     ActiveOverlay::SpellLanguages => self.view_spell_languages(dark),
@@ -2534,7 +2516,6 @@ impl Message {
             | Message::FileSaved(..)
             | Message::FileReloaded(_)
             | Message::LargeRefreshed(..)
-            | Message::TaskEvent(..)
             | Message::BookmarkTexts(_)
             | Message::FinderPreviewRead(..)
             | Message::ProjectsReloaded(_) => true,
@@ -2579,7 +2560,6 @@ impl SimpleEditApp {
                     | Message::SessionWritten(_)
                     | Message::PreviewTick
                     | Message::TerminalTick
-                    | Message::TaskScrolled(..)
                     | Message::WindowResized(..)
                     | Message::WindowFocus(_)
             );
@@ -3308,8 +3288,8 @@ impl SimpleEditApp {
                 } else {
                     dir
                 };
-                match crate::tasks::location_with(&word, &dir, &mut |p| p.is_file()) {
-                    Some(at) => self.task_open_at(at),
+                match crate::places::location_with(&word, &dir, &mut |p| p.is_file()) {
+                    Some(at) => self.open_place(at),
                     None => Task::none(),
                 }
             }
@@ -3821,34 +3801,12 @@ impl SimpleEditApp {
                 }
                 Task::none()
             }
-            Message::OpenTaskPicker => self.open_task_picker(),
-            Message::RunTask(index) => {
-                self.overlay = ActiveOverlay::None;
-                match self.tasks.choices.get(index).cloned() {
-                    Some(task) => self.start_task(task),
-                    None => Task::none(),
-                }
-            }
-            Message::TaskEvent(run, event) => self.task_event(run, event),
-            Message::TaskScrolled(offset, height, content) => {
-                self.task_scrolled(offset, height, content);
-                Task::none()
-            }
-            Message::TaskStop => self.task_stop(),
-            Message::TaskRerun => match self.tasks.task.clone() {
-                Some(task) => self.start_task(task),
-                None => Task::none(),
-            },
-            Message::TaskClear => {
-                self.tasks.lines.clear();
-                self.tasks.away = None;
-                Task::none()
-            }
-            Message::TaskToggle => {
-                self.tasks.open = !self.tasks.open && self.tasks.task.is_some();
-                Task::none()
-            }
-            Message::TaskOpenAt(at) => self.task_open_at(at),
+            // The shortcut of the tasks runs the Tasks plugin's command.
+            Message::OpenTaskPicker => self.run_official_command(
+                crate::plugins::migrate::TASKS,
+                "tasks.run",
+                t!("tasks.plugin_missing").to_string(),
+            ),
             Message::IpcPoll => {
                 let mut tasks = Vec::new();
                 for batch in crate::ipc::take() {
@@ -4652,7 +4610,6 @@ impl SimpleEditApp {
                         self.config.save();
                     }
                     self.api.save_environments_now();
-                    crate::tasks::stop_all();
                     crate::lsp::stop_servers();
                     crate::plugins::host::stop_all();
                     std::process::exit(0)
@@ -4669,7 +4626,6 @@ impl SimpleEditApp {
                     self.config.save();
                 }
                 self.api.save_environments_now();
-                crate::tasks::stop_all();
                 crate::lsp::stop_servers();
                 crate::plugins::host::stop_all();
                 std::process::exit(0)
@@ -7162,9 +7118,6 @@ impl SimpleEditApp {
                     Message::ConvertIndent(false),
                 ])
                 .collect(),
-            ActiveOverlay::TaskPicker => (0..self.tasks.choices.len())
-                .map(Message::RunTask)
-                .collect(),
             ActiveOverlay::SpellLanguages => {
                 let mut rows = vec![Message::SpellLanguage(String::new())];
                 rows.extend(
@@ -8492,6 +8445,18 @@ impl SimpleEditApp {
     }
 
     /// Makes a file just read the active tab.
+    /// Opens the file a place names (a click in the terminal), at its line
+    /// and column.
+    fn open_place(&mut self, at: crate::places::Location) -> Task<Message> {
+        let col = crate::places::byte_col(&at.path, at.line, at.col);
+        self.jump_to(crate::definition::Hit {
+            path: at.path,
+            line: at.line.saturating_sub(1),
+            col: col.saturating_sub(1),
+            len: 0,
+        })
+    }
+
     fn open_loaded(&mut self, loaded: Loaded) {
         let path = loaded.path.clone();
         self.plugins_file_event(simpleedit_plugin::manifest::Event::FileOpened, &path);
@@ -9654,7 +9619,6 @@ mod split;
 #[path = "app/tab_groups.rs"]
 mod tab_groups;
 mod table_admin;
-mod tasks;
 #[path = "app/views.rs"]
 mod views;
 pub(crate) use views::resize_edge;
