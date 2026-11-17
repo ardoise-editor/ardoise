@@ -14,9 +14,9 @@ use simpleedit_plugin::protocol::{
     self as rpc, codes, methods, ActiveFile, ActiveFileParams, AnnotateParams, CommandParams,
     ConfirmParams, Context, CopyParams, DecorateParams, DiffParams, DiffTabParams, FileParams,
     InitializeParams, Level, MergeParams, Message as Rpc, NotifyParams, OpenFileParams,
-    PanelParams, PickFileParams, PublishParams, RenameParams, RenderParams, ReplaceTextParams,
-    RpcError, SaveFileParams, SetBaseParams, Settings, StatusParams, TabDirtyParams, TabParams,
-    UiEvent,
+    OpenTextParams, PanelParams, PickFileParams, PublishParams, RenameParams, RenderParams,
+    ReplaceTextParams, RpcError, SaveFileParams, SetBaseParams, Settings, StatusParams,
+    TabDirtyParams, TabParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -398,6 +398,25 @@ impl SimpleEditApp {
         self.plugin_update(PluginMsg::Run(id.to_string(), command.to_string()))
     }
 
+    /// A text a plugin shows in a tab of its own, to read only (`rev://`);
+    /// the path of that tab.
+    fn plugin_open_text(&mut self, p: OpenTextParams) -> PathBuf {
+        self.untitled_counter += 1;
+        let path = PathBuf::from(format!("rev://{}/{}", self.untitled_counter, p.title));
+        let language =
+            crate::editor::extension_to_token(&p.extension.to_lowercase()).map(str::to_string);
+        self.stash_current();
+        self.sidebar.add_file(path.clone());
+        let loaded = Loaded {
+            path: path.clone(),
+            text: p.text,
+            format: TextFormat::default(),
+            stamp: None,
+        };
+        self.load_buffer(path.clone(), CachedBuffer::from_loaded(loaded, language));
+        path
+    }
+
     /// A file in conflict a plugin gives, to resolve in a merge tab (none:
     /// there is no conflict in the text).
     fn plugin_merge(&mut self, plugin: String, p: MergeParams) -> Option<Task<Message>> {
@@ -444,6 +463,7 @@ impl SimpleEditApp {
                 DiffMode::Unstaged => crate::git::Source::Unstaged,
                 DiffMode::Staged => crate::git::Source::Staged,
                 DiffMode::Commit => crate::git::Source::Commit("HEAD".into()),
+                DiffMode::Against => crate::git::Source::Tree("HEAD".into()),
             };
             entries.push(crate::git_panel::Entry {
                 source,
@@ -1443,12 +1463,27 @@ impl SimpleEditApp {
                         }
                     }
                 }
+                methods::OPEN_TEXT => match serde_json::from_value::<OpenTextParams>(params) {
+                    Ok(p) => {
+                        let path = self.plugin_open_text(p);
+                        host::respond(&id, request, serde_json::to_value(path).map_err(invalid));
+                        Task::none()
+                    }
+                    Err(e) => {
+                        host::respond(&id, request, Err(invalid(e)));
+                        Task::none()
+                    }
+                },
                 methods::ACTIVE_FILE => {
                     let active = ActiveFile {
                         path: self.plugin_context().file,
                         text: crate::editor::buffer_text(&self.editor.content),
                         selection: self.editor.content.selection(),
                         language: self.editor.language.clone(),
+                        lines: self.current_file.as_ref().map(|_| {
+                            let (first, last) = self.lines_to_edit(self.selection_span());
+                            (first + 1, last + 1)
+                        }),
                     };
                     host::respond(&id, request, serde_json::to_value(active).map_err(invalid));
                     Task::none()
@@ -2275,5 +2310,40 @@ mod tab_tests {
             ))
             .unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "top\nmine\nend\n");
+    }
+
+    #[test]
+    fn a_plugin_shows_a_text_in_a_tab_of_its_own_and_hears_its_diff_tab_closed() {
+        let mut app = app_with_plugin();
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                11,
+                methods::OPEN_TEXT,
+                serde_json::json!({"title": "a.rs @ abc123", "text": "fn old() {}\n", "extension": "rs"}),
+            ),
+        );
+        let path = app.current_file.clone().expect("a tab in front");
+        assert!(path.to_string_lossy().starts_with("rev://"));
+        assert_eq!(
+            crate::editor::buffer_text(&app.editor.content),
+            "fn old() {}\n"
+        );
+        // The lines of the cursor go with the file in front.
+        let (first, last) = app.lines_to_edit(app.selection_span());
+        assert_eq!((first, last), (0, 0));
+        // A diff tab of the plugin, closed: it is forgotten.
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                12,
+                methods::OPEN_DIFF_TAB,
+                serde_json::json!({"tab": "d", "title": "D", "files": [{"path": "a.rs", "patch": ""}]}),
+            ),
+        );
+        let diff = app.current_file.clone().unwrap();
+        assert!(app.diff_tabs.contains_key(&diff));
+        let _ = app.close_path(diff.clone());
+        assert!(!app.diff_tabs.contains_key(&diff));
     }
 }

@@ -7908,8 +7908,19 @@ impl SimpleEditApp {
         self.file_cache.remove(&path);
         self.undo_cache.remove(&path);
         self.large.remove(&path);
-        self.diff_tabs.remove(&path);
-        self.merge_tabs.remove(&path);
+        // A diff or a conflict of a plugin: it hears the tab is gone.
+        let owner = self
+            .diff_tabs
+            .remove(&path)
+            .and_then(|t| t.owner.map(|(plugin, tab, _)| (plugin, tab)))
+            .or_else(|| self.merge_tabs.remove(&path).and_then(|t| t.owner));
+        if let Some((plugin, tab)) = owner {
+            crate::plugins::host::notify(
+                &plugin,
+                simpleedit_plugin::protocol::methods::TAB_CLOSED,
+                simpleedit_plugin::protocol::PanelParams { panel: tab },
+            );
+        }
         self.db_tabs.remove(&path);
         if let Some(tab) = self.plugins.tabs.remove(&path) {
             crate::plugins::host::notify(
