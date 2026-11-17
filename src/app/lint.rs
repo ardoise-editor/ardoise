@@ -936,15 +936,15 @@ mod tests {
             ),
         );
         assert!(!app.file_marks.has_errors(&path, false));
-        // What Git says comes in as well.
-        let _ = app.update(Message::FileStates(vec![(
+        // What the Git plugin says comes in as well.
+        app.file_marks.set_git(vec![(
             path.clone(),
-            crate::git::FileState::Modified,
+            crate::diff::FileState::Modified,
             false,
-        )]));
+        )]);
         assert_eq!(
             app.file_marks.git(&path, false),
-            Some(crate::git::FileState::Modified)
+            Some(crate::diff::FileState::Modified)
         );
     }
 

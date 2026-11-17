@@ -324,7 +324,6 @@ impl SimpleEditApp {
         if let Some(path) = back {
             tasks.push(self.activate(path));
         }
-        tasks.push(Task::done(Message::Git(crate::git_panel::GitMsg::Refresh)));
         Task::batch(tasks)
     }
 
@@ -379,7 +378,7 @@ impl SimpleEditApp {
             }
             Err(e) => self.set_status(format!("{}: {e}", t!("status.error")), true),
         }
-        Task::done(Message::Git(crate::git_panel::GitMsg::Refresh))
+        Task::none()
     }
 
     /// The card that asks for a name.

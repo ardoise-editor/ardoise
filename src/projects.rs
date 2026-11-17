@@ -59,7 +59,7 @@ fn modified(dir: &Path) -> Option<SystemTime> {
 /// Git says, and the files the lint found errors in.
 #[derive(Debug, Default)]
 pub struct Marks {
-    files: HashMap<PathBuf, crate::git::FileState>,
+    files: HashMap<PathBuf, crate::diff::FileState>,
     /// Folders with a change somewhere in them.
     changed: std::collections::HashSet<PathBuf>,
     /// Folders Git ignores as a whole.
@@ -70,8 +70,8 @@ pub struct Marks {
 
 impl Marks {
     /// Takes in what Git said (`file_states`): paths, states, folder or not.
-    pub fn set_git(&mut self, states: Vec<(PathBuf, crate::git::FileState, bool)>) {
-        use crate::git::FileState;
+    pub fn set_git(&mut self, states: Vec<(PathBuf, crate::diff::FileState, bool)>) {
+        use crate::diff::FileState;
         self.files.clear();
         self.changed.clear();
         self.ignored.clear();
@@ -97,7 +97,7 @@ impl Marks {
     /// is).
     /// The files Git sees as changed (modified, new, in conflict).
     pub fn changed_files(&self) -> Vec<PathBuf> {
-        use crate::git::FileState;
+        use crate::diff::FileState;
         let mut files: Vec<PathBuf> = self
             .files
             .iter()
@@ -108,8 +108,8 @@ impl Marks {
         files
     }
 
-    pub fn git(&self, path: &Path, is_dir: bool) -> Option<crate::git::FileState> {
-        use crate::git::FileState;
+    pub fn git(&self, path: &Path, is_dir: bool) -> Option<crate::diff::FileState> {
+        use crate::diff::FileState;
         if self.ignored.iter().any(|d| path.starts_with(d)) {
             return Some(FileState::Ignored);
         }
@@ -983,7 +983,7 @@ mod tests {
 
     #[test]
     fn marks_color_files_and_the_folders_above_them() {
-        use crate::git::FileState;
+        use crate::diff::FileState;
         let mut marks = Marks::default();
         marks.set_git(vec![
             (PathBuf::from("/p/src/app.rs"), FileState::Modified, false),

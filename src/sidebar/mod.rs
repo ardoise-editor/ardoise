@@ -44,8 +44,8 @@ pub fn tree_offset(index: usize) -> f32 {
 }
 
 /// The color of a file's name for how it stands in Git (none: as usual).
-pub fn state_color(state: Option<crate::git::FileState>, dark: bool) -> Option<iced::Color> {
-    use crate::git::FileState;
+pub fn state_color(state: Option<crate::diff::FileState>, dark: bool) -> Option<iced::Color> {
+    use crate::diff::FileState;
     let p = theme::palette(dark);
     Some(match state? {
         FileState::Modified => iced::Color::from_rgb8(0x5c, 0x9c, 0xe6),
@@ -177,7 +177,6 @@ impl SidebarState {
         let lbl_close_all = t!("menu.file_close_all").to_string();
         let lbl_save = t!("sidebar.save").to_string();
         let lbl_save_as = t!("sidebar.save_as").to_string();
-        let lbl_git = t!("sidebar.git").to_string();
         let lbl_delete = t!("sidebar.delete").to_string();
         let lbl_lint_fix = t!("menu.lint_fix").to_string();
         let lbl_show = t!("sidebar.show_in_tree").to_string();
@@ -256,7 +255,6 @@ impl SidebarState {
                     lbl_bookmark_add.clone()
                 };
                 let bookmark_path = path.clone();
-                let lbl_git = lbl_git.clone();
                 let lbl_delete = lbl_delete.clone();
                 let lbl_lint_fix = lbl_lint_fix.clone();
                 let lbl_show = lbl_show.clone();
@@ -332,11 +330,6 @@ impl SidebarState {
                                 lbl_split_down.clone(),
                                 crate::app::splittable(&bookmark_path)
                                     .then(|| Message::SplitWith(bookmark_path.clone(), false)),
-                            ),
-                            ctx_item(
-                                lbl_git.clone(),
-                                crate::app::git_menu_applies(&bookmark_path)
-                                    .then(|| Message::GitFileMenu(bookmark_path.clone())),
                             ),
                             ctx_item(
                                 lbl_bookmark.clone(),
@@ -515,7 +508,6 @@ struct ProjectMenuLabels {
     remove: String,
     split_right: String,
     split_down: String,
-    git: String,
     bookmark: String,
     delete: String,
     rename: String,
@@ -537,7 +529,6 @@ impl ProjectMenuLabels {
             remove: t!("sidebar.remove_project").to_string(),
             split_right: t!("sidebar.split_right").to_string(),
             split_down: t!("sidebar.split_down").to_string(),
-            git: t!("sidebar.git").to_string(),
             bookmark: if bookmarked {
                 t!("sidebar.bookmark_remove").to_string()
             } else {
@@ -720,12 +711,6 @@ fn project_tree<'a>(
                         lbl.split_down.clone(),
                         Message::SplitWith(menu_path.clone(), false),
                     ));
-                    if crate::app::git_menu_applies(&menu_path) {
-                        entries.push(item(
-                            lbl.git.clone(),
-                            Message::GitFileMenu(menu_path.clone()),
-                        ));
-                    }
                     entries.push(item(
                         lbl.bookmark.clone(),
                         Message::ToggleFileBookmark(menu_path.clone()),

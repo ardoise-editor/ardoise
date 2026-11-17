@@ -4,11 +4,11 @@
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Color, Element, Length, Point};
 
-use super::diff_syntax;
-use super::{DiffPointer, GitMsg, Selection, Viewer};
+use super::syntax;
+use super::{DiffPointer, Selection, Viewer};
 use crate::app::Message;
-use crate::git::diff::{Row, SideRow, Tag};
-use crate::git::FileDiff;
+use crate::diff::parse::{Row, SideRow, Tag};
+use crate::diff::FileDiff;
 use crate::pointer_area::pointer_area;
 use crate::theme as se_theme;
 
@@ -59,28 +59,6 @@ pub struct Nav {
 }
 
 impl Nav {
-    pub fn panel() -> Nav {
-        Nav {
-            prev_change: Message::Git(GitMsg::PrevChange),
-            next_change: Message::Git(GitMsg::NextChange),
-            prev_file: Message::Git(GitMsg::PrevFile),
-            next_file: Message::Git(GitMsg::NextFile),
-            toggle_side: Message::Git(GitMsg::ToggleSideBySide),
-            rollback: Some(|block| Message::Git(GitMsg::RollbackBlock(block))),
-            toggle_compare: None,
-            open_file: Some(Message::Git(GitMsg::OpenFile)),
-            pick: |p| Message::Git(GitMsg::Pick(p)),
-            copy: Message::Git(GitMsg::CopyPicked),
-            select_all: Message::Git(GitMsg::PickAll),
-            scrolled: |top, height| Message::Git(GitMsg::DiffScrolled(top, height)),
-            stage_block: |block| Message::Git(GitMsg::StageBlock(block)),
-            stage_selection: Message::Git(GitMsg::StageSelection),
-            toggle_blanks: Message::Git(GitMsg::ToggleBlanks),
-            cycle_context: Message::Git(GitMsg::CycleContext),
-            reading_options: true,
-        }
-    }
-
     pub fn tab() -> Nav {
         use crate::app::DiffNav;
         Nav {
@@ -601,7 +579,7 @@ struct Body<'a> {
     /// Stage a block (or, `true`, unstage it).
     stage: Option<StageButton>,
     /// The syntax colors of the lines.
-    syntax: Option<std::sync::Arc<diff_syntax::Spans>>,
+    syntax: Option<std::sync::Arc<syntax::Spans>>,
     layout: std::sync::Arc<DiffLayout>,
     /// Characters per line of a side (side by side).
     columns: usize,
@@ -716,11 +694,11 @@ fn body<'a>(args: Body<'a>) -> Element<'a, Message> {
             row![container(buttons).width(Length::Fixed(column_w)), element].into()
         };
     // What the grammar colors in a line, character by character.
-    let syntax_of = |line: &crate::git::diff::Line, shown: &str| -> Vec<Option<Color>> {
+    let syntax_of = |line: &crate::diff::parse::Line, shown: &str| -> Vec<Option<Color>> {
         syntax
             .as_deref()
             .and_then(|spans| spans.get(line.pos.0)?.get(line.pos.1))
-            .map(|spans| diff_syntax::colors_of(&line.text, spans))
+            .map(|spans| syntax::colors_of(&line.text, spans))
             .filter(|colors| colors.len() == shown.chars().count())
             .unwrap_or_default()
     };
@@ -760,7 +738,7 @@ fn body<'a>(args: Body<'a>) -> Element<'a, Message> {
                         _ => Default::default(),
                     };
                     let side_cell =
-                        |line: Option<&'a crate::git::diff::Line>,
+                        |line: Option<&'a crate::diff::parse::Line>,
                          old: bool,
                          words: Vec<(usize, usize)>| {
                             let (background, text_value, n) = match line {
@@ -1015,10 +993,10 @@ pub fn view<'a>(viewer: &'a Viewer, nav: &Nav, dark: bool, empty: String) -> Ele
     // A commit's diff can be put against the current file instead, where the
     // arrows bring its old lines into the file; and back.
     let toggled = viewer.current().and_then(|e| match &e.source {
-        crate::git::Source::Commit(rev) if is_revision(rev) => {
+        crate::diff::Source::Commit(rev) if is_revision(rev) => {
             Some(t!("git.compare_local").to_string())
         }
-        crate::git::Source::Tree(rev) if is_revision(rev) => {
+        crate::diff::Source::Tree(rev) if is_revision(rev) => {
             Some(t!("git.show_commit_diff").to_string())
         }
         _ => None,
@@ -1170,9 +1148,9 @@ pub fn view<'a>(viewer: &'a Viewer, nav: &Nav, dark: bool, empty: String) -> Ele
                 .is_some_and(|e| {
                     matches!(
                         e.source,
-                        crate::git::Source::Unstaged
-                            | crate::git::Source::Staged
-                            | crate::git::Source::Tree(_)
+                        crate::diff::Source::Unstaged
+                            | crate::diff::Source::Staged
+                            | crate::diff::Source::Tree(_)
                     )
                 })
                 .then_some(nav.rollback)
@@ -1187,8 +1165,8 @@ pub fn view<'a>(viewer: &'a Viewer, nav: &Nav, dark: bool, empty: String) -> Ele
             let stage = viewer
                 .current()
                 .and_then(|e| match e.source {
-                    crate::git::Source::Unstaged => Some(false),
-                    crate::git::Source::Staged => Some(true),
+                    crate::diff::Source::Unstaged => Some(false),
+                    crate::diff::Source::Staged => Some(true),
                     _ => None,
                 })
                 .filter(|_| !viewer.ignore_blanks)
@@ -1330,7 +1308,7 @@ fn is_revision(rev: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::diff::parse_diff;
+    use crate::diff::parse::parse_diff;
 
     fn diff_with_a_long_line() -> FileDiff {
         let long = "x".repeat(200);
@@ -1573,14 +1551,13 @@ mod tests {
 
     #[test]
     fn staging_is_offered_by_the_source_and_not_when_blanks_are_left_out() {
-        use crate::git::Source;
+        use crate::diff::Source;
         let text = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n keep\n-old\n+new\n";
-        let entry = |source| crate::git_panel::Entry {
+        let entry = |source| crate::diff_view::Entry {
             source,
-            change: crate::git::Change {
+            change: crate::diff::Change {
                 path: "f".into(),
                 from: None,
-                kind: crate::git::Kind::Modified,
             },
             staged: false,
         };

@@ -7,9 +7,9 @@ use std::ops::Range;
 use iced::advanced::text::Highlighter as _;
 use iced::Color;
 
+use crate::diff::parse::Tag;
+use crate::diff::FileDiff;
 use crate::editor::highlighter::{Highlighter, Settings};
-use crate::git::diff::Tag;
-use crate::git::FileDiff;
 
 /// The colored spans of each line of each hunk: `[hunk][line]`, byte ranges
 /// of the line's text.
@@ -79,7 +79,7 @@ pub fn colors_of(text: &str, spans: &[(Range<usize>, Option<Color>)]) -> Vec<Opt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::diff::parse_diff;
+    use crate::diff::parse::parse_diff;
 
     const RUST: &str = "diff --git a/f.rs b/f.rs\n--- a/f.rs\n+++ b/f.rs\n@@ -1,3 +1,3 @@\n fn main() {\n-    let x = 1;\n+    let x = \"one\";\n }\n";
 

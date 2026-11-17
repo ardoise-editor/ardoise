@@ -213,6 +213,11 @@ pub struct Plugins {
     /// The texts files are compared with to mark their changed lines: the
     /// text (none: new), or no marks at all.
     pub bases: HashMap<PathBuf, Base>,
+    /// What each plugin offers in Search Everywhere.
+    pub search_items: BTreeMap<String, Vec<simpleedit_plugin::protocol::SearchItem>>,
+    /// A line pointed at in the gutter (right click): the next answer to
+    /// `editor/activeFile` gives it as the lines of the cursor.
+    pub pointed_line: Option<usize>,
     /// The plugin whose annotations are the column of the file in front.
     pub annotations_of: Option<String>,
     /// The tabs of the plugins among the files, by path.

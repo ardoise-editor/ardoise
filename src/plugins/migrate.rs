@@ -122,6 +122,41 @@ fn carry_api_tabs_to(saved: &[crate::session::ApiSession], dir: &Path) -> Vec<(S
     opened
 }
 
+/// The official Git plugin.
+pub const GIT: &str = "simpleedit.git";
+
+/// How pull and merge were made, and how often to fetch, before Git became
+/// the Git plugin: they become its settings, once.
+pub fn carry_git_settings(config: &crate::config::Config) {
+    if let Some(dir) = super::store::data_dir_of(GIT) {
+        carry_git_settings_to(config, &dir);
+    }
+}
+
+fn carry_git_settings_to(config: &crate::config::Config, dir: &Path) {
+    let file = dir.join("settings.json");
+    if file.exists() {
+        return;
+    }
+    let pull = match config.git_pull_mode.as_str() {
+        "rebase" => "rebase",
+        "fast-forward-only" => "ff-only",
+        _ => "merge",
+    };
+    let merge = match config.git_merge_mode.as_str() {
+        "no-fast-forward" => "no-ff",
+        "fast-forward-only" => "ff-only",
+        "squash" => "squash",
+        _ => "default",
+    };
+    let settings = serde_json::json!({
+        "pull_mode": pull,
+        "merge_mode": merge,
+        "auto_fetch_minutes": config.git_auto_fetch_minutes,
+    });
+    let _ = crate::fsutil::write_atomic(&file, settings.to_string().as_bytes(), false);
+}
+
 /// The official Terminal plugin.
 pub const TERMINAL: &str = "simpleedit.terminal";
 
@@ -284,5 +319,29 @@ mod tests {
         std::fs::write(&file, "{}").unwrap();
         carry_lint_settings_to(&config, dir.path());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");
+    }
+
+    #[test]
+    fn the_ways_to_pull_and_merge_and_the_fetches_become_the_git_plugins_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = crate::config::Config {
+            git_pull_mode: "fast-forward-only".into(),
+            git_merge_mode: "no-fast-forward".into(),
+            git_auto_fetch_minutes: 10,
+            ..Default::default()
+        };
+        carry_git_settings_to(&config, dir.path());
+        let kept: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(kept["pull_mode"], "ff-only");
+        assert_eq!(kept["merge_mode"], "no-ff");
+        assert_eq!(kept["auto_fetch_minutes"], 10);
+        // Once: the plugin's own settings stay.
+        config.git_pull_mode = "rebase".into();
+        carry_git_settings_to(&config, dir.path());
+        let kept = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
+        assert!(kept.contains("ff-only"));
     }
 }

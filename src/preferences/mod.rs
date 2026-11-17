@@ -59,7 +59,6 @@ pub enum PrefsPage {
     Appearance,
     Shortcuts,
     Language,
-    Git,
     Lint,
     Servers,
     Plugins,
@@ -67,12 +66,11 @@ pub enum PrefsPage {
 }
 
 impl PrefsPage {
-    pub(crate) const ALL: [PrefsPage; 9] = [
+    pub(crate) const ALL: [PrefsPage; 8] = [
         PrefsPage::Editor,
         PrefsPage::Appearance,
         PrefsPage::Shortcuts,
         PrefsPage::Language,
-        PrefsPage::Git,
         PrefsPage::Lint,
         PrefsPage::Servers,
         PrefsPage::Plugins,
@@ -85,7 +83,6 @@ impl PrefsPage {
             PrefsPage::Appearance => t!("prefs.nav_appearance"),
             PrefsPage::Shortcuts => t!("prefs.nav_shortcuts"),
             PrefsPage::Language => t!("prefs.language"),
-            PrefsPage::Git => t!("prefs.nav_git"),
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
             PrefsPage::Plugins => t!("prefs.nav_plugins"),
@@ -98,29 +95,6 @@ impl PrefsPage {
         match self {
             PrefsPage::Editor => t!("prefs.editor").to_string(),
             other => other.label(),
-        }
-    }
-}
-
-/// How often the Git panel fetches by itself, in minutes (0: never).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct AutoFetch(u32);
-
-impl AutoFetch {
-    const ALL: [AutoFetch; 5] = [
-        AutoFetch(0),
-        AutoFetch(1),
-        AutoFetch(5),
-        AutoFetch(10),
-        AutoFetch(30),
-    ];
-}
-
-impl std::fmt::Display for AutoFetch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            0 => f.write_str(&t!("prefs.git_fetch_never")),
-            n => f.write_str(&t!("prefs.git_fetch_every", n = n)),
         }
     }
 }
@@ -366,7 +340,6 @@ impl PreferencesState {
             PrefsPage::Appearance => self.appearance_card(dark),
             PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing),
             PrefsPage::Language => self.language_card(config, dark),
-            PrefsPage::Git => self.git_card(config, dark),
             PrefsPage::Lint => lint_page(
                 config,
                 dark,
@@ -637,7 +610,7 @@ impl PreferencesState {
                 PreferencesMessage::EverywhereTextToggled,
             ),
             toggle(
-                t!("prefs.everywhere_git").to_string(),
+                t!("prefs.everywhere_plugins").to_string(),
                 config.everywhere_git,
                 PreferencesMessage::EverywhereGitToggled,
             ),
@@ -751,48 +724,6 @@ impl PreferencesState {
                 t!("prefs.scratch_dir").to_string(),
                 control.into(),
             )],
-        )
-    }
-
-    /// How a pull and a merge are made when the Git panel asks for one.
-    fn git_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let pull = pick_list(
-            crate::git::PullMode::ALL,
-            Some(config.git_pull_mode),
-            Message::SetPullMode,
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-        let merge = pick_list(
-            crate::git::MergeMode::ALL,
-            Some(config.git_merge_mode),
-            Message::SetMergeMode,
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-        let fetch = pick_list(
-            AutoFetch::ALL,
-            Some(AutoFetch(config.git_auto_fetch_minutes)),
-            |choice| Message::SetAutoFetch(choice.0),
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-        card_of_rows(
-            dark,
-            vec![
-                setting_row(t!("prefs.git_pull").to_string(), pull.into()),
-                setting_row(t!("prefs.git_merge").to_string(), merge.into()),
-                setting_row(t!("prefs.git_auto_fetch").to_string(), fetch.into()),
-            ],
         )
     }
 

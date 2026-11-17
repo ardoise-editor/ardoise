@@ -15,8 +15,8 @@ use simpleedit_plugin::protocol::{
     ConfirmParams, Context, CopyParams, DecorateParams, DiffParams, DiffTabParams, FileParams,
     InitializeParams, Level, MergeParams, Message as Rpc, NotifyParams, OpenFileParams,
     OpenTextParams, PanelParams, PickFileParams, PublishParams, RenameParams, RenderParams,
-    ReplaceTextParams, RpcError, SaveFileParams, SetBaseParams, Settings, StatusParams,
-    TabDirtyParams, TabParams, UiEvent,
+    ReplaceTextParams, RpcError, SaveFileParams, SearchItemsParams, SetBaseParams, Settings,
+    StatusParams, TabDirtyParams, TabParams, UiEvent,
 };
 
 /// A question of a plugin, waiting for the user.
@@ -398,6 +398,12 @@ impl SimpleEditApp {
         self.plugin_update(PluginMsg::Run(id.to_string(), command.to_string()))
     }
 
+    /// A command of the Git plugin (it is said when the plugin is missing).
+    pub(super) fn git_command(&mut self, command: &str) -> Task<Message> {
+        let missing = t!("git.plugin_missing").to_string();
+        self.run_official_command(crate::plugins::migrate::GIT, command, missing)
+    }
+
     /// A text a plugin shows in a tab of its own, to read only (`rev://`);
     /// the path of that tab.
     fn plugin_open_text(&mut self, p: OpenTextParams) -> PathBuf {
@@ -420,7 +426,7 @@ impl SimpleEditApp {
     /// A file in conflict a plugin gives, to resolve in a merge tab (none:
     /// there is no conflict in the text).
     fn plugin_merge(&mut self, plugin: String, p: MergeParams) -> Option<Task<Message>> {
-        let merge = crate::git::conflicts::parse(&p.text, false)?;
+        let merge = crate::diff::conflicts::parse(&p.text, p.swap)?;
         let dir = p.path.parent().map(Path::to_path_buf).unwrap_or_default();
         let name = p.path.file_name()?.to_string_lossy().to_string();
         let existing = self
@@ -436,7 +442,7 @@ impl SimpleEditApp {
             self.merge_counter += 1;
             PathBuf::from(format!("merge://{}/{}", self.merge_counter, name))
         });
-        let mut tab = crate::git_panel::merge::MergeTab::new(dir, name, merge);
+        let mut tab = crate::diff_view::merge::MergeTab::new(dir, name, merge);
         tab.owner = Some((plugin, p.tab));
         self.merge_tabs.insert(path.clone(), tab);
         self.sidebar.add_file(path.clone());
@@ -451,26 +457,25 @@ impl SimpleEditApp {
         let mut diffs = Vec::new();
         let mut files = Vec::new();
         for f in p.files {
-            let parsed = crate::git::diff::parse_diff(&f.patch)
+            let parsed = crate::diff::parse::parse_diff(&f.patch)
                 .into_iter()
                 .next()
-                .unwrap_or_else(|| crate::git::FileDiff {
+                .unwrap_or_else(|| crate::diff::FileDiff {
                     path: f.path.clone(),
-                    ..crate::git::FileDiff::default()
+                    ..crate::diff::FileDiff::default()
                 });
             let source = match f.mode {
-                DiffMode::Plain => crate::git::Source::Untracked,
-                DiffMode::Unstaged => crate::git::Source::Unstaged,
-                DiffMode::Staged => crate::git::Source::Staged,
-                DiffMode::Commit => crate::git::Source::Commit("HEAD".into()),
-                DiffMode::Against => crate::git::Source::Tree("HEAD".into()),
+                DiffMode::Plain => crate::diff::Source::Plain,
+                DiffMode::Unstaged => crate::diff::Source::Unstaged,
+                DiffMode::Staged => crate::diff::Source::Staged,
+                DiffMode::Commit => crate::diff::Source::Commit("HEAD".into()),
+                DiffMode::Against => crate::diff::Source::Tree("HEAD".into()),
             };
-            entries.push(crate::git_panel::Entry {
+            entries.push(crate::diff_view::Entry {
                 source,
-                change: crate::git::Change {
+                change: crate::diff::Change {
                     path: f.path,
                     from: f.from,
-                    kind: crate::git::Kind::Modified,
                 },
                 staged: f.mode == DiffMode::Staged,
             });
@@ -500,27 +505,19 @@ impl SimpleEditApp {
                 tab.viewer.entries = entries;
                 tab.viewer.provided = Some(diffs);
                 tab.owner = owner;
-                let task = tab
-                    .viewer
-                    .open(Path::new(""), index, crate::git_panel::Land::First);
+                let task = tab.viewer.open(index, crate::diff_view::Land::First);
                 tab.viewer.change = change.min(tab.viewer.changes().saturating_sub(1));
                 return task;
             }
         }
         self.diff_counter += 1;
         let path = PathBuf::from(format!("diff://{}/{}", self.diff_counter, p.title));
-        let mut viewer = crate::git_panel::Viewer::default();
+        let mut viewer = crate::diff_view::Viewer::default();
         viewer.entries = entries;
         viewer.provided = Some(diffs);
-        let load = viewer.open(Path::new(""), start, crate::git_panel::Land::First);
-        self.diff_tabs.insert(
-            path.clone(),
-            super::DiffTabState {
-                repo: PathBuf::new(),
-                viewer,
-                owner,
-            },
-        );
+        let load = viewer.open(start, crate::diff_view::Land::First);
+        self.diff_tabs
+            .insert(path.clone(), super::DiffTabState { viewer, owner });
         self.sidebar.add_file(path.clone());
         let show = self.activate(path);
         Task::batch([show, load])
@@ -536,11 +533,11 @@ impl SimpleEditApp {
             .flatten()
             .map(|d| {
                 let state = match d.state {
-                    S::Modified => crate::git::FileState::Modified,
-                    S::Added => crate::git::FileState::Added,
-                    S::Untracked => crate::git::FileState::Untracked,
-                    S::Conflicted => crate::git::FileState::Conflicted,
-                    S::Ignored => crate::git::FileState::Ignored,
+                    S::Modified => crate::diff::FileState::Modified,
+                    S::Added => crate::diff::FileState::Added,
+                    S::Untracked => crate::diff::FileState::Untracked,
+                    S::Conflicted => crate::diff::FileState::Conflicted,
+                    S::Ignored => crate::diff::FileState::Ignored,
                 };
                 (d.path.clone(), state, d.folder)
             })
@@ -582,8 +579,6 @@ impl SimpleEditApp {
             .collect();
         self.blame = Some(super::BlameState {
             path: p.path,
-            repo: PathBuf::new(),
-            relative: String::new(),
             annotations: crate::code_editor::Annotations {
                 lines: Arc::new(lines),
                 text: palette.muted,
@@ -593,7 +588,6 @@ impl SimpleEditApp {
                 card_background: palette.elevated,
                 card_border: palette.border_strong,
             },
-            shas: Vec::new(),
         });
         self.plugins.annotations_of = Some(plugin);
     }
@@ -688,7 +682,6 @@ impl SimpleEditApp {
                 }
                 self.open_plugin_panel(&key);
                 // One tool panel at the bottom: those of the app step aside.
-                self.git.open = false;
                 self.scratch.open = false;
                 self.bookmark_panel.open = false;
                 self.db.console.open = false;
@@ -1201,6 +1194,14 @@ impl SimpleEditApp {
                             self.set_status(p.message, p.level == Level::Error);
                         }
                     }
+                    methods::SEARCH_ITEMS => {
+                        if let Ok(p) = serde_json::from_value::<SearchItemsParams>(params) {
+                            self.plugins.search_items.insert(id, p.items);
+                            if self.overlay == super::ActiveOverlay::Everywhere {
+                                self.everywhere_refresh();
+                            }
+                        }
+                    }
                     methods::DECORATE => {
                         if let Ok(p) = serde_json::from_value::<DecorateParams>(params) {
                             self.plugins.decorations.insert(id, p.files);
@@ -1475,15 +1476,21 @@ impl SimpleEditApp {
                     }
                 },
                 methods::ACTIVE_FILE => {
+                    // The line pointed at in the gutter, or the selection.
+                    let pointed = self.plugins.pointed_line.take();
+                    let lines = self.current_file.as_ref().map(|_| match pointed {
+                        Some(line) => (line + 1, line + 1),
+                        None => {
+                            let (first, last) = self.lines_to_edit(self.selection_span());
+                            (first + 1, last + 1)
+                        }
+                    });
                     let active = ActiveFile {
                         path: self.plugin_context().file,
                         text: crate::editor::buffer_text(&self.editor.content),
                         selection: self.editor.content.selection(),
                         language: self.editor.language.clone(),
-                        lines: self.current_file.as_ref().map(|_| {
-                            let (first, last) = self.lines_to_edit(self.selection_span());
-                            (first + 1, last + 1)
-                        }),
+                        lines,
                     };
                     host::respond(&id, request, serde_json::to_value(active).map_err(invalid));
                     Task::none()
@@ -2012,6 +2019,7 @@ pub(super) async fn merge_written(
             tab,
             path: file,
             text,
+            swap: false,
         },
     );
     Ok(())
@@ -2160,7 +2168,7 @@ mod tab_tests {
         );
         assert_eq!(
             app.file_marks.git(&file, false),
-            Some(crate::git::FileState::Modified)
+            Some(crate::diff::FileState::Modified)
         );
         assert!(
             app.file_marks.git(Path::new("/repo/src"), true).is_some(),
@@ -2290,12 +2298,12 @@ mod tab_tests {
         let tab = app.merge_tabs.get_mut(&path).unwrap();
         for chunk in tab.merge.conflicts_mut() {
             chunk.set(
-                crate::git::conflicts::Side::Yours,
-                crate::git::conflicts::Pick::Taken,
+                crate::diff::conflicts::Side::Yours,
+                crate::diff::conflicts::Pick::Taken,
             );
             chunk.set(
-                crate::git::conflicts::Side::Theirs,
-                crate::git::conflicts::Pick::Ignored,
+                crate::diff::conflicts::Side::Theirs,
+                crate::diff::conflicts::Pick::Ignored,
             );
         }
         assert_eq!(app.merge_tabs[&path].merge.unresolved(), 0);

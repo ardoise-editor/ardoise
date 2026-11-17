@@ -181,22 +181,17 @@ impl SimpleEditApp {
             | ActiveOverlay::Diagram(_)
             | ActiveOverlay::References(_)
             | ActiveOverlay::Shortcuts
-            | ActiveOverlay::Conflicts
             | ActiveOverlay::Everywhere
             | ActiveOverlay::ConfirmClose(_)
             | ActiveOverlay::ConfirmCloseMany(..)
             | ActiveOverlay::ConfirmQuit(_)
             | ActiveOverlay::ConfirmTrust(_)
             | ActiveOverlay::ConfirmScratchDelete(_)
-            | ActiveOverlay::ConfirmGitGet(..)
             | ActiveOverlay::ConfirmFileDelete(..)
             | ActiveOverlay::ProjectName(_)
             | ActiveOverlay::FindInFiles
             | ActiveOverlay::ConfirmFolderDelete(_)
             | ActiveOverlay::ConfirmMove(..)
-            | ActiveOverlay::BranchSwitch(_)
-            | ActiveOverlay::GitFile(_)
-            | ActiveOverlay::GitPick(_)
             | ActiveOverlay::PluginConfirm(_)
             | ActiveOverlay::ConfirmOverwrite(_) => Space::new().height(0).into(),
         };
@@ -1330,12 +1325,6 @@ impl SimpleEditApp {
                     self.bookmark_panel.open,
                     t!("bookmarks.title").to_string(),
                     Message::ToggleBookmarkPanel,
-                ),
-                tool(
-                    crate::git_panel::icon::branch(shown(self.git.open)),
-                    self.git.open,
-                    t!("git.title").to_string(),
-                    Message::ToggleGit,
                 ),
             ])
             .extend((!self.results.tabs.is_empty()).then(|| {

@@ -1608,7 +1608,6 @@ impl SimpleEditApp {
                     self.plugin_bottom_yield();
                     self.scratch.open = false;
                     self.bookmark_panel.open = false;
-                    self.git.open = false;
                     if self.db.console.connection.is_none() {
                         let first = self.db.connections.first().map(|c| c.id);
                         self.db.use_console_connection(first);

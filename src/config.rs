@@ -559,12 +559,11 @@ pub struct Config {
     pub show_api_panel: bool,
     /// Width of the file list, in pixels (dragged by its right edge).
     pub sidebar_width: f32,
-    /// How `pull` and `merge` are made in the Git panel.
-    pub git_pull_mode: crate::git::PullMode,
-    pub git_merge_mode: crate::git::MergeMode,
-    /// Width of the actions of the Git panel's Branches tab, in pixels.
-    pub git_actions_width: f32,
-    /// Minutes between two fetches in the background (0: never).
+    /// How `pull` and `merge` were made (`rebase`, `no-fast-forward`…) and
+    /// the minutes between two fetches, before Git became the Git plugin:
+    /// carried over to its settings, no longer used.
+    pub git_pull_mode: String,
+    pub git_merge_mode: String,
     pub git_auto_fetch_minutes: u32,
     /// Whether problems are looked for in the files (linters and language servers).
     pub lint_enabled: bool,
@@ -685,9 +684,8 @@ impl Default for Config {
             show_database_panel: false,
             show_api_panel: false,
             sidebar_width: 208.0,
-            git_pull_mode: crate::git::PullMode::default(),
-            git_merge_mode: crate::git::MergeMode::default(),
-            git_actions_width: crate::git_panel::branches::ACTIONS_DEFAULT,
+            git_pull_mode: "merge".into(),
+            git_merge_mode: "default".into(),
             git_auto_fetch_minutes: 5,
             lint_enabled: true,
             lint_highlight: true,

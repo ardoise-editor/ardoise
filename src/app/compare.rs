@@ -16,16 +16,15 @@ impl SimpleEditApp {
             return Task::none();
         }
         let name = format!("{} ↔ {}", left.0, right.0);
-        let entry = crate::git_panel::Entry {
-            source: crate::git::Source::Tree(String::new()),
-            change: crate::git::Change {
+        let entry = crate::diff_view::Entry {
+            source: crate::diff::Source::Tree(String::new()),
+            change: crate::diff::Change {
                 path: name.clone(),
                 from: None,
-                kind: crate::git::Kind::Modified,
             },
             staged: false,
         };
-        self.history_diff = crate::git_panel::Viewer::default();
+        self.history_diff = crate::diff_view::Viewer::default();
         self.history_diff.side_by_side = true;
         self.history_diff
             .show(entry, whole_diff(&name, &left.1, &right.1));
@@ -158,9 +157,9 @@ impl SimpleEditApp {
         container(
             column![
                 container(header).padding([8, 14]),
-                crate::git_panel::diff_view::view(
+                crate::diff_view::view::view(
                     &self.history_diff,
-                    &crate::git_panel::diff_view::Nav::compare(),
+                    &crate::diff_view::view::Nav::compare(),
                     dark,
                     String::new(),
                 ),
@@ -175,17 +174,17 @@ impl SimpleEditApp {
 }
 
 /// it, for the two files side by side.
-pub(super) fn whole_diff(name: &str, old: &str, new: &str) -> crate::git::FileDiff {
+pub(super) fn whole_diff(name: &str, old: &str, new: &str) -> crate::diff::FileDiff {
     let body = similar::TextDiff::from_lines(old, new)
         .unified_diff()
         .context_radius(usize::MAX / 4)
         .header(&format!("a/{name}"), &format!("b/{name}"))
         .to_string();
     let text = format!("diff --git a/{name} b/{name}\n{body}");
-    crate::git::diff::parse_diff(&text)
+    crate::diff::parse::parse_diff(&text)
         .into_iter()
         .next()
-        .unwrap_or_else(|| crate::git::FileDiff {
+        .unwrap_or_else(|| crate::diff::FileDiff {
             path: name.to_string(),
             ..Default::default()
         })
@@ -195,10 +194,9 @@ impl SimpleEditApp {
     /// The arrows and picks of the diff of a comparison.
     pub(super) fn compare_diff_nav(&mut self, nav: DiffNav) -> Task<Message> {
         let viewer = &mut self.history_diff;
-        let nowhere = Path::new("");
         match nav {
-            DiffNav::NextChange => viewer.next_change(nowhere),
-            DiffNav::PrevChange => viewer.prev_change(nowhere),
+            DiffNav::NextChange => viewer.next_change(),
+            DiffNav::PrevChange => viewer.prev_change(),
             DiffNav::Pick(pick) => {
                 viewer.pick(pick);
                 Task::none()
@@ -302,8 +300,6 @@ mod tests {
         let diff = whole_diff("x.rs", old, new);
         let lines: usize = diff.hunks.iter().map(|h| h.lines.len()).sum();
         assert_eq!(lines, 9, "the eight lines, one of them twice");
-        let blocks = diff.blocks();
-        assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0].at, 1);
+        assert_eq!(diff.change_rows().len(), 1);
     }
 }

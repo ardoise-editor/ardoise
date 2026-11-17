@@ -218,6 +218,17 @@ pub fn notify(id: &str, method: &str, params: impl serde::Serialize) -> bool {
     process.is_some_and(|p| p.send(&Rpc::notification(method, params)))
 }
 
+/// Tells every running plugin something.
+pub fn notify_all(method: &str) {
+    let all: Vec<_> = processes()
+        .lock()
+        .map(|p| p.values().cloned().collect())
+        .unwrap_or_default();
+    for process in all {
+        process.send(&Rpc::notification(method, serde_json::Value::Null));
+    }
+}
+
 /// Asks a running plugin and waits for its answer (at most `wait`).
 pub async fn request(
     id: &str,

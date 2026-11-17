@@ -10,7 +10,7 @@ use iced::widget::{button, column, container, row, scrollable, text, text_editor
 use iced::{Alignment, Color, Element, Length};
 
 use crate::app::Message;
-use crate::git::conflicts::{Chunk, Merge, Pick, Segment, Side};
+use crate::diff::conflicts::{Chunk, Merge, Pick, Segment, Side};
 use crate::theme as se_theme;
 
 const ROW_H: f32 = 18.0;
@@ -526,7 +526,7 @@ fn labelled<'a>(label: String, msg: MergeMsg, dark: bool) -> Element<'a, Message
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::conflicts::parse;
+    use crate::diff::conflicts::parse;
 
     fn tab() -> MergeTab {
         let text = "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> t\nb\n<<<<<<< HEAD\nx\n=======\ny\n>>>>>>> t\nc\n";

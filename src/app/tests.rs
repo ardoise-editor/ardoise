@@ -39,7 +39,6 @@ mod behavior_tests {
         let _ = app.handle(Message::ToggleMenu(TopMenu::Edit));
         assert_eq!(app.open_menu, Some(TopMenu::Edit));
         for message in [
-            Message::FileStates(Vec::new()),
             Message::TreeHover(PathBuf::from("/x")),
             Message::TreeScrolled(0.0, 100.0),
             Message::LintHover(None),
@@ -119,37 +118,6 @@ mod behavior_tests {
 
     fn text(app: &SimpleEditApp) -> String {
         crate::editor::buffer_text(&app.editor.content)
-    }
-
-    #[test]
-    fn typing_in_a_field_of_the_git_panel_leaves_the_editor_alone() {
-        use crate::git_panel::GitMsg;
-        let mut app = app();
-        type_text(&mut app, "hello");
-        let before = text(&app);
-        app.git.open = true;
-        app.git.tab = crate::git_panel::Tab::Branches;
-        let _ = app.handle(Message::Git(GitMsg::RefName("fea".into())));
-        let key = |app: &mut SimpleEditApp, key: &str| {
-            let _ = app.handle(Message::KeyPressed {
-                key: key.into(),
-                ctrl: true,
-                shift: false,
-                alt: false,
-                captured: false,
-            });
-        };
-        // Ctrl+Z would take back the editor's last typing, Ctrl+A select it.
-        key(&mut app, "z");
-        key(&mut app, "a");
-        assert_eq!(text(&app), before);
-        assert!(app.editor.content.selection().is_none());
-        // Back in the editor, the shortcuts are its own again.
-        let _ = app.handle(Message::EditorAction(Action::Move(
-            iced::widget::text_editor::Motion::Left,
-        )));
-        key(&mut app, "a");
-        assert!(app.editor.content.selection().is_some());
     }
 
     #[test]
@@ -602,66 +570,233 @@ mod behavior_tests {
         assert!(app.panels.files && !app.panels.projects);
     }
 
+    /// The Git plugin, installed (its process is not running).
+    fn with_git_plugin(app: &mut SimpleEditApp) {
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "simpleedit.git", "name": "Git", "version": "1.0.0", "api": 1,
+                "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "git", "title": "Git", "location": "bottom"}]}}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+    }
+
+    /// A message of the Git plugin to the editor.
+    fn from_git(app: &mut SimpleEditApp, message: simpleedit_plugin::protocol::Message) {
+        let _ = app.update(Message::Plugin(crate::plugins::PluginMsg::Incoming(
+            crate::plugins::host::Incoming::Rpc("simpleedit.git".into(), message),
+        )));
+    }
+
+    /// A diff tab of the Git plugin, of files on the disk.
+    fn git_diff_tab(app: &mut SimpleEditApp, tab: &str, title: &str, files: &[&Path]) -> PathBuf {
+        let files: Vec<_> = files
+            .iter()
+            .map(|f| serde_json::json!({"path": f.file_name().unwrap().to_string_lossy(), "patch": "", "mode": "unstaged", "file": f}))
+            .collect();
+        from_git(
+            app,
+            simpleedit_plugin::protocol::Message::request(
+                1,
+                simpleedit_plugin::protocol::methods::OPEN_DIFF_TAB,
+                serde_json::json!({"tab": tab, "title": title, "files": files}),
+            ),
+        );
+        app.current_file.clone().unwrap()
+    }
+
+    #[test]
+    fn deleting_a_file_asks_first() {
+        let mut app = app();
+        let dir = tempfile::tempdir().unwrap();
+        let loose = dir.path().join("loose.txt");
+        std::fs::write(&loose, "x").unwrap();
+        let _ = app.handle(Message::AskDeleteFile(loose.clone()));
+        assert_eq!(app.overlay, ActiveOverlay::ConfirmFileDelete(loose.clone()));
+        let _ = app.handle(Message::DeleteFile(loose.clone()));
+        assert!(matches!(app.overlay, ActiveOverlay::None));
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        assert_eq!(runtime.block_on(super::delete_file(loose.clone())), Ok(()));
+        assert!(!loose.exists());
+    }
+
+    #[test]
+    fn ctrl_z_in_a_diff_tab_only_goes_back_over_the_files_of_that_tab() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("a.txt"), dir.path().join("b.txt"));
+        std::fs::write(&a, "a mine\n").unwrap();
+        std::fs::write(&b, "b mine\n").unwrap();
+        let mut app = app();
+        with_git_plugin(&mut app);
+        git_diff_tab(&mut app, "changes", "a.txt", &[&a]);
+        // b.txt was rolled back last (from elsewhere), a.txt before it.
+        app.remember_file(a.clone());
+        std::fs::write(&a, "a head\n").unwrap();
+        app.remember_file(b.clone());
+        std::fs::write(&b, "b head\n").unwrap();
+        let _ = app.handle(Message::Undo);
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "a mine\n");
+        assert_eq!(
+            std::fs::read_to_string(&b).unwrap(),
+            "b head\n",
+            "not this tab's file"
+        );
+    }
+
+    #[test]
+    fn ctrl_z_in_a_diff_keeps_the_encoding_of_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        let latin1 = b"caf\xe9\n".to_vec();
+        std::fs::write(&file, &latin1).unwrap();
+        let mut app = app();
+        with_git_plugin(&mut app);
+        git_diff_tab(&mut app, "commit", "Commit", &[&file]);
+        app.remember_file(file.clone());
+        std::fs::write(&file, "head\n").unwrap();
+        let _ = app.handle(Message::Undo);
+        assert_eq!(std::fs::read(&file).unwrap(), latin1);
+    }
+
+    #[test]
+    fn ctrl_z_in_a_diff_brings_back_what_a_rollback_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "mine\n").unwrap();
+        let mut app = app();
+        with_git_plugin(&mut app);
+        git_diff_tab(&mut app, "changes", "Changes", &[&file]);
+        // A block put back (the plugin rewrites the file): what it held is
+        // kept first.
+        let _ = app.handle(Message::DiffTab(DiffNav::Apply(0)));
+        std::fs::write(&file, "head\n").unwrap();
+        let _ = app.handle(Message::Undo);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "mine\n");
+        let _ = app.handle(Message::Redo);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "head\n");
+        // Nothing more to go back to.
+        let _ = app.handle(Message::Redo);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "head\n");
+    }
+
+    #[test]
+    fn a_diff_opens_in_an_editor_tab_that_is_not_a_file_and_is_not_saved() {
+        let mut app = app();
+        with_git_plugin(&mut app);
+        let path = git_diff_tab(&mut app, "commit:abc", "abc1234 fix", &[]);
+        assert!(is_diff(&path));
+        assert!(is_untitled(&path), "no disk access for it");
+        assert!(app.diff_tabs.contains_key(&path));
+        assert_eq!(display_name(&path), "Δ abc1234 fix");
+        // The session forgets it.
+        let session = app.build_session();
+        assert!(session.files.iter().all(|f| !f.path.starts_with("diff://")));
+        assert!(session
+            .active_file
+            .as_deref()
+            .is_none_or(|p| !p.starts_with("diff://")));
+        // The same tab id reuses the tab.
+        let before = app.sidebar.files().len();
+        git_diff_tab(&mut app, "commit:abc", "abc1234 fix", &[]);
+        assert_eq!(app.sidebar.files().len(), before);
+        // Closing it forgets its state.
+        let _ = app.handle(Message::Sidebar(crate::sidebar::SidebarMessage::CloseNow(
+            path.clone(),
+        )));
+        assert!(!app.diff_tabs.contains_key(&path));
+    }
+
+    #[test]
+    fn git_is_the_git_plugin_and_it_takes_turns_with_the_terminal_at_the_bottom() {
+        let mut app = app();
+        // Not installed: it is said.
+        let _ = app.handle(Message::ToggleGit);
+        assert!(app.status_is_error);
+        assert_eq!(app.status_message, t!("git.plugin_missing").to_string());
+        press(&mut app, "k", true, false, false);
+        assert_eq!(app.status_message, t!("git.plugin_missing").to_string());
+        // Installed: its panel is a panel of a plugin, at the bottom; the
+        // shortcut closes it when it is open.
+        with_git_plugin(&mut app);
+        let git = ("simpleedit.git".to_string(), "git".to_string());
+        let _ = app.handle(Message::Plugin(crate::plugins::PluginMsg::TogglePanel(
+            git.0.clone(),
+            git.1.clone(),
+        )));
+        assert_eq!(app.plugins.bottom.as_ref(), Some(&git));
+        let _ = app.handle(Message::ToggleGit);
+        assert!(app.plugins.bottom.is_none());
+        // Bookmarks panel: Shift+F11.
+        press(&mut app, "F11", false, true, false);
+        assert!(app.bookmark_panel.open);
+    }
+
+    #[test]
+    fn a_conflict_of_the_git_plugin_opens_in_a_tab_that_is_not_a_file_and_is_not_remembered() {
+        let mut app = app();
+        with_git_plugin(&mut app);
+        let open = |app: &mut SimpleEditApp| {
+            from_git(
+                app,
+                simpleedit_plugin::protocol::Message::request(
+                    2,
+                    simpleedit_plugin::protocol::methods::OPEN_MERGE,
+                    serde_json::json!({"tab": "merge:dir/f.txt", "path": "/tmp/no-such-repo/dir/f.txt",
+                        "text": "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> t\nb\n"}),
+                ),
+            );
+        };
+        open(&mut app);
+        let path = app.current_file.clone().unwrap();
+        assert!(is_merge(&path) && is_virtual(&path) && is_untitled(&path));
+        assert_eq!(display_name(&path), "⇄ f.txt");
+        assert!(app.merge_tabs.contains_key(&path));
+        let session = app.build_session();
+        assert!(session
+            .files
+            .iter()
+            .all(|f| !f.path.starts_with("merge://")));
+        // The same file reuses its tab.
+        let before = app.sidebar.files().len();
+        open(&mut app);
+        assert_eq!(app.sidebar.files().len(), before);
+        // Settling a conflict in it.
+        let _ = app.handle(Message::Merge(crate::diff_view::merge::MergeMsg::All(
+            crate::diff::conflicts::Side::Yours,
+        )));
+        assert_eq!(app.merge_tabs[&path].merge.unresolved(), 0);
+        // Not over unsaved changes of the same file.
+        let file = PathBuf::from("/tmp/no-such-repo/dir/f.txt");
+        app.sidebar.add_file(file.clone());
+        app.file_cache.insert(
+            file,
+            CachedBuffer {
+                dirty: true,
+                ..CachedBuffer::blank()
+            },
+        );
+        let _ = app.handle(Message::Merge(crate::diff_view::merge::MergeMsg::Apply));
+        assert!(app.status_is_error);
+        assert_eq!(
+            app.status_message,
+            t!("git.merge_buffer_unsaved", name = "f.txt").to_string()
+        );
+        // Closed: forgotten.
+        let _ = app.handle(Message::Sidebar(crate::sidebar::SidebarMessage::CloseNow(
+            path.clone(),
+        )));
+        assert!(!app.merge_tabs.contains_key(&path));
+    }
+
     #[test]
     fn a_path_is_shown_with_the_home_folder_as_a_tilde() {
         let home = dirs::home_dir().expect("a home folder");
         assert_eq!(super::display_path(&home.join("work/a.rs")), "~/work/a.rs");
         assert_eq!(super::display_path(Path::new("/etc/hosts")), "/etc/hosts");
-    }
-
-    #[test]
-    fn deleting_a_file_asks_first_and_git_is_a_choice() {
-        use crate::git::testing::{block, Repo};
-        let mut app = app();
-        // Not in a repository: no checkbox.
-        let dir = tempfile::tempdir().unwrap();
-        let loose = dir.path().join("loose.txt");
-        std::fs::write(&loose, "x").unwrap();
-        let _ = app.handle(Message::DeleteAsked(
-            loose.clone(),
-            block(super::is_tracked(&loose)),
-        ));
-        assert_eq!(
-            app.overlay,
-            ActiveOverlay::ConfirmFileDelete(loose.clone(), None)
-        );
-        let _ = app.handle(Message::DeleteFile(loose.clone(), false));
-        assert!(matches!(app.overlay, ActiveOverlay::None));
-        assert_eq!(block(super::delete_file(loose.clone(), false)), Ok(false));
-        assert!(!loose.exists());
-        // Tracked by git: the box is there, checked.
-        let repo = Repo::new();
-        repo.write("a.txt", "one\n");
-        repo.write("b.txt", "two\n");
-        repo.commit_all("first");
-        let (a, b) = (repo.path().join("a.txt"), repo.path().join("b.txt"));
-        assert!(block(super::is_tracked(&a)));
-        let _ = app.handle(Message::DeleteAsked(a.clone(), true));
-        assert_eq!(
-            app.overlay,
-            ActiveOverlay::ConfirmFileDelete(a.clone(), Some(true))
-        );
-        // Unchecked: only the disk.
-        let _ = app.handle(Message::ToggleDeleteFromGit(false));
-        assert_eq!(
-            app.overlay,
-            ActiveOverlay::ConfirmFileDelete(a.clone(), Some(false))
-        );
-        assert_eq!(block(super::delete_file(a.clone(), false)), Ok(false));
-        assert!(!a.exists());
-        assert!(
-            repo.git(&["status", "--porcelain"]).starts_with(" D"),
-            "not staged"
-        );
-        // Checked: git removes it too.
-        assert_eq!(block(super::delete_file(b.clone(), true)), Ok(true));
-        assert!(repo.git(&["status", "--porcelain"]).contains("D  b.txt"));
-        // A file of a repository that git doesn't know: only the disk.
-        repo.write("new.txt", "n\n");
-        let new = repo.path().join("new.txt");
-        assert!(!block(super::is_tracked(&new)));
-        assert_eq!(block(super::delete_file(new.clone(), true)), Ok(false));
-        assert!(!new.exists());
     }
 
     #[test]
@@ -996,159 +1131,6 @@ mod behavior_tests {
         assert_eq!(text(&app), "base\n");
         let _ = app.handle(Message::Undo);
         assert_eq!(text(&app), edited);
-    }
-
-    #[test]
-    fn ctrl_z_in_a_diff_tab_only_goes_back_over_the_files_of_that_tab() {
-        use crate::git::{Change, Kind, Source};
-        use crate::git_panel::{DiffTab, Entry};
-        let dir = tempfile::tempdir().unwrap();
-        let (a, b) = (dir.path().join("a.txt"), dir.path().join("b.txt"));
-        std::fs::write(&a, "a mine\n").unwrap();
-        std::fs::write(&b, "b mine\n").unwrap();
-        let mut app = app();
-        let _ = app.handle(Message::OpenDiffTab(DiffTab {
-            repo: dir.path().to_path_buf(),
-            title: "a.txt".into(),
-            entries: vec![Entry {
-                source: Source::Unstaged,
-                change: Change {
-                    path: "a.txt".into(),
-                    from: None,
-                    kind: Kind::Modified,
-                },
-                staged: false,
-            }],
-            start: 0,
-        }));
-        // b.txt was rolled back last (from elsewhere), a.txt before it.
-        app.remember_file(a.clone());
-        std::fs::write(&a, "a head\n").unwrap();
-        app.remember_file(b.clone());
-        std::fs::write(&b, "b head\n").unwrap();
-        let _ = app.handle(Message::Undo);
-        assert_eq!(std::fs::read_to_string(&a).unwrap(), "a mine\n");
-        assert_eq!(
-            std::fs::read_to_string(&b).unwrap(),
-            "b head\n",
-            "not this tab's file"
-        );
-    }
-
-    #[test]
-    fn ctrl_z_in_a_diff_keeps_the_encoding_of_the_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("a.txt");
-        let latin1 = b"caf\xe9\n".to_vec();
-        std::fs::write(&file, &latin1).unwrap();
-        let mut app = app();
-        app.current_file = Some(PathBuf::from("diff://1/Commit"));
-        app.git.repo = Some(dir.path().to_path_buf());
-        app.remember_file(file.clone());
-        std::fs::write(&file, "head\n").unwrap();
-        let _ = app.handle(Message::Undo);
-        assert_eq!(std::fs::read(&file).unwrap(), latin1);
-    }
-
-    #[test]
-    fn ctrl_z_in_a_diff_brings_back_what_a_rollback_removed() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("a.txt");
-        std::fs::write(&file, "mine\n").unwrap();
-        let mut app = app();
-        app.current_file = Some(PathBuf::from("diff://1/Commit"));
-        app.git.repo = Some(dir.path().to_path_buf());
-        // A rollback rewrites the file: what it held is kept first.
-        app.remember_file(file.clone());
-        std::fs::write(&file, "head\n").unwrap();
-        let _ = app.handle(Message::Undo);
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "mine\n");
-        let _ = app.handle(Message::Redo);
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "head\n");
-        // Nothing more to go back to.
-        let _ = app.handle(Message::Redo);
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "head\n");
-    }
-
-    #[test]
-    fn the_git_menu_of_a_file_commits_it_alone_or_shows_its_history() {
-        use super::git_file::FileAction;
-        let mut app = app();
-        let file = PathBuf::from("/repo/src/a.rs");
-        let root = Some(PathBuf::from("/repo"));
-        let _ = app.handle(Message::GitFileMenu(file.clone()));
-        assert!(matches!(app.overlay, ActiveOverlay::GitFile(_)));
-        // Commit: the panel opens on the Commit tab, for that file only.
-        let _ = app.handle(Message::GitFileRoot(
-            file.clone(),
-            FileAction::Commit,
-            root.clone(),
-        ));
-        assert!(app.git.open);
-        assert_eq!(app.git.only.as_deref(), Some("src/a.rs"));
-        // History: the Log tab, restricted to the file.
-        let _ = app.handle(Message::GitFileRoot(file, FileAction::History, root));
-        assert_eq!(app.git.tab, crate::git_panel::Tab::Log);
-        assert_eq!(app.git.log.file.as_deref(), Some("src/a.rs"));
-    }
-
-    #[test]
-    fn choosing_a_revision_opens_a_diff_of_the_file_against_it() {
-        let mut app = app();
-        app.overlay = ActiveOverlay::GitPick(Box::new(super::git_file::Pick {
-            repo: PathBuf::from("/repo"),
-            file: "src/a.rs".into(),
-            get: false,
-            revisions: true,
-            items: Vec::new(),
-            filter: String::new(),
-        }));
-        let _ = app.handle(Message::GitPickChoose("0123456789abcdef".into()));
-        // The revision is checked first, off the interface thread.
-        assert!(matches!(app.overlay, ActiveOverlay::None));
-        let _ = app.handle(Message::GitPickVerified(Ok((
-            PathBuf::from("/repo"),
-            "src/a.rs".into(),
-            "0123456789abcdef".into(),
-            false,
-        ))));
-        let tab = app.current_file.clone().unwrap();
-        let state = app.diff_tabs.get(&tab).expect("a diff tab");
-        let entry = &state.viewer.entries[0];
-        assert_eq!(
-            entry.source,
-            crate::git::Source::Tree("0123456789abcdef".into())
-        );
-        assert_eq!(entry.change.path, "src/a.rs");
-        assert!(tab.to_string_lossy().contains("a.rs ↔ 01234567"));
-    }
-
-    #[test]
-    fn a_commit_diff_can_be_compared_with_the_current_file_and_back() {
-        use crate::git::{Change, Kind, Source};
-        use crate::git_panel::{DiffTab, Entry};
-        let mut app = app();
-        let sha = "0123456789abcdef".to_string();
-        let _ = app.handle(Message::OpenDiffTab(DiffTab {
-            repo: PathBuf::from("/repo"),
-            title: "a commit".into(),
-            entries: vec![Entry {
-                source: Source::Commit(sha.clone()),
-                change: Change {
-                    path: "a.rs".into(),
-                    from: None,
-                    kind: Kind::Modified,
-                },
-                staged: false,
-            }],
-            start: 0,
-        }));
-        let tab = app.current_file.clone().unwrap();
-        let source = |app: &SimpleEditApp| app.diff_tabs[&tab].viewer.entries[0].source.clone();
-        let _ = app.handle(Message::DiffTab(DiffNav::ToggleCompare));
-        assert_eq!(source(&app), Source::Tree(sha.clone()));
-        let _ = app.handle(Message::DiffTab(DiffNav::ToggleCompare));
-        assert_eq!(source(&app), Source::Commit(sha));
     }
 
     #[test]
@@ -1601,78 +1583,6 @@ mod behavior_tests {
         assert!(app.open_menu.is_none());
     }
 
-    fn diff_tab(title: &str) -> crate::git_panel::DiffTab {
-        crate::git_panel::DiffTab {
-            repo: PathBuf::from("/tmp/no-such-repo"),
-            title: title.into(),
-            entries: Vec::new(),
-            start: 0,
-        }
-    }
-
-    #[test]
-    fn a_diff_opens_in_an_editor_tab_that_is_not_a_file_and_is_not_saved() {
-        let mut app = app();
-        let _ = app.handle(Message::OpenDiffTab(diff_tab("abc1234 fix")));
-        let path = app.current_file.clone().unwrap();
-        assert!(is_diff(&path));
-        assert!(is_untitled(&path), "no disk access for it");
-        assert!(app.diff_tabs.contains_key(&path));
-        assert_eq!(display_name(&path), "Δ abc1234 fix");
-        // The session forgets it.
-        let session = app.build_session();
-        assert!(session.files.iter().all(|f| !f.path.starts_with("diff://")));
-        assert!(session
-            .active_file
-            .as_deref()
-            .is_none_or(|p| !p.starts_with("diff://")));
-        // The same title reuses the tab.
-        let before = app.sidebar.files().len();
-        let _ = app.handle(Message::OpenDiffTab(diff_tab("abc1234 fix")));
-        assert_eq!(app.sidebar.files().len(), before);
-        // Closing it forgets its state.
-        let _ = app.handle(Message::Sidebar(crate::sidebar::SidebarMessage::CloseNow(
-            path.clone(),
-        )));
-        assert!(!app.diff_tabs.contains_key(&path));
-    }
-
-    #[test]
-    fn the_git_panel_and_the_terminal_take_turns_at_the_bottom() {
-        let mut app = app();
-        let _ = app.handle(Message::ToggleGit);
-        assert!(app.git.open);
-        // The panel of the Terminal plugin.
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
-            r#"{"id": "simpleedit.terminal", "name": "Terminal", "version": "1.0.0", "api": 1,
-                "command": ["bin/none"],
-                "contributes": {"panels": [{"id": "terminal", "title": "Terminal", "location": "bottom"}]}}"#,
-        )
-        .unwrap();
-        app.plugins.installed.push(crate::plugins::Installed {
-            manifest,
-            dir: PathBuf::from("/nowhere"),
-            origin: Default::default(),
-        });
-        let terminal = ("simpleedit.terminal".to_string(), "terminal".to_string());
-        let _ = app.handle(Message::Plugin(crate::plugins::PluginMsg::TogglePanel(
-            terminal.0.clone(),
-            terminal.1.clone(),
-        )));
-        assert_eq!(app.plugins.bottom.as_ref(), Some(&terminal));
-        assert!(!app.git.open, "one tool panel at a time");
-        let _ = app.handle(Message::ToggleGit);
-        assert!(app.git.open);
-        assert!(app.plugins.bottom.is_none());
-        // The shortcut of the terminal closes its panel when it is open.
-        let _ = app.handle(Message::Plugin(crate::plugins::PluginMsg::TogglePanel(
-            terminal.0.clone(),
-            terminal.1.clone(),
-        )));
-        let _ = app.handle(Message::ToggleTerminal);
-        assert!(app.plugins.bottom.is_none());
-    }
-
     #[test]
     fn editing_the_text_drops_the_blame_column() {
         let mut app = app();
@@ -1680,8 +1590,6 @@ mod behavior_tests {
         let path = app.current_file.clone().unwrap();
         app.blame = Some(BlameState {
             path,
-            repo: PathBuf::from("/tmp"),
-            relative: "a".into(),
             annotations: crate::code_editor::Annotations {
                 lines: std::sync::Arc::new(Vec::new()),
                 text: iced::Color::BLACK,
@@ -1691,7 +1599,6 @@ mod behavior_tests {
                 card_background: iced::Color::BLACK,
                 card_border: iced::Color::BLACK,
             },
-            shas: vec![],
         });
         assert!(app.blame_shown());
         type_text(&mut app, "x");
@@ -1713,25 +1620,6 @@ mod behavior_tests {
             origin.y + 5.0,
         )));
         assert!(!app.gutter_click);
-    }
-
-    #[test]
-    fn the_git_panel_refreshing_itself_does_not_close_an_open_menu() {
-        use crate::git_panel::GitMsg;
-        let mut app = app();
-        let _ = app.handle(Message::ToggleMenu(TopMenu::File));
-        assert!(app.open_menu.is_some());
-        // What the open panel does by itself every two seconds.
-        let _ = app.update(Message::Git(GitMsg::Tick));
-        let _ = app.update(Message::Git(GitMsg::StatusLoaded(
-            PathBuf::new(),
-            Ok(Default::default()),
-        )));
-        let _ = app.update(Message::Git(GitMsg::Done(Ok(String::new()))));
-        assert!(app.open_menu.is_some());
-        // A click on the panel is the user's: it closes the menu.
-        let _ = app.update(Message::Git(GitMsg::SelectTab(crate::git_panel::Tab::Log)));
-        assert!(app.open_menu.is_none());
     }
 
     /// A modified file with a place on disk, edited a while ago.
@@ -1830,52 +1718,6 @@ mod behavior_tests {
         assert!(app.change_paint().is_none());
     }
 
-    fn conflicted(operation: Option<crate::git::Operation>, files: usize) -> crate::git::Status {
-        crate::git::Status {
-            operation,
-            branch: "main".into(),
-            upstream: None,
-            ahead: 0,
-            behind: 0,
-            staged: vec![],
-            unstaged: (0..files)
-                .map(|i| crate::git::Change {
-                    path: format!("f{i}.txt"),
-                    from: None,
-                    kind: crate::git::Kind::Conflict,
-                })
-                .collect(),
-        }
-    }
-
-    #[test]
-    fn conflicts_are_announced_until_they_are_gone_or_the_user_closes_the_popup() {
-        let mut app = app();
-        assert!(app.conflict_toast(true).is_none(), "nothing to announce");
-        app.git.status = Some(conflicted(Some(crate::git::Operation::Rebase), 2));
-        assert!(app.conflict_toast(true).is_some());
-        assert!(app.git.conflict_summary().unwrap().contains('2'));
-        // Closed by the user: it stays closed while these conflicts last.
-        let _ = app.handle(Message::CloseConflictToast);
-        assert!(app.conflict_toast(true).is_none());
-        app.git.status = Some(conflicted(Some(crate::git::Operation::Rebase), 1));
-        let _ = app.update(Message::CloseMenu);
-        assert!(app.conflict_toast(true).is_none());
-        // The operation is given up: nothing left, so the next conflicts
-        // are announced again.
-        app.git.status = Some(conflicted(None, 0));
-        let _ = app.update(Message::CloseMenu);
-        assert!(app.conflict_toast(true).is_none());
-        app.git.status = Some(conflicted(Some(crate::git::Operation::CherryPick), 1));
-        let _ = app.update(Message::CloseMenu);
-        assert!(app.conflict_toast(true).is_some());
-        // The button opens the dialog that settles them, and the pop-up
-        // gives way to it.
-        let _ = app.handle(Message::OpenConflicts);
-        assert!(matches!(app.overlay, ActiveOverlay::Conflicts));
-        assert!(app.conflict_toast(true).is_none());
-    }
-
     fn app_with_a_changed_line() -> SimpleEditApp {
         let mut app = app();
         type_text(&mut app, "one\nTWO\nthree");
@@ -1924,87 +1766,6 @@ mod behavior_tests {
         type_text(&mut app, "x");
         app.refresh_marks_now();
         assert_eq!(app.change_paint().and_then(|p| p.revert), None);
-    }
-
-    fn merge_spec() -> crate::git_panel::MergeSpec {
-        let text = "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> t\nb\n";
-        crate::git_panel::MergeSpec {
-            repo: PathBuf::from("/tmp/no-such-repo"),
-            path: "dir/f.txt".into(),
-            merge: crate::git::conflicts::parse(text, false).unwrap(),
-        }
-    }
-
-    #[test]
-    fn a_conflicted_file_opens_in_a_tab_that_is_not_a_file_and_is_not_remembered() {
-        let mut app = app();
-        let _ = app.handle(Message::OpenMergeTab(std::sync::Arc::new(merge_spec())));
-        let path = app.current_file.clone().unwrap();
-        assert!(is_merge(&path) && is_virtual(&path) && is_untitled(&path));
-        assert_eq!(display_name(&path), "⇄ f.txt");
-        assert!(app.merge_tabs.contains_key(&path));
-        let session = app.build_session();
-        assert!(session
-            .files
-            .iter()
-            .all(|f| !f.path.starts_with("merge://")));
-        // The same file reuses its tab.
-        let before = app.sidebar.files().len();
-        let _ = app.handle(Message::OpenMergeTab(std::sync::Arc::new(merge_spec())));
-        assert_eq!(app.sidebar.files().len(), before);
-        // Settling a conflict in it, then closing it.
-        let _ = app.handle(Message::Merge(crate::git_panel::merge::MergeMsg::All(
-            crate::git::conflicts::Side::Yours,
-        )));
-        assert_eq!(app.merge_tabs[&path].merge.unresolved(), 0);
-        let _ = app.handle(Message::Sidebar(crate::sidebar::SidebarMessage::CloseNow(
-            path.clone(),
-        )));
-        assert!(!app.merge_tabs.contains_key(&path));
-    }
-
-    #[test]
-    fn a_merge_is_not_applied_over_unsaved_changes_of_the_same_file() {
-        let mut app = app();
-        let spec = merge_spec();
-        let file = spec.repo.join(&spec.path);
-        app.sidebar.add_file(file.clone());
-        app.file_cache.insert(
-            file,
-            CachedBuffer {
-                dirty: true,
-                ..CachedBuffer::blank()
-            },
-        );
-        let _ = app.handle(Message::OpenMergeTab(std::sync::Arc::new(spec)));
-        let _ = app.handle(Message::Merge(crate::git_panel::merge::MergeMsg::All(
-            crate::git::conflicts::Side::Yours,
-        )));
-        let _ = app.handle(Message::Merge(crate::git_panel::merge::MergeMsg::Apply));
-        assert!(app.status_is_error);
-        assert_eq!(
-            app.status_message,
-            t!("git.merge_buffer_unsaved", name = "dir/f.txt").to_string()
-        );
-    }
-
-    #[test]
-    fn the_conflicts_dialog_only_opens_when_there_are_conflicts() {
-        let mut app = app();
-        let _ = app.handle(Message::OpenConflicts);
-        assert!(matches!(app.overlay, ActiveOverlay::None));
-        let mut status = crate::git::Status::default();
-        status.unstaged.push(crate::git::Change {
-            path: "a.txt".into(),
-            from: None,
-            kind: crate::git::Kind::Conflict,
-        });
-        app.git.status = Some(status);
-        let _ = app.handle(Message::OpenConflicts);
-        assert!(matches!(app.overlay, ActiveOverlay::Conflicts));
-        // The status bar leads there too.
-        let offer = app.status_offer().expect("an offer");
-        assert!(matches!(offer.2, Message::OpenConflicts));
     }
 
     #[test]
@@ -2081,64 +1842,6 @@ mod behavior_tests {
         assert!(app.session_write_job().is_none());
     }
 
-    #[test]
-    fn a_blame_line_shows_its_commit_like_an_ide_does() {
-        let line = crate::git::history::BlameLine {
-            sha: "cc695242ccbf0dde1002b50be37f9bb58b0385ed".into(),
-            author: "Olivier Sandré".into(),
-            email: "olivier@example.fr".into(),
-            time: 1_784_000_000,
-            summary: "Oc 540".into(),
-            message: std::sync::Arc::from("Oc 540\n\nA second paragraph that is long enough to need wrapping because it goes well past the width of a readable line of text."),
-        };
-        let card = super::commit_card(&line);
-        assert!(card[0].starts_with("commit cc695242"));
-        assert!(card[1].contains("Olivier Sandré") && card[1].contains("<olivier@example.fr>"));
-        assert!(card[2].starts_with("Date"));
-        assert_eq!(card[3], "");
-        assert_eq!(card[4], "Oc 540");
-        // The long paragraph is wrapped, nothing is lost.
-        let wrapped: Vec<&String> = card[6..].iter().collect();
-        assert!(wrapped.len() >= 2);
-        assert!(wrapped.iter().all(|l| l.chars().count() <= 72));
-        assert!(wrapped
-            .iter()
-            .map(|l| l.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
-            .ends_with("readable line of text."));
-        // Without the whole message, the summary stands in.
-        let short = crate::git::history::BlameLine {
-            message: std::sync::Arc::from(""),
-            ..line
-        };
-        assert_eq!(super::commit_card(&short)[4], "Oc 540");
-    }
-
-    #[test]
-    fn the_way_to_pull_and_merge_is_chosen_in_the_panel_or_the_preferences_and_kept() {
-        let mut app = app();
-        assert_eq!(app.git.pull_mode, crate::git::PullMode::Merge);
-        // Chosen behind the chevron: the modes close, nothing is run.
-        app.git.branches.menu =
-            Some((crate::git_panel::branches::Split::Pull, iced::Point::ORIGIN));
-        let _ = app.handle(Message::SetPullMode(crate::git::PullMode::Rebase));
-        assert!(app.git.branches.menu.is_none());
-        assert!(!app.git.busy);
-        let _ = app.handle(Message::SetMergeMode(crate::git::MergeMode::NoFastForward));
-        assert_eq!(app.git.pull_mode, crate::git::PullMode::Rebase);
-        assert_eq!(app.config.git_pull_mode, crate::git::PullMode::Rebase);
-        assert_eq!(app.git.merge_mode, crate::git::MergeMode::NoFastForward);
-        assert_eq!(
-            app.config.git_merge_mode,
-            crate::git::MergeMode::NoFastForward
-        );
-        assert!(app.config_dirty, "written with the next tick");
-        // A config file keeps them, in words.
-        let text = serde_json::to_string(&app.config).unwrap();
-        assert!(text.contains("rebase") && text.contains("no-fast-forward"));
-    }
-
     fn press(app: &mut SimpleEditApp, key: &str, ctrl: bool, shift: bool, alt: bool) {
         let _ = app.handle(Message::KeyPressed {
             key: key.into(),
@@ -2166,132 +1869,6 @@ mod behavior_tests {
         assert_eq!(text(&app).trim_end(), "one\ntwo\nthree");
         press(&mut app, "z", true, true, false);
         assert_eq!(text(&app).trim_end(), "one\nthree\ntwo");
-    }
-
-    #[test]
-    fn the_git_shortcuts_open_the_panel() {
-        let mut app = app();
-        press(&mut app, "k", true, false, false);
-        assert!(app.git.open);
-        assert_eq!(app.git.tab, crate::git_panel::Tab::Commit);
-        // Bookmarks panel: Shift+F11.
-        press(&mut app, "F11", false, true, false);
-        assert!(app.bookmark_panel.open);
-    }
-
-    #[test]
-    fn the_remote_is_fetched_by_itself_at_the_chosen_pace_and_new_commits_are_told() {
-        let mut app = app();
-        app.git.repo = Some(PathBuf::from("/tmp"));
-        app.config.git_auto_fetch_minutes = 1;
-        // One minute is sixty ticks of a second.
-        app.ticks = 59;
-        let _ = app.handle(Message::AutoSave);
-        assert_eq!(app.ticks, 60);
-        // Never: the pace is only a setting.
-        let _ = app.handle(Message::SetAutoFetch(0));
-        assert_eq!(app.config.git_auto_fetch_minutes, 0);
-        assert!(app.config_dirty);
-        // New commits on the remote show in the status bar.
-        let mut before = conflicted(None, 0);
-        before.upstream = Some("origin/main".into());
-        let mut after = before.clone();
-        after.behind = 3;
-        app.git.status = Some(after);
-        let _ = app.after_message(false, Some(Some(before)), false);
-        assert!(app.status_message.contains('3'));
-    }
-
-    #[test]
-    fn the_branch_in_the_status_bar_opens_a_list_to_switch_or_make_a_branch() {
-        let mut app = app();
-        // Not in a repository: nothing to switch.
-        let _ = app.handle(Message::OpenBranchSwitcher);
-        assert!(matches!(app.overlay, ActiveOverlay::None));
-        app.git.repo = Some(PathBuf::from("/tmp"));
-        app.git.status = Some(conflicted(None, 0));
-        app.git.log.refs = Some(crate::git::history::Refs {
-            branches: vec![crate::git::history::Branch {
-                name: "main".into(),
-                sha: String::new(),
-                upstream: None,
-                current: true,
-                remote: false,
-                ahead: 0,
-                behind: 0,
-            }],
-            tags: vec![],
-        });
-        press(&mut app, "b", true, true, false);
-        assert_eq!(app.overlay, ActiveOverlay::BranchSwitch(String::new()));
-        let _ = app.handle(Message::BranchSwitchFilter("fea".into()));
-        assert_eq!(app.overlay, ActiveOverlay::BranchSwitch("fea".into()));
-        // A name no branch has: made, then switched to.
-        let _ = app.handle(Message::BranchSwitchChoose("feature-x".into(), true));
-        assert!(matches!(app.overlay, ActiveOverlay::None));
-        assert!(app.git.busy);
-        // An empty name does nothing.
-        app.git.busy = false;
-        let _ = app.handle(Message::OpenBranchSwitcher);
-        let _ = app.handle(Message::BranchSwitchChoose(String::new(), false));
-        assert!(!app.git.busy);
-    }
-
-    #[test]
-    fn what_goes_wrong_with_the_panel_closed_is_told_in_the_status_bar() {
-        let mut app = app();
-        assert!(!app.git.open);
-        let _ = app.handle(Message::Git(crate::git_panel::GitMsg::Done(Err(
-            "push refused".into(),
-        ))));
-        assert!(app.status_message.contains("push refused"));
-        assert!(app.status_is_error);
-        // A conflict is not a failure: the pop-up says it.
-        app.set_status("calm", false);
-        let _ = app.handle(Message::Git(crate::git_panel::GitMsg::Done(Err(
-            crate::git::CONFLICT.into(),
-        ))));
-        assert_eq!(app.status_message, "calm");
-    }
-
-    #[test]
-    fn the_previous_version_of_a_line_opens_in_a_tab_of_its_own_with_its_blame() {
-        let mut app = app();
-        let line = |sha: &str, summary: &str| crate::git::history::BlameLine {
-            sha: sha.into(),
-            author: "A".into(),
-            email: "a@example.com".into(),
-            time: 0,
-            summary: summary.into(),
-            message: std::sync::Arc::from(""),
-        };
-        let lines = vec![
-            line(&"a".repeat(40), "first"),
-            line(&"b".repeat(40), "second"),
-        ];
-        let _ = app.handle(Message::BlamePreviousLoaded(Ok((
-            PathBuf::from("/repo"),
-            "src/f.rs".into(),
-            "12345678".into(),
-            "one\ntwo\n".into(),
-            lines,
-        ))));
-        let tab = app.current_file.clone().unwrap();
-        assert_eq!(display_name(&tab), "⟲ f.rs @ 12345678");
-        assert!(is_untitled(&tab), "never written to disk by mistake");
-        assert_eq!(text(&app), "one\ntwo\n");
-        // Its blame is there: one note per line, the hashes kept for the next step back.
-        assert!(app.blame_shown());
-        assert_eq!(app.blame.as_ref().unwrap().shas.len(), 2);
-        // A line a commit made can go back again; one not committed yet can't.
-        app.gutter_line = Some(1);
-        let task = app.handle(Message::BlamePrevious);
-        let _ = task;
-        // An error says why and opens nothing.
-        let before = app.current_file.clone();
-        let _ = app.handle(Message::BlamePreviousLoaded(Err("no such path".into())));
-        assert_eq!(app.current_file, before);
-        assert!(app.status_message.contains("no such path"));
     }
 
     // ---- the Database panel's tables
