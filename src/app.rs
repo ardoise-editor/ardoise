@@ -1544,6 +1544,19 @@ impl SimpleEditApp {
                 },
             ));
         }
+        if self.plugin_grid_resizing() {
+            subscriptions.push(iced::event::listen_with(
+                |event, _status, _window| match event {
+                    iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(
+                        Message::Plugin(crate::plugins::PluginMsg::GridResize(position.x)),
+                    ),
+                    iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                        iced::mouse::Button::Left,
+                    )) => Some(Message::Plugin(crate::plugins::PluginMsg::GridResizeEnd)),
+                    _ => None,
+                },
+            ));
+        }
         if self.db.resizing.is_some() {
             subscriptions.push(iced::event::listen_with(
                 |event, _status, _window| match event {
@@ -2325,6 +2338,10 @@ impl SimpleEditApp {
 
         match message {
             Message::EditorAction(action) => {
+                // The editor has the keyboard again.
+                self.plugins.grid_focus = None;
+                self.plugins.editor_focus = None;
+                self.plugins.completion = None;
                 self.symbol_card = None;
                 self.symbol_token += 1;
                 self.merge_typing = false;
@@ -2877,6 +2894,10 @@ impl SimpleEditApp {
             }
             Message::LintHover(over) => self.lint_hover(over),
             Message::CompletionInvoke => {
+                // In an editor of a panel: the plugin is asked.
+                if let Some(slot) = self.plugins.editor_focus.clone() {
+                    return self.plugin_complete(slot);
+                }
                 self.completion_request(crate::lsp::Trigger::Invoked, true)
             }
             Message::CompletionInfo(key, info) => {
@@ -4533,6 +4554,16 @@ impl SimpleEditApp {
                         return self.handle(Message::ToggleTerminal);
                     }
                     return Task::none();
+                }
+                // The completions of an editor of a panel, then the grid of
+                // a panel that has the keyboard.
+                if !ctrl && !alt {
+                    if let Some(task) = self.plugin_completion_key(&key) {
+                        return task;
+                    }
+                }
+                if let Some(task) = self.plugin_grid_key(&key, ctrl, shift) {
+                    return task;
                 }
                 // The list of completions: its arrows, pages, Enter and Tab.
                 if self.completion_visible() && !ctrl && !alt {
@@ -8525,6 +8556,8 @@ pub(crate) use completion::Floating;
 mod finder;
 #[path = "app/lint.rs"]
 mod lint;
+#[path = "app/plugin_grid.rs"]
+mod plugin_grid;
 #[path = "app/plugins.rs"]
 mod plugins;
 #[path = "app/project_ops.rs"]

@@ -764,7 +764,17 @@ impl SimpleEditApp {
                     return Task::none();
                 };
                 let edit = action.is_edit();
+                let typed = match &action {
+                    iced::widget::text_editor::Action::Edit(
+                        iced::widget::text_editor::Edit::Insert(c),
+                    ) => Some(*c),
+                    _ => None,
+                };
                 content.perform(action);
+                let touched = self.plugin_editor_touched(slot.clone(), typed);
+                let Some((content, _)) = self.plugins.editors.get_mut(&slot) else {
+                    return touched;
+                };
                 if edit {
                     let text = content.text();
                     host::notify(
@@ -777,7 +787,7 @@ impl SimpleEditApp {
                         },
                     );
                 }
-                Task::none()
+                touched
             }
             PluginMsg::Input(plugin, panel, field, value) => {
                 self.plugin_settings_touched(&plugin, &panel);
@@ -866,6 +876,24 @@ impl SimpleEditApp {
                     serde_json::to_value(input).ok(),
                 ))
             }
+            PluginMsg::Grid(plugin, panel, id, m) => self.plugin_grid(plugin, panel, id, m),
+            PluginMsg::GridResize(x) => {
+                self.plugin_grid_resize(x);
+                Task::none()
+            }
+            PluginMsg::GridResizeEnd => {
+                self.plugin_grid_resize_end();
+                Task::none()
+            }
+            PluginMsg::GridPasted(text) => {
+                self.plugin_grid_pasted(text);
+                Task::none()
+            }
+            PluginMsg::Completed(slot, at, result) => {
+                self.plugin_completed(slot, at, result);
+                Task::none()
+            }
+            PluginMsg::CompletionPick(index) => self.plugin_completion_accept(index),
             PluginMsg::ScreenOpen(word, dir) => {
                 let dir = if dir.as_os_str().is_empty() {
                     self.projects.roots.first().cloned().unwrap_or_default()

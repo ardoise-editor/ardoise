@@ -4,6 +4,7 @@
 //! processes that speak JSON-RPC ([`host`]); what their panels show is
 //! drawn by [`render`].
 
+pub mod grid;
 pub mod host;
 pub mod migrate;
 pub mod remote;
@@ -27,6 +28,18 @@ pub use store::Installed;
 
 /// A panel of a plugin: the plugin's id, the panel's id.
 pub type PanelKey = (String, String);
+
+/// The completions a plugin gave for the cursor of one of its editors.
+#[derive(Debug, Clone)]
+pub struct NodeCompletion {
+    pub editor: grid::GridKey,
+    pub items: Vec<simpleedit_plugin::protocol::CompletionItem>,
+    /// Where the replaced word starts, in characters.
+    pub from: usize,
+    /// The cursor when it was asked, in characters.
+    pub at: usize,
+    pub picked: usize,
+}
 
 /// What a file is compared with to mark its changed lines.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +145,22 @@ pub enum PluginMsg {
     ScreenPasted(String, String, String, bool, Option<String>),
     /// A click on `file:line` on a screen, and the folder it is from.
     ScreenOpen(String, PathBuf),
+    /// A grid of a panel: the plugin, the panel, the grid.
+    Grid(String, String, String, grid::GridMsg),
+    /// The pointer dragging the edge of a column (x), and let go.
+    GridResize(f32),
+    GridResizeEnd,
+    /// The text of the clipboard for a paste in the grid that has the keyboard.
+    GridPasted(Option<String>),
+    /// A completion clicked under an editor of a panel.
+    CompletionPick(usize),
+    /// What may come at the cursor of an editor of a panel, as the plugin
+    /// answered.
+    Completed(
+        grid::GridKey,
+        usize,
+        Result<simpleedit_plugin::protocol::Completions, String>,
+    ),
 
     // ── The Plugins page ───────────────────────────────────────────────
     LoadRegistry,
@@ -208,6 +237,14 @@ pub struct Plugins {
     pub settings_open: Option<PanelKey>,
     /// The screen that has the keyboard: its panel and its id.
     pub screen_focus: Option<(PanelKey, String)>,
+    /// What is only seen of the grids of the panels, and the one that has
+    /// the keyboard.
+    pub grids: HashMap<grid::GridKey, grid::GridView>,
+    pub grid_focus: Option<grid::GridKey>,
+    /// The editor of a panel last typed or clicked in, and the list of
+    /// completions open under it.
+    pub editor_focus: Option<grid::GridKey>,
+    pub completion: Option<NodeCompletion>,
     /// How files stand, as each plugin said it.
     pub decorations: BTreeMap<String, Vec<simpleedit_plugin::protocol::FileDecoration>>,
     /// The texts files are compared with to mark their changed lines: the

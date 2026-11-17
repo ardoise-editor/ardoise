@@ -45,7 +45,7 @@ default = ["drivers"]
 drivers = ["dep:postgres", "dep:rustls", "dep:tokio-postgres-rustls", "dep:rustls-native-certs", "dep:rusqlite", "dep:mysql"]
 
 [dependencies]
-iced = { version = "0.14", features = ["advanced", "tokio", "lazy", "selector", "canvas"] }
+iced = { version = "0.14", features = ["advanced", "tokio", "lazy", "selector", "canvas", "svg"] }
 iced_aw = { version = "0.14", default-features = false, features = ["context_menu", "wrap"] }
 iced_fonts = { version = "0.3", features = ["nerd", "lucide"] }
 syntect = { version = "5", default-features = false, features = ["default-syntaxes", "regex-onig"] }
@@ -78,7 +78,7 @@ mysql = { version = "28", default-features = false, features = ["minimal-rust", 
 trash = "5.3.0"
 notify = "8"
 # The protocol and manifest of the plugins (the editor needs only the types).
-simpleedit-plugin = { git = "https://github.com/simple-edit-app/plugin-sdk", tag = "v0.8.1", default-features = false }
+simpleedit-plugin = { git = "https://github.com/simple-edit-app/plugin-sdk", tag = "v0.9.0", default-features = false }
 # The archives the plugins are published as.
 tar = { version = "0.4", default-features = false }
 flate2 = "1"

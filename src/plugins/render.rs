@@ -205,7 +205,25 @@ fn draw<'a>(
                     crate::editor::highlighter::to_format,
                 );
             let _ = read_only;
-            container(editor).width(Length::Fill).into()
+            let editor = container(editor).width(Length::Fill);
+            // The completions the plugin gave, under its editor.
+            let slot = (key.clone(), id_of(node).to_string());
+            match plugins.completion.as_ref().filter(|c| c.editor == slot) {
+                Some(open) => column![editor, completion_list(open, dark)].into(),
+                None => editor.into(),
+            }
+        }
+        Node::Grid(grid) => {
+            let view = plugins.grids.get(&(key.clone(), grid.id.clone()));
+            super::grid::view(key, grid, view, dark)
+        }
+        Node::Image { svg, height } => {
+            let handle = iced::widget::svg::Handle::from_memory(svg.clone().into_bytes());
+            let image = iced::widget::svg(handle).width(Length::Fill);
+            match height {
+                Some(h) => image.height(Length::Fixed(*h)).into(),
+                None => image.height(Length::Shrink).into(),
+            }
         }
         Node::Screen(grid) => {
             let focused = plugins
@@ -219,10 +237,14 @@ fn draw<'a>(
             .style(se_theme::rule(dark))
             .into(),
         Node::Space { height } => Space::new().height(height.clamp(0.0, 400.0)).into(),
-        Node::Scroll { child, bottom } => {
+        Node::Scroll {
+            child,
+            bottom,
+            height,
+        } => {
             let s = scrollable(draw(plugins, key, child, dark, depth + 1))
                 .style(se_theme::Scrollbar { dark }.style())
-                .height(Length::Fill)
+                .height(height.map_or(Length::Fill, Length::Fixed))
                 .width(Length::Fill);
             if *bottom {
                 s.anchor_bottom().into()
@@ -231,6 +253,47 @@ fn draw<'a>(
             }
         }
     }
+}
+
+fn id_of(node: &Node) -> &str {
+    match node {
+        Node::Editor { id, .. } => id,
+        _ => "",
+    }
+}
+
+/// The completions under an editor: the one picked is lit; a click takes it.
+fn completion_list<'a>(open: &'a super::NodeCompletion, dark: bool) -> Element<'a, Message> {
+    let p = se_theme::palette(dark);
+    let mut list = column![].spacing(1).padding(4);
+    let start = open.picked.saturating_sub(7);
+    for (i, item) in open.items.iter().enumerate().skip(start).take(8) {
+        let picked = i == open.picked;
+        let line = row![
+            text(item.label.as_str()).size(12.5).font(se_theme::MONO),
+            Space::new().width(Length::Fill),
+            text(item.detail.as_str()).size(11.5).color(p.muted),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+        list = list.push(
+            button(line)
+                .padding([2, 8])
+                .width(Length::Fill)
+                .on_press(Message::Plugin(PluginMsg::CompletionPick(i)))
+                .style(
+                    (se_theme::GhostButton {
+                        dark,
+                        active: picked,
+                    })
+                    .style(),
+                ),
+        );
+    }
+    container(list)
+        .width(Length::Fill)
+        .style(se_theme::card(dark))
+        .into()
 }
 
 /// One character before a label, in the font of the icons.
