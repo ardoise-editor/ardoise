@@ -199,6 +199,41 @@ impl SimpleEditApp {
         }
     }
 
+    /// A panel was drawn again: a grid whose cursor moved out of view
+    /// scrolls to it.
+    pub(super) fn plugin_grids_follow(&mut self, key: &crate::plugins::PanelKey) -> Task<Message> {
+        let Some(root) = self.plugins.views.get(key) else {
+            return Task::none();
+        };
+        let cursors: Vec<(String, Option<(usize, usize)>)> = grid::all(root)
+            .into_iter()
+            .map(|g| (g.id.clone(), g.selection.map(|s| s.cursor)))
+            .collect();
+        let mut tasks = Vec::new();
+        for (id, cursor) in cursors {
+            let view = self
+                .plugins
+                .grids
+                .entry((key.clone(), id.clone()))
+                .or_default();
+            if view.cursor == cursor {
+                continue;
+            }
+            view.cursor = cursor;
+            let Some((row, _)) = cursor else {
+                continue;
+            };
+            if let Some(y) = grid::follow(row, view.scroll.0, view.scroll.1) {
+                view.scroll.0 = y;
+                tasks.push(iced::widget::operation::scroll_to(
+                    grid::scroll_id(key, &id),
+                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y },
+                ));
+            }
+        }
+        Task::batch(tasks)
+    }
+
     /// The pointer drags the edge of a column.
     pub(super) fn plugin_grid_resize(&mut self, x: f32) {
         for view in self.plugins.grids.values_mut() {
@@ -478,6 +513,31 @@ mod tests {
             iced::widget::text_editor::Action::Click(iced::Point::ORIGIN),
         ));
         assert!(app.plugins.grid_focus.is_none());
+    }
+
+    #[test]
+    fn the_rows_scroll_to_a_cursor_moved_out_of_view() {
+        let rows: Vec<_> = (0..50)
+            .map(|i| serde_json::json!({"cells": [{"text": i.to_string()}]}))
+            .collect();
+        let grid = |row: usize| {
+            serde_json::json!({
+                "type": "grid", "id": "rows", "columns": [{"name": "n"}], "rows": rows,
+                "selection": {"anchor": [row, 0], "cursor": [row, 0]}
+            })
+        };
+        let mut app = app_with_panel(grid(0));
+        app.plugins.grids.entry(key()).or_default().scroll = (0.0, 10.0 * grid::ROW_HEIGHT);
+        let _ = app.update(Message::Plugin(PluginMsg::Incoming(Incoming::Rpc(
+            "test.grid".into(),
+            Rpc::notification(
+                methods::RENDER,
+                serde_json::json!({"panel": "p", "root": grid(30)}),
+            ),
+        ))));
+        let view = &app.plugins.grids[&key()];
+        assert_eq!(view.cursor, Some((30, 0)));
+        assert_eq!(view.scroll.0, 21.0 * grid::ROW_HEIGHT);
     }
 
     #[test]

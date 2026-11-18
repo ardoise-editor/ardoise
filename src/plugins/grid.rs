@@ -36,6 +36,39 @@ pub struct GridView {
     pub widths: HashMap<usize, f32>,
     /// The number of rows the last "scrolled to the end" was sent for.
     pub end_sent: usize,
+    /// The cell of the cursor as last drawn: when it moves out of view, the
+    /// rows scroll to it.
+    pub cursor: Option<(usize, usize)>,
+}
+
+/// The scrollable of the rows of a grid.
+pub fn scroll_id(key: &PanelKey, id: &str) -> iced::widget::Id {
+    iced::widget::Id::from(format!("plugin-grid:{}:{}:{id}", key.0, key.1))
+}
+
+/// The grids of a tree of nodes.
+pub fn all(node: &Node) -> Vec<&Grid> {
+    match node {
+        Node::Grid(grid) => vec![grid.as_ref()],
+        Node::Column { children, .. } | Node::Row { children, .. } => {
+            children.iter().flat_map(all).collect()
+        }
+        Node::Scroll { child, .. } => all(child),
+        _ => Vec::new(),
+    }
+}
+
+/// Where the rows must scroll to show a row (none: it is in view).
+pub fn follow(row: usize, offset: f32, height: f32) -> Option<f32> {
+    let height = if height > 0.0 { height } else { 400.0 };
+    let top = row as f32 * ROW_HEIGHT;
+    if top < offset {
+        Some(top)
+    } else if top + ROW_HEIGHT > offset + height {
+        Some(top + ROW_HEIGHT - height)
+    } else {
+        None
+    }
 }
 
 /// What happens to a grid, for the editor.
@@ -363,6 +396,7 @@ pub fn view<'a>(
 
     let k = key.clone();
     let vertical = scrollable(rows)
+        .id(scroll_id(key, id))
         .on_scroll(move |v| {
             msg(
                 &k,
@@ -541,6 +575,14 @@ mod tests {
         assert!(in_block(s, 1, 1) && in_block(s, 0, 0));
         assert!(!in_block(s, 3, 0));
         assert_eq!(dragged(100.0, -90.0), MIN_WIDTH);
+        // The cursor moved under the rows shown: they scroll just enough.
+        assert_eq!(follow(5, 0.0, 10.0 * ROW_HEIGHT), None);
+        assert_eq!(follow(12, 0.0, 10.0 * ROW_HEIGHT), Some(3.0 * ROW_HEIGHT));
+        assert_eq!(
+            follow(2, 5.0 * ROW_HEIGHT, 10.0 * ROW_HEIGHT),
+            Some(2.0 * ROW_HEIGHT)
+        );
+        assert_eq!(all(&node).len(), 1);
         assert_eq!(one_line("a\nb"), "a …");
     }
 }

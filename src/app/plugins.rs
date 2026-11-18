@@ -1197,6 +1197,7 @@ impl SimpleEditApp {
     fn plugin_incoming(&mut self, id: String, message: Rpc) -> Task<Message> {
         match message {
             Rpc::Notification { method, params } => {
+                let mut follow = Task::none();
                 match method.as_str() {
                     methods::RENDER => {
                         if let Ok(p) = serde_json::from_value::<RenderParams>(params) {
@@ -1213,7 +1214,9 @@ impl SimpleEditApp {
                                 .values()
                                 .any(|t| t.plugin == id && t.tab == p.panel);
                             if known {
-                                self.plugins.set_view((id, p.panel), p.root);
+                                let key = (id, p.panel);
+                                self.plugins.set_view(key.clone(), p.root);
+                                follow = self.plugin_grids_follow(&key);
                             }
                         }
                     }
@@ -1312,7 +1315,7 @@ impl SimpleEditApp {
                     }
                     _ => {}
                 }
-                Task::none()
+                follow
             }
             Rpc::Request {
                 id: request,
@@ -1353,6 +1356,28 @@ impl SimpleEditApp {
                         Task::none()
                     }
                 },
+                methods::PICK_SAVE_PATH => {
+                    match serde_json::from_value::<rpc::PickSavePathParams>(params) {
+                        Ok(p) => Task::perform(
+                            async move {
+                                let picked = rfd::AsyncFileDialog::new()
+                                    .set_file_name(p.name)
+                                    .save_file()
+                                    .await;
+                                Ok(picked.map_or(Value::Null, |f| {
+                                    Value::String(f.path().to_string_lossy().into_owned())
+                                }))
+                            },
+                            move |result| {
+                                plugin_msg(PluginMsg::Respond(id.clone(), request, result))
+                            },
+                        ),
+                        Err(e) => {
+                            host::respond(&id, request, Err(invalid(e)));
+                            Task::none()
+                        }
+                    }
+                }
                 methods::PICK_FILE => match serde_json::from_value::<PickFileParams>(params) {
                     Ok(p) => Task::perform(
                         async move {
@@ -1491,6 +1516,32 @@ impl SimpleEditApp {
                             Task::none()
                         }
                     }
+                }
+                methods::EDITOR_STATE => {
+                    let answer = serde_json::from_value::<rpc::EditorStateParams>(params)
+                        .map_err(invalid)
+                        .and_then(|p| {
+                            let slot = ((id.clone(), p.panel), p.editor);
+                            let (content, _) = self
+                                .plugins
+                                .editors
+                                .get(&slot)
+                                .ok_or_else(|| invalid("no such editor"))?;
+                            let at =
+                                |p: iced::advanced::text::editor::Position| rpc::TextPosition {
+                                    line: p.line,
+                                    column: p.column,
+                                };
+                            let cursor = content.cursor();
+                            serde_json::to_value(rpc::EditorState {
+                                text: content.text(),
+                                cursor: at(cursor.position),
+                                anchor: cursor.selection.map(at),
+                            })
+                            .map_err(invalid)
+                        });
+                    host::respond(&id, request, answer);
+                    Task::none()
                 }
                 methods::OPEN_TEXT => match serde_json::from_value::<OpenTextParams>(params) {
                     Ok(p) => {
