@@ -67,7 +67,6 @@ pub fn error_dot<'a>(dark: bool) -> Element<'a, Message> {
 pub enum Panel {
     Files,
     Projects,
-    Database,
 }
 
 /// Which panels of the sidebar are open.
@@ -75,7 +74,6 @@ pub enum Panel {
 pub struct Panels {
     pub files: bool,
     pub projects: bool,
-    pub database: bool,
 }
 
 pub struct SidebarState {

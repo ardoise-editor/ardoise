@@ -170,7 +170,7 @@ pub enum PluginMsg {
     /// Updates a plugin that is not official, by id.
     Update(String),
     /// The end of an install: what it was for (an id or a repository).
-    Installed(String, Result<Installed, String>),
+    Installed(String, Box<Result<Installed, String>>),
     Uninstall(String),
     CheckUpdates,
     /// The newest version of each plugin that has a repository.
@@ -179,7 +179,7 @@ pub enum PluginMsg {
     RepoTyped(String),
     /// Downloads that plugin to show what it is before it is installed.
     FetchRepo,
-    Fetched(Result<Review, String>),
+    Fetched(Box<Result<Review, String>>),
     /// Installs the plugin shown.
     AcceptReview,
     CancelReview,

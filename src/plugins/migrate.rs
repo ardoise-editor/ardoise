@@ -122,6 +122,28 @@ fn carry_api_tabs_to(saved: &[crate::session::ApiSession], dir: &Path) -> Vec<(S
     opened
 }
 
+/// The official Database plugin.
+pub const DATABASE: &str = "simpleedit.database";
+
+/// The data sources the editor kept before the Database plugin, and the
+/// queries of its console: they become the plugin's, once (the passwords
+/// stay in the keychain, under the same names).
+pub fn carry_database() {
+    let (Some(config), Some(data), Some(dir)) = (
+        crate::fsutil::config_dir(),
+        crate::fsutil::data_dir(),
+        super::store::data_dir_of(DATABASE),
+    ) else {
+        return;
+    };
+    carry_database_to(&config.join("simpleedit"), &data.join("simpleedit"), &dir);
+}
+
+fn carry_database_to(config: &Path, data: &Path, dir: &Path) {
+    carry_file(&config.join("databases.json"), &dir.join("databases.json"));
+    carry_file(&data.join("queries.sql"), &dir.join("queries.sql"));
+}
+
 /// The official Git plugin.
 pub const GIT: &str = "simpleedit.git";
 
@@ -343,5 +365,29 @@ mod tests {
         carry_git_settings_to(&config, dir.path());
         let kept = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
         assert!(kept.contains("ff-only"));
+    }
+
+    #[test]
+    fn the_data_sources_and_the_queries_become_the_database_plugins_once() {
+        let old = tempfile::tempdir().unwrap();
+        let (config, data) = (old.path().join("config"), old.path().join("data"));
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(config.join("databases.json"), r#"{"connections": []}"#).unwrap();
+        std::fs::write(data.join("queries.sql"), "SELECT 1;").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        carry_database_to(&config, &data, dir.path());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("queries.sql")).unwrap(),
+            "SELECT 1;"
+        );
+        assert!(dir.path().join("databases.json").exists());
+        // Once: what the plugin has stays.
+        std::fs::write(data.join("queries.sql"), "SELECT 2;").unwrap();
+        carry_database_to(&config, &data, dir.path());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("queries.sql")).unwrap(),
+            "SELECT 1;"
+        );
     }
 }

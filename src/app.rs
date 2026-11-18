@@ -141,13 +141,6 @@ pub enum BlameOption {
     ShowHidden,
 }
 
-/// The diagram of a schema, as the window shows it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagramView {
-    pub schema: String,
-    pub diagram: crate::database::diagram::Diagram,
-}
-
 /// What the status bar's choice windows are about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextOption {
@@ -168,7 +161,6 @@ pub enum ActiveOverlay {
     /// The languages of the dictionaries found.
     SpellLanguages,
     /// The tables of a schema and the keys between them.
-    Diagram(Box<DiagramView>),
     /// The new name of the symbol under the cursor, being typed.
     Rename(String),
     /// Search everywhere (Shift twice).
@@ -505,8 +497,6 @@ pub enum Message {
     OpenBranchSwitcher,
     /// A Git shortcut: the Git plugin does it.
     GitShortcut(GitShortcut),
-    /// The Database panel and its tables.
-    Db(crate::database::DbMsg),
     /// The API panel and its requests.
     SidebarResizeStart,
     SidebarResize(f32),
@@ -598,8 +588,6 @@ pub enum Message {
         ctrl: bool,
         shift: bool,
         alt: bool,
-        /// A widget (a text field, an editor) already acted on the key.
-        captured: bool,
     },
     EscapePressed,
     /// Enter pressed while a search field might own it; `shift` goes back.
@@ -789,11 +777,6 @@ pub struct SimpleEditApp {
     panels: crate::sidebar::Panels,
     /// Width of the file list, and whether its edge is being dragged.
     sidebar_width: f32,
-    /// The Database panel: connections, driver, form.
-    db: crate::database::State,
-    /// The tables open as tabs (`db://N/...`).
-    db_tabs: HashMap<PathBuf, crate::database::TableTab>,
-    db_counter: usize,
     /// The API panel: collections, environments, history.
     sidebar_resizing: bool,
     /// The height of the bottom panels (Git, terminal, scratch files, bookmarks), and the drag that resizes it: where the
@@ -1089,17 +1072,11 @@ impl SimpleEditApp {
             tree_view: (0.0, 0.0),
             tab_list: None,
             panels: crate::sidebar::Panels {
-                files: !config.show_database_panel
-                    && config.show_files_panel
+                files: config.show_files_panel
                     && (!config.show_projects_panel || config.projects.is_empty()),
-                projects: !config.show_database_panel
-                    && config.show_projects_panel
+                projects: config.show_projects_panel
                     && (!config.show_files_panel || !config.projects.is_empty()),
-                database: config.show_database_panel,
             },
-            db: crate::database::State::load(),
-            db_tabs: HashMap::new(),
-            db_counter: 0,
             trust_asked: HashSet::new(),
             session_writes: 0,
             abandoned_reads: HashSet::new(),
@@ -1238,6 +1215,7 @@ impl SimpleEditApp {
             crate::plugins::migrate::carry_local_history(&app.config);
             crate::plugins::migrate::carry_api(&app.config);
             crate::plugins::migrate::carry_git_settings(&app.config);
+            crate::plugins::migrate::carry_database();
         }
         app.plugins = crate::plugins::Plugins::load();
         app.plugins_start();
@@ -1449,7 +1427,6 @@ impl SimpleEditApp {
                 ctrl: modifiers.command(),
                 shift: modifiers.shift(),
                 alt: modifiers.alt(),
-                captured: !ignored,
             })
         });
 
@@ -1553,19 +1530,6 @@ impl SimpleEditApp {
                     iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
                         iced::mouse::Button::Left,
                     )) => Some(Message::Plugin(crate::plugins::PluginMsg::GridResizeEnd)),
-                    _ => None,
-                },
-            ));
-        }
-        if self.db.resizing.is_some() {
-            subscriptions.push(iced::event::listen_with(
-                |event, _status, _window| match event {
-                    iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                        Some(Message::Db(crate::database::DbMsg::ResizeMove(position.x)))
-                    }
-                    iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
-                        iced::mouse::Button::Left,
-                    )) => Some(Message::Db(crate::database::DbMsg::ResizeEnd)),
                     _ => None,
                 },
             ));
@@ -1734,12 +1698,6 @@ impl SimpleEditApp {
         if let Some(errors) = error_panel {
             panel = panel.push(errors);
         }
-        if self.db.console.open {
-            panel = panel.push(
-                container(crate::database::view::console(&self.db, dark))
-                    .height(Length::Fixed(self.panel_height)),
-            );
-        }
         if self.scratch.open {
             panel = panel.push(self.scratch_panel(dark));
         }
@@ -1763,15 +1721,10 @@ impl SimpleEditApp {
         main_row = main_row.push(self.activity_bar(dark)).push(vrule(dark));
         let plugin_sidebar = self.plugin_sidebar(dark);
         if self.show_sidebar
-            && (self.panels.files
-                || self.panels.projects
-                || self.panels.database
-                || plugin_sidebar.is_some())
+            && (self.panels.files || self.panels.projects || plugin_sidebar.is_some())
         {
             let panel: Element<Message> = if let Some(panel) = plugin_sidebar {
                 panel
-            } else if self.panels.database {
-                crate::database::view::sidebar(&self.db, dark)
             } else {
                 self.sidebar.view(
                     dark,
@@ -1966,129 +1919,6 @@ impl SimpleEditApp {
             with_dropdown
         };
 
-        // The form of a database connection.
-        let with_prefs: Element<Message> = match &self.db.dialog {
-            Some(form) => crate::floating::modal(
-                with_prefs,
-                crate::database::view::dialog(&self.db, form, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
-        // The table designer, and the question before a drop or a deletion.
-        let with_prefs: Element<Message> = match &self.db.designer {
-            Some(designer) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::designer(designer, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.links {
-            Some(links) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::links(links, dark),
-                Some(Message::Db(crate::database::DbMsg::CloseLinks)),
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.backup {
-            Some(backup) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::backup(
-                    backup,
-                    self.db
-                        .connection(backup.conn)
-                        .is_some_and(|c| c.production),
-                    dark,
-                ),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.copy_table {
-            Some(copy) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::copy_table(copy, &self.db.connections, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.import {
-            Some(import) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::import(import, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.health {
-            Some(health) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::health(health, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.confirm {
-            Some(confirm) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::confirm(confirm, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
-        let with_prefs: Element<Message> = match &self.db.ssh_trust {
-            Some(trust) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::ssh_trust(trust, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
-        let with_prefs: Element<Message> = match &self.db.new_schema {
-            Some(n) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::new_schema(n, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        // A text shown whole (a DDL, a long value).
-        let with_prefs: Element<Message> = match &self.db.text {
-            Some(view) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::text_view(view, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
         // Modal overlays
         match &self.overlay {
             ActiveOverlay::None => with_prefs,
@@ -2142,7 +1972,6 @@ impl SimpleEditApp {
                     ActiveOverlay::Compare(left, right) => self.view_compare(dark, left, right),
                     ActiveOverlay::Spelling(found) => self.view_spelling(dark, found),
                     ActiveOverlay::SpellLanguages => self.view_spell_languages(dark),
-                    ActiveOverlay::Diagram(view) => self.view_diagram(dark, view),
                     ActiveOverlay::Shortcuts => self.view_shortcuts_overlay(dark),
                     ActiveOverlay::ConfirmOverwrite(path) => {
                         self.view_overwrite_overlay(dark, path)
@@ -2227,10 +2056,6 @@ impl Message {
     /// Answers of background work and timers: not an action of the user.
     fn is_background(&self) -> bool {
         match self {
-            Message::Db(msg) => matches!(
-                msg,
-                crate::database::DbMsg::Scrolled(..) | crate::database::DbMsg::DriverProbed(..)
-            ),
             Message::CompareDiff(DiffNav::Scrolled(..)) => true,
             Message::Plugin(msg) => matches!(
                 msg,
@@ -2767,7 +2592,6 @@ impl SimpleEditApp {
                 if self.scratch.open {
                     self.plugin_bottom_yield();
                     self.bookmark_panel.open = false;
-                    self.db.console.open = false;
                     self.scratch.refresh();
                     self.scratch.error = None;
                 }
@@ -2778,7 +2602,6 @@ impl SimpleEditApp {
                 if self.bookmark_panel.open {
                     self.plugin_bottom_yield();
                     self.scratch.open = false;
-                    self.db.console.open = false;
                     return self.refresh_bookmark_texts(true);
                 }
                 Task::none()
@@ -3096,13 +2919,11 @@ impl SimpleEditApp {
                 self.panels = crate::sidebar::Panels {
                     files: false,
                     projects: true,
-                    database: false,
                 };
                 self.show_sidebar = true;
                 self.config.show_sidebar = true;
                 self.config.show_files_panel = false;
                 self.config.show_projects_panel = true;
-                self.config.show_database_panel = false;
                 self.config_dirty = true;
                 // And scrolled to the file.
                 let index = self
@@ -3791,12 +3612,10 @@ impl SimpleEditApp {
                 let was_open = match panel {
                     crate::sidebar::Panel::Files => self.panels.files,
                     crate::sidebar::Panel::Projects => self.panels.projects,
-                    crate::sidebar::Panel::Database => self.panels.database,
                 };
                 self.panels = crate::sidebar::Panels {
                     files: panel == crate::sidebar::Panel::Files && !was_open,
                     projects: panel == crate::sidebar::Panel::Projects && !was_open,
-                    database: panel == crate::sidebar::Panel::Database && !was_open,
                 };
                 // A panel that is asked for shows the sidebar if it was hidden.
                 if !was_open {
@@ -3806,12 +3625,7 @@ impl SimpleEditApp {
                 }
                 self.config.show_files_panel = self.panels.files;
                 self.config.show_projects_panel = self.panels.projects;
-                self.config.show_database_panel = self.panels.database;
                 self.config_dirty = true;
-                // The first look at the panel finds out if the driver is there.
-                if self.panels.database && self.db.driver == crate::database::Driver::Unknown {
-                    return self.db_probe_driver();
-                }
                 Task::none()
             }
             Message::ToggleSidebar => {
@@ -3826,7 +3640,6 @@ impl SimpleEditApp {
                 GitShortcut::Pull => "git.pull",
             }),
             Message::OpenBranchSwitcher => self.git_command("git.branches"),
-            Message::Db(msg) => self.db_message(msg),
             Message::SidebarResizeStart => {
                 self.sidebar_resizing = true;
                 Task::none()
@@ -4025,10 +3838,10 @@ impl SimpleEditApp {
                 self.overlay = ActiveOverlay::ConfirmQuit(t!("quit.unsaved").to_string());
                 Task::none()
             }
-            // Edits waiting in a table grid or a merge tab are not in the
-            // session: closing would throw them away.
+            // Edits waiting in a tab of a plugin or a merge tab are not in
+            // the session: closing would throw them away.
             Message::Quit
-                if self.db_tabs.values().any(|t| !t.pending.is_empty())
+                if self.plugins.tabs.values().any(|t| t.dirty)
                     || self.merge_tabs.values().any(|t| t.is_modified()) =>
             {
                 self.overlay = ActiveOverlay::ConfirmQuit(t!("quit.unsaved").to_string());
@@ -4479,17 +4292,7 @@ impl SimpleEditApp {
                 ctrl,
                 shift,
                 alt,
-                captured,
             } => {
-                // The keys of a table in front: arrows, F2, copy. A key a
-                // text field already used (Cmd/Ctrl+C on its selection,
-                // Option+Delete for a word) is not the grid's too; the app's
-                // own shortcuts below still see it.
-                if self.capturing.is_none() && !captured {
-                    if let Some(task) = self.db_key(&key, ctrl, shift, alt) {
-                        return task;
-                    }
-                }
                 // In shortcut capture mode: save the new binding
                 if let Some(target) = self.capturing {
                     let sc = ShortcutConfig {
@@ -5185,10 +4988,6 @@ impl SimpleEditApp {
                 }
             }
             Message::EscapePressed => {
-                // A table cell being typed in, or a date being picked.
-                if self.db_escape() {
-                    return Task::none();
-                }
                 // Several cursors go back to one.
                 if self.overlay == ActiveOverlay::None && self.editor.content.cursor_count() > 1 {
                     self.editor.content.clear_extras();
@@ -6431,17 +6230,11 @@ impl SimpleEditApp {
 
     /// Whether the tab for `path` holds unsaved changes.
     fn is_path_dirty(&self, path: &Path) -> bool {
-        // Tables with edits waiting for Commit and API requests that were
-        // changed hold their work outside the text buffers.
-        if self
-            .db_tabs
-            .get(path)
-            .is_some_and(|t| !t.pending.is_empty())
-            || self.plugins.tabs.get(path).is_some_and(|t| t.dirty)
-        {
+        // The tabs of plugins hold their work outside the text buffers.
+        if self.plugins.tabs.get(path).is_some_and(|t| t.dirty) {
             return true;
         }
-        if self.db_tabs.contains_key(path) || self.plugins.tabs.contains_key(path) {
+        if self.plugins.tabs.contains_key(path) {
             return false;
         }
         if self.current_file.as_deref() == Some(path) {
@@ -7031,7 +6824,6 @@ impl SimpleEditApp {
                 simpleedit_plugin::protocol::PanelParams { panel: tab },
             );
         }
-        self.db_tabs.remove(&path);
         if let Some(tab) = self.plugins.tabs.remove(&path) {
             crate::plugins::host::notify(
                 &tab.plugin,
@@ -8115,13 +7907,6 @@ impl SimpleEditApp {
         {
             return tab.view(dark);
         }
-        if let Some((path, tab)) = self
-            .current_file
-            .as_ref()
-            .and_then(|p| self.db_tabs.get(p).map(|tab| (p, tab)))
-        {
-            return crate::database::view::table(path, tab, dark);
-        }
         if let Some(tab) = self
             .current_file
             .as_ref()
@@ -8546,9 +8331,6 @@ mod bookmark_panel;
 mod compare;
 #[path = "app/completion.rs"]
 mod completion;
-mod database;
-mod db_tools;
-mod db_tree;
 #[path = "app/everywhere.rs"]
 mod everywhere;
 pub(crate) use completion::Floating;
@@ -8569,7 +8351,6 @@ mod spelling;
 mod split;
 #[path = "app/tab_groups.rs"]
 mod tab_groups;
-mod table_admin;
 #[path = "app/views.rs"]
 mod views;
 pub(crate) use views::resize_edge;

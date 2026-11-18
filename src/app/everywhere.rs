@@ -1946,7 +1946,6 @@ mod tests {
             ctrl,
             shift,
             alt,
-            captured: false,
         });
     }
 

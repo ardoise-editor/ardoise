@@ -667,7 +667,6 @@ impl SimpleEditApp {
                 self.panels = crate::sidebar::Panels {
                     files: false,
                     projects: false,
-                    database: false,
                 };
                 self.show_sidebar = true;
                 self.open_plugin_panel(&key);
@@ -684,7 +683,6 @@ impl SimpleEditApp {
                 // One tool panel at the bottom: those of the app step aside.
                 self.scratch.open = false;
                 self.bookmark_panel.open = false;
-                self.db.console.open = false;
                 self.plugins.bottom = Some(key);
             }
             Some(Location::Settings) => {
@@ -977,7 +975,7 @@ impl SimpleEditApp {
                 host::stop(&id);
                 let key = id.clone();
                 Task::perform(install_from(repo, true, Some(id)), move |r| {
-                    plugin_msg(PluginMsg::Installed(key.clone(), r))
+                    plugin_msg(PluginMsg::Installed(key.clone(), Box::new(r)))
                 })
             }
             PluginMsg::Update(id) => {
@@ -997,10 +995,11 @@ impl SimpleEditApp {
                 host::stop(&id);
                 let key = id.clone();
                 Task::perform(install_from(repo, false, Some(id)), move |r| {
-                    plugin_msg(PluginMsg::Installed(key.clone(), r))
+                    plugin_msg(PluginMsg::Installed(key.clone(), Box::new(r)))
                 })
             }
             PluginMsg::Installed(key, result) => {
+                let result = *result;
                 self.plugins.busy.remove(&key);
                 match result {
                     Ok(installed) => {
@@ -1132,9 +1131,12 @@ impl SimpleEditApp {
                     return Task::none();
                 }
                 self.plugins.errors.remove("repo");
-                Task::perform(fetch_review(repo), |r| plugin_msg(PluginMsg::Fetched(r)))
+                Task::perform(fetch_review(repo), |r| {
+                    plugin_msg(PluginMsg::Fetched(Box::new(r)))
+                })
             }
             PluginMsg::Fetched(result) => {
+                let result = *result;
                 self.plugins.busy.remove("repo");
                 match result {
                     Ok(review) => self.plugins.review = Some(review),
@@ -1166,7 +1168,7 @@ impl SimpleEditApp {
                         .await
                         .map_err(|e| e.to_string())?
                     },
-                    |r| plugin_msg(PluginMsg::Installed("repo".into(), r)),
+                    |r| plugin_msg(PluginMsg::Installed("repo".into(), Box::new(r))),
                 )
             }
             PluginMsg::CancelReview => {
@@ -1185,7 +1187,7 @@ impl SimpleEditApp {
                 if let Ok(installed) = &linked {
                     host::stop(installed.id());
                 }
-                self.plugin_update(PluginMsg::Installed("link".into(), linked))
+                self.plugin_update(PluginMsg::Installed("link".into(), Box::new(linked)))
             }
             PluginMsg::OpenGuide => {
                 open_url(remote::GUIDE_URL);
@@ -2432,5 +2434,35 @@ mod tab_tests {
         assert!(app.diff_tabs.contains_key(&diff));
         let _ = app.close_path(diff.clone());
         assert!(!app.diff_tabs.contains_key(&diff));
+    }
+
+    #[test]
+    fn the_tabs_of_a_plugin_are_grouped_under_it_and_their_changes_ask_before_quitting() {
+        let mut app = app_with_plugin();
+        from_plugin(
+            &mut app,
+            Rpc::request(
+                21,
+                methods::OPEN_TAB,
+                serde_json::json!({"tab": "t1", "title": "orders"}),
+            ),
+        );
+        let path = crate::plugins::tab_path("test.tabs", "t1", "orders");
+        let group = app.tab_key(&path).expect("a group");
+        assert_eq!(group, PathBuf::from("plugin-group://test.tabs"));
+        assert!(app
+            .tab_groups()
+            .iter()
+            .any(|g| g.project.as_ref() == Some(&group)));
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::TAB_DIRTY,
+                serde_json::json!({"tab": "t1", "dirty": true}),
+            ),
+        );
+        app.overlay = ActiveOverlay::None;
+        let _ = app.update(Message::Quit);
+        assert!(matches!(app.overlay, ActiveOverlay::ConfirmQuit(_)));
     }
 }

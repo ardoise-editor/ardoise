@@ -178,7 +178,6 @@ impl SimpleEditApp {
             | ActiveOverlay::Compare(..)
             | ActiveOverlay::Spelling(_)
             | ActiveOverlay::SpellLanguages
-            | ActiveOverlay::Diagram(_)
             | ActiveOverlay::References(_)
             | ActiveOverlay::Shortcuts
             | ActiveOverlay::Everywhere
@@ -304,57 +303,6 @@ impl SimpleEditApp {
             t!("overwrite.confirm").to_string(),
             Message::ConfirmOverwrite,
         )
-    }
-
-    /// The tables of a schema and the foreign keys between them, drawn.
-    pub(super) fn view_diagram<'a>(
-        &self,
-        dark: bool,
-        view: &'a DiagramView,
-    ) -> Element<'a, Message> {
-        let p = se_theme::palette(dark);
-        let ghost = move |active: bool| (se_theme::GhostButton { dark, active }).style();
-        let header = row![
-            text(t!("db.diagram_title", schema = view.schema.as_str()).to_string())
-                .size(13)
-                .font(se_theme::UI_SEMIBOLD)
-                .color(p.text),
-            Space::new().width(Length::Fill),
-            button(text(t!("db.diagram_mermaid").to_string()).size(12.5))
-                .padding([4, 10])
-                .on_press(Message::Db(crate::database::DbMsg::CopyDiagram))
-                .style(ghost(false)),
-            button(text("×").size(17))
-                .padding([4, 8])
-                .on_press(Message::CloseOverlay)
-                .style(ghost(false)),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
-        let drawing = iced::widget::canvas(crate::database::diagram::Drawing {
-            diagram: &view.diagram,
-            dark,
-        })
-        .width(Length::Fixed(view.diagram.width))
-        .height(Length::Fixed(view.diagram.height));
-        container(
-            column![
-                container(header).padding([8, 14]),
-                scrollable(drawing)
-                    .direction(iced::widget::scrollable::Direction::Both {
-                        vertical: Default::default(),
-                        horizontal: Default::default(),
-                    })
-                    .style(se_theme::Scrollbar { dark }.style())
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            ]
-            .spacing(0),
-        )
-        .width(1100)
-        .height(660)
-        .style(se_theme::palette_card(dark))
-        .into()
     }
 
     /// The new name of the symbol under the cursor.
@@ -1302,12 +1250,6 @@ impl SimpleEditApp {
                     self.panels.projects,
                     t!("sidebar.projects").to_string(),
                     Message::TogglePanel(crate::sidebar::Panel::Projects),
-                ),
-                tool(
-                    crate::sidebar::icons::database(shown(self.panels.database)),
-                    self.panels.database,
-                    t!("sidebar.database").to_string(),
-                    Message::TogglePanel(crate::sidebar::Panel::Database),
                 ),
             ]
             .extend(plugin_tools(simpleedit_plugin::manifest::Location::Sidebar))

@@ -833,7 +833,6 @@ mod tests {
                 ctrl,
                 shift: false,
                 alt,
-                captured: false,
             });
         };
         key(&mut app, "Delete", false, false);

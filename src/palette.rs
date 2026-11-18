@@ -196,7 +196,10 @@ impl PaletteCommand {
             PaletteCommand::ToggleSidebar => Message::ToggleSidebar,
             PaletteCommand::LintNow => Message::LintNow,
             PaletteCommand::LintFix => Message::LintFixAll,
-            PaletteCommand::RunSqlFile => Message::Db(crate::database::DbMsg::RunFile),
+            PaletteCommand::RunSqlFile => Message::Plugin(crate::plugins::PluginMsg::Run(
+                crate::plugins::migrate::DATABASE.to_string(),
+                "database.run_file".to_string(),
+            )),
             PaletteCommand::LintNext => Message::LintNext(true),
             PaletteCommand::LintPrev => Message::LintNext(false),
             PaletteCommand::SplitRight => Message::Split(true),

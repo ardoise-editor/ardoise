@@ -475,6 +475,27 @@ pub fn key(grid: &Grid, key: &str, ctrl: bool, shift: bool) -> Option<GridEvent>
         "End" if ctrl => Some(moved((rows - 1, cols - 1))),
         "Home" => Some(moved((r, 0))),
         "End" => Some(moved((r, cols - 1))),
+        // Tab goes on to the next cell (the next row after the last
+        // column), Shift+Tab back.
+        "Tab" => {
+            let to = if shift {
+                match (r, c) {
+                    (_, c) if c > 0 => (r, c - 1),
+                    (r, _) if r > 0 => (r - 1, cols - 1),
+                    _ => (r, c),
+                }
+            } else if c + 1 < cols {
+                (r, c + 1)
+            } else if r + 1 < rows {
+                (r + 1, 0)
+            } else {
+                (r, c)
+            };
+            Some(GridEvent::Select {
+                anchor: to,
+                cursor: to,
+            })
+        }
         "Enter" | "F2" => Some(GridEvent::Open { row: r, col: c }),
         "Delete" => Some(GridEvent::Delete),
         "a" | "A" if ctrl => Some(GridEvent::Select {
@@ -543,6 +564,25 @@ mod tests {
             key(&g, "Enter", false, false),
             Some(GridEvent::Open { row: 1, col: 0 })
         );
+        // Tab: the next cell, then the next row; Shift+Tab back.
+        let at = |g: &mut Grid, cell: (usize, usize)| {
+            g.selection = Some(GridSelection {
+                anchor: cell,
+                cursor: cell,
+            })
+        };
+        let to = |cell: (usize, usize)| {
+            Some(GridEvent::Select {
+                anchor: cell,
+                cursor: cell,
+            })
+        };
+        assert_eq!(key(&g, "Tab", false, false), to((1, 1)));
+        at(&mut g, (1, 1));
+        assert_eq!(key(&g, "Tab", false, false), to((2, 0)));
+        at(&mut g, (2, 0));
+        assert_eq!(key(&g, "Tab", false, true), to((1, 1)));
+        at(&mut g, (1, 0));
         assert_eq!(key(&g, "c", true, false), Some(GridEvent::Copy));
         assert_eq!(key(&g, "x", false, false), None);
         // Typing in a cell: only Escape is the grid's.
