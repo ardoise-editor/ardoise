@@ -599,6 +599,14 @@ pub struct Config {
     /// Working days the local history went back before it became the Local
     /// History plugin (carried over to its settings, no longer used).
     pub local_history_days: u32,
+    /// The tools a user of a version before the plugins relied on were
+    /// worked out (a new install has nothing to carry over). Read as false
+    /// from a file written before the plugins.
+    #[serde(default)]
+    pub plugins_carried: bool,
+    /// The official plugins still to install for them (removed once installed;
+    /// tried again at the next start when the network was missing).
+    pub plugins_to_carry: Vec<String>,
     /// The color of each project, by its folder.
     pub project_colors: std::collections::BTreeMap<String, usize>,
     /// Find in files: the files Git ignores one by one too.
@@ -701,6 +709,8 @@ impl Default for Config {
             everywhere_git: false,
             action_abbreviations: std::collections::BTreeMap::new(),
             local_history_days: 5,
+            plugins_carried: true,
+            plugins_to_carry: Vec::new(),
             project_colors: std::collections::BTreeMap::new(),
             find_ignored: true,
             find_history: Vec::new(),
@@ -879,7 +889,7 @@ impl Config {
     /// Reads a config, leaving out the settings that fail to parse (a value
     /// from a newer version) rather than all of them. The flag tells if any
     /// were left out.
-    fn parse(s: &str) -> Result<(Config, bool), serde_json::Error> {
+    pub(crate) fn parse(s: &str) -> Result<(Config, bool), serde_json::Error> {
         match serde_json::from_str::<Config>(s) {
             Ok(cfg) => Ok((cfg, false)),
             Err(e) => {

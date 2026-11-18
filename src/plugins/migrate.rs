@@ -241,6 +241,43 @@ fn carry_local_history_to(config: &crate::config::Config, old: &Path, dir: &Path
     }
 }
 
+/// The official plugins a user of a version before the plugins relied on:
+/// the tools that were always there, and those they had set up.
+pub fn relied_on(config: &crate::config::Config) -> Vec<&'static str> {
+    let (config_dir, data) = (
+        crate::fsutil::config_dir().map(|d| d.join("simpleedit")),
+        crate::fsutil::data_dir().map(|d| d.join("simpleedit")),
+    );
+    let api = data.as_ref().is_some_and(|d| d.join("api").exists());
+    let database = config_dir
+        .as_ref()
+        .is_some_and(|d| d.join("databases.json").exists());
+    relied_on_with(config, api, database)
+}
+
+fn relied_on_with(config: &crate::config::Config, api: bool, database: bool) -> Vec<&'static str> {
+    let mut wanted = vec![GIT, TERMINAL, TASKS];
+    if config.lint_enabled {
+        wanted.push(LINT);
+    }
+    if config.spell_check {
+        wanted.push(SPELL);
+    }
+    if config.local_history_days > 0 {
+        wanted.push(HISTORY);
+    }
+    if !config.remote_hosts.is_empty() {
+        wanted.push(REMOTE);
+    }
+    if api || config.show_api_panel {
+        wanted.push(API);
+    }
+    if database || config.show_database_panel {
+        wanted.push(DATABASE);
+    }
+    wanted
+}
+
 /// Copies `from` to `to` unless `to` is there or `from` is not.
 fn carry_file(from: &Path, to: &Path) {
     if to.exists() {
@@ -389,5 +426,30 @@ mod tests {
             std::fs::read_to_string(dir.path().join("queries.sql")).unwrap(),
             "SELECT 1;"
         );
+    }
+
+    #[test]
+    fn a_user_before_the_plugins_keeps_the_tools_used_and_a_new_install_has_none() {
+        let mut config = crate::config::Config {
+            lint_enabled: true,
+            spell_check: false,
+            local_history_days: 5,
+            ..Default::default()
+        };
+        let wanted = relied_on_with(&config, false, true);
+        for id in [GIT, TERMINAL, TASKS, LINT, HISTORY, DATABASE] {
+            assert!(wanted.contains(&id), "{id}");
+        }
+        for id in [SPELL, REMOTE, API] {
+            assert!(!wanted.contains(&id), "{id}");
+        }
+        config.remote_hosts.push("server".into());
+        assert!(relied_on_with(&config, true, false).contains(&REMOTE));
+        assert!(relied_on_with(&config, true, false).contains(&API));
+        // A new install: nothing to carry over; a file of a version before
+        // the plugins: something.
+        assert!(crate::config::Config::default().plugins_carried);
+        let (old, _) = crate::config::Config::parse("{}").unwrap();
+        assert!(!old.plugins_carried);
     }
 }

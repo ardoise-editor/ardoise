@@ -398,6 +398,54 @@ impl SimpleEditApp {
         self.plugin_update(PluginMsg::Run(id.to_string(), command.to_string()))
     }
 
+    /// The tools a user had before the plugins: worked out once, at the
+    /// first start of a version with plugins (a new install has none).
+    pub(super) fn plugins_carry(&mut self) -> Task<Message> {
+        if !self.config.plugins_carried {
+            self.config.plugins_carried = true;
+            self.config.plugins_to_carry = crate::plugins::migrate::relied_on(&self.config)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
+            self.config_dirty = true;
+        }
+        let installed = |id: &String| self.plugins.get(id).is_some();
+        let left: Vec<String> = self
+            .config
+            .plugins_to_carry
+            .iter()
+            .filter(|id| !installed(id))
+            .cloned()
+            .collect();
+        if left.len() != self.config.plugins_to_carry.len() {
+            self.config.plugins_to_carry = left.clone();
+            self.config_dirty = true;
+        }
+        if left.is_empty() {
+            return Task::none();
+        }
+        self.set_status(t!("plugins.carrying", n = left.len()), false);
+        self.plugin_update(PluginMsg::LoadRegistry)
+    }
+
+    /// The registry is there: the tools still to carry over install.
+    fn plugins_carry_on(&mut self) -> Task<Message> {
+        if !matches!(self.plugins.registry, Registry::Loaded(_)) {
+            return Task::none();
+        }
+        let ids: Vec<String> = self
+            .config
+            .plugins_to_carry
+            .iter()
+            .filter(|id| self.plugins.get(id).is_none())
+            .cloned()
+            .collect();
+        Task::batch(
+            ids.into_iter()
+                .map(|id| self.plugin_update(PluginMsg::InstallOfficial(id))),
+        )
+    }
+
     /// A command of the Git plugin (it is said when the plugin is missing).
     pub(super) fn git_command(&mut self, command: &str) -> Task<Message> {
         let missing = t!("git.plugin_missing").to_string();
@@ -949,7 +997,7 @@ impl SimpleEditApp {
                     Ok(list) => Registry::Loaded(list),
                     Err(e) => Registry::Failed(e),
                 };
-                Task::none()
+                self.plugins_carry_on()
             }
             PluginMsg::InstallOfficial(id) => {
                 let repo = match &self.plugins.registry {
@@ -1004,6 +1052,11 @@ impl SimpleEditApp {
                 match result {
                     Ok(installed) => {
                         let id = installed.id().to_string();
+                        // One of the tools the user had before the plugins.
+                        if self.config.plugins_to_carry.contains(&id) {
+                            self.config.plugins_to_carry.retain(|p| *p != id);
+                            self.config_dirty = true;
+                        }
                         self.plugins.errors.remove(&key);
                         self.plugins.updates.remove(&id);
                         self.plugins.forget(&id);
@@ -2464,5 +2517,46 @@ mod tab_tests {
         app.overlay = ActiveOverlay::None;
         let _ = app.update(Message::Quit);
         assert!(matches!(app.overlay, ActiveOverlay::ConfirmQuit(_)));
+    }
+
+    #[test]
+    fn the_tools_used_before_the_plugins_install_once_the_registry_is_there() {
+        let config = Config {
+            plugins_carried: false,
+            lint_enabled: false,
+            spell_check: false,
+            local_history_days: 0,
+            ..Config::default()
+        };
+        let mut app = SimpleEditApp::blank(config);
+        let _ = app.plugins_carry();
+        assert!(app.config.plugins_carried);
+        let mut wanted = app.config.plugins_to_carry.clone();
+        wanted.sort();
+        let mut expected = vec![
+            crate::plugins::migrate::GIT.to_string(),
+            crate::plugins::migrate::TERMINAL.to_string(),
+            crate::plugins::migrate::TASKS.to_string(),
+        ];
+        expected.sort();
+        assert_eq!(wanted, expected);
+        assert!(matches!(app.plugins.registry, Registry::Loading));
+        // The registry: each one starts to install.
+        let listed = |id: &str| crate::plugins::remote::Listed {
+            id: id.into(),
+            name: Default::default(),
+            description: Default::default(),
+            repository: format!("simple-edit-app/{id}"),
+        };
+        let _ = app.update(Message::Plugin(PluginMsg::RegistryLoaded(Ok(expected
+            .iter()
+            .map(|id| listed(id))
+            .collect()))));
+        for id in &expected {
+            assert!(app.plugins.busy.contains(id), "{id}");
+        }
+        // Worked out once: a second start installs what is left only.
+        let _ = app.plugins_carry();
+        assert_eq!(app.config.plugins_to_carry.len(), 3);
     }
 }

@@ -1220,6 +1220,10 @@ impl SimpleEditApp {
         app.plugins = crate::plugins::Plugins::load();
         app.plugins_start();
         let mut commands = vec![app.restore_session(loaded.session)];
+        // The tools the user had before the plugins come back as plugins.
+        if owner {
+            commands.push(app.plugins_carry());
+        }
         if let Some(aside) = loaded.set_aside {
             let name = aside
                 .file_name()
