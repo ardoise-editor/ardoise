@@ -10,8 +10,8 @@
 
 use std::time::Duration;
 
+use ardoise_plugin::manifest::{parse_version, Localized};
 use serde::{Deserialize, Serialize};
-use simpleedit_plugin::manifest::{parse_version, Localized};
 
 /// The list of the official plugins.
 pub const REGISTRY_URL: &str =
@@ -19,24 +19,6 @@ pub const REGISTRY_URL: &str =
 
 /// The organization of the official plugins.
 pub const OFFICIAL_OWNER: &str = "ardoise-editor";
-
-/// What it was called before the app was renamed (it was SimpleEdit): the
-/// plugins installed then record repositories under it, and GitHub sends
-/// those to the new name.
-const FORMER_OWNER: &str = "simple-edit-app";
-
-/// Whether an organization is the one of the official plugins.
-pub fn is_official_owner(owner: &str) -> bool {
-    owner == OFFICIAL_OWNER || owner == FORMER_OWNER
-}
-
-/// An official repository under the name of the organization now.
-pub fn current_repository(repository: &str) -> String {
-    match repository.split_once('/') {
-        Some((FORMER_OWNER, name)) => format!("{OFFICIAL_OWNER}/{name}"),
-        _ => repository.to_string(),
-    }
-}
 
 /// The guide to writing a plugin.
 pub const GUIDE_URL: &str = "https://ardoise-editor.github.io/ardoise/plugins.html";
@@ -80,9 +62,9 @@ pub fn parse_registry(json: &str) -> Result<Vec<Listed>, String> {
         .into_iter()
         .filter(|p| {
             p.id.starts_with(super::store::OFFICIAL_PREFIX)
-                && simpleedit_plugin::manifest::valid_id(&p.id)
+                && ardoise_plugin::manifest::valid_id(&p.id)
                 && parse_repo(&p.repository)
-                    .is_some_and(|r| r.split('/').next().is_some_and(is_official_owner))
+                    .is_some_and(|r| r.split('/').next() == Some(OFFICIAL_OWNER))
         })
         .collect())
 }
@@ -285,34 +267,13 @@ mod tests {
     #[test]
     fn the_registry_keeps_only_official_plugins() {
         let json = r#"{"version": 1, "plugins": [
-            {"id": "simpleedit.git", "name": {"en": "Git"}, "repository": "ardoise-editor/plugin-git"},
-            {"id": "simpleedit.lint", "name": {"en": "Lint"}, "repository": "simple-edit-app/plugin-lint"},
-            {"id": "simpleedit.evil", "name": "Evil", "repository": "evil/plugin"},
+            {"id": "ardoise.git", "name": {"en": "Git"}, "repository": "ardoise-editor/plugin-git"},
+            {"id": "ardoise.evil", "name": "Evil", "repository": "evil/plugin"},
             {"id": "acme.hello", "name": "Hello", "repository": "ardoise-editor/hello"}
         ]}"#;
         let listed = parse_registry(json).unwrap();
-        assert_eq!(
-            listed.len(),
-            2,
-            "the former name of the organization counts too"
-        );
+        assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].name.get("fr"), "Git");
-    }
-
-    #[test]
-    fn the_plugins_installed_before_the_rename_follow_the_organization() {
-        assert_eq!(
-            current_repository("simple-edit-app/plugin-git"),
-            "ardoise-editor/plugin-git"
-        );
-        assert_eq!(
-            current_repository("ardoise-editor/plugin-git"),
-            "ardoise-editor/plugin-git"
-        );
-        assert_eq!(current_repository("someone/plugin-x"), "someone/plugin-x");
-        assert_eq!(current_repository("nonsense"), "nonsense");
-        assert!(is_official_owner("ardoise-editor") && is_official_owner("simple-edit-app"));
-        assert!(!is_official_owner("evil"));
     }
 
     #[test]

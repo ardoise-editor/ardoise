@@ -1,10 +1,4 @@
 #!/bin/sh
 set -e
-# The program was called simpleedit: the old name still starts it.
-if [ "$1" = "configure" ]; then
-    if [ ! -e /usr/bin/simpleedit ] || [ -L /usr/bin/simpleedit ]; then
-        ln -sf ardoise /usr/bin/simpleedit
-    fi
-fi
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database /usr/share/applications 2>/dev/null || true

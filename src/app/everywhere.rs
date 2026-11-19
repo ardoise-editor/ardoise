@@ -124,7 +124,7 @@ pub enum Row {
     Page(PrefsPage),
     Text(TextHit),
     /// Something a plugin offers (a branch, a commit…): the plugin, the item.
-    Found(String, simpleedit_plugin::protocol::SearchItem),
+    Found(String, ardoise_plugin::protocol::SearchItem),
     /// A line that says something (loading, nothing found).
     Note(String),
 }
@@ -428,7 +428,7 @@ impl ArdoiseApp {
     /// The Plugins tab opened: the plugins may give their items again.
     fn everywhere_load_plugins(&mut self) -> Task<Message> {
         if self.everywhere_tab() == Tab::Plugins {
-            crate::plugins::host::notify_all(simpleedit_plugin::protocol::methods::SEARCH_OPENED);
+            crate::plugins::host::notify_all(ardoise_plugin::protocol::methods::SEARCH_OPENED);
         }
         Task::none()
     }
@@ -1112,8 +1112,8 @@ impl ArdoiseApp {
                 self.overlay = ActiveOverlay::None;
                 crate::plugins::host::notify(
                     &plugin,
-                    simpleedit_plugin::protocol::methods::SEARCH_PICKED,
-                    simpleedit_plugin::protocol::SearchPickedParams { id: item.id },
+                    ardoise_plugin::protocol::methods::SEARCH_PICKED,
+                    ardoise_plugin::protocol::SearchPickedParams { id: item.id },
                 );
                 Task::none()
             }
@@ -2283,12 +2283,12 @@ mod tests {
 
     #[test]
     fn what_the_plugins_offer_is_found_and_picked() {
-        use simpleedit_plugin::protocol::SearchItem;
+        use ardoise_plugin::protocol::SearchItem;
         let mut app = app_on(project().path());
         app.config.everywhere_git = true;
         let _ = app.update(Message::OpenEverywhere(Tab::Plugins));
         app.plugins.search_items.insert(
-            "simpleedit.git".into(),
+            "ardoise.git".into(),
             vec![
                 SearchItem {
                     id: "branch:feature/search".into(),
@@ -2311,7 +2311,7 @@ mod tests {
         typed(&mut app, "search");
         let rows = &app.everywhere.rows;
         assert!(
-            matches!(&rows[0], Row::Found(p, i) if p == "simpleedit.git" && i.label == "feature/search")
+            matches!(&rows[0], Row::Found(p, i) if p == "ardoise.git" && i.label == "feature/search")
         );
         assert!(matches!(&rows[1], Row::Found(_, i) if i.id == "commit:abc123"));
         typed(&mut app, "abc");

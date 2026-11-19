@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
+use ardoise_plugin::ui::{Grid, GridEvent, GridSelection, Node, RowState};
 use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Length};
-use simpleedit_plugin::ui::{Grid, GridEvent, GridSelection, Node, RowState};
 
 use super::{PanelKey, PluginMsg};
 use crate::app::Message;
@@ -539,7 +539,7 @@ pub fn dragged(width: f32, dx: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simpleedit_plugin::ui::{grid, GridCell, GridColumn, GridEditing, GridRow};
+    use ardoise_plugin::ui::{grid, GridCell, GridColumn, GridEditing, GridRow};
 
     fn three_by_two() -> Grid {
         grid(

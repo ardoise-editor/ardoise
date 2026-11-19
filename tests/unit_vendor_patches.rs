@@ -12,7 +12,7 @@ fn read(path: &str) -> String {
 #[test]
 fn iced_winit_patch_is_applied() {
     let lib = read("vendor/iced_winit/src/lib.rs");
-    assert!(lib.contains("SimpleEdit patch"));
+    assert!(lib.contains("Ardoise patch"));
     assert!(lib.contains("with_default_menu(false)"));
 }
 

@@ -26,9 +26,8 @@ MCowBQYDK2VwAyEAmZrvmo6ZzYbZD25u7dMsx6dm9HcyrW/ijgwVb4vjeks=
 # Verification is mandatory: the checksum list must be signed with the release
 # key, and the file must match the list. A release that lacks either, or a
 # machine that can't check the signature, makes the install fail. `--insecure`
-# (or ARDOISE_INSECURE=1, or SIMPLEEDIT_INSECURE=1 as before) installs anyway,
-# with a warning, for old releases.
-INSECURE="${ARDOISE_INSECURE:-${SIMPLEEDIT_INSECURE:-0}}"
+# (or ARDOISE_INSECURE=1) installs anyway, with a warning, for old releases.
+INSECURE="${ARDOISE_INSECURE:-0}"
 for arg in "$@"; do
     case "$arg" in
         --insecure) INSECURE=1 ;;
@@ -94,27 +93,6 @@ verify() {
     ok "Checksum verified (${name})"
 }
 
-# The archive of a release: named ardoise-…, or simpleedit-… for a release made
-# before the app was renamed (its binary has that name too).
-pick_tarball() {
-    local suffix="$1" name
-    for name in ardoise simpleedit; do
-        if curl -fsI "https://github.com/${REPO}/releases/download/${VERSION}/${name}-${VERSION}-${suffix}.tar.gz" >/dev/null 2>&1; then
-            echo "${name}-${VERSION}-${suffix}.tar.gz"
-            return 0
-        fi
-    done
-    err "Could not find the archive for ${suffix} in ${VERSION}."
-}
-
-# A copy installed under the old name (simpleedit) becomes a link to the new
-# one, so what still starts it keeps working.
-keep_old_name() {
-    if [ "$BIN" = "ardoise" ] && [ -e /usr/local/bin/simpleedit ] && [ ! -L /usr/local/bin/simpleedit ]; then
-        sudo ln -sfn ardoise /usr/local/bin/simpleedit
-    fi
-}
-
 # ── resolve latest release ───────────────────────────────────────────────────
 need curl
 
@@ -140,12 +118,9 @@ case "$OS" in
         # Prefer .deb on Debian/Ubuntu systems
         if command -v dpkg &>/dev/null; then
             # Derive exact .deb filename from the release assets
-            # (a release made before the rename only has simpleedit_*.deb)
-            ASSETS=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-                | grep '"name"' | grep '\.deb' \
+            DEB=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+                | grep '"name"' | grep '\.deb' | head -1 \
                 | sed 's/.*"name": *"\(.*\)".*/\1/')
-            DEB=$(printf '%s\n' "$ASSETS" | grep '^ardoise_' | head -1 || true)
-            [ -n "$DEB" ] || DEB=$(printf '%s\n' "$ASSETS" | head -1)
             [ -n "$DEB" ] || err "Could not find .deb asset in latest release."
 
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${DEB}"
@@ -166,8 +141,7 @@ case "$OS" in
             sudo update-desktop-database /usr/share/applications 2>/dev/null || true
         else
             # Generic Linux: extract binary to /usr/local/bin
-            TARBALL=$(pick_tarball "x86_64-linux")
-            BIN="${TARBALL%%-v*}"
+            TARBALL="ardoise-${VERSION}-x86_64-linux.tar.gz"
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
             TMP=$(mktemp -d)
             info "Downloading ${TARBALL}…"
@@ -177,9 +151,8 @@ case "$OS" in
             info "Installing binary to /usr/local/bin (requires sudo)…"
             # install(1), not mv: the binary must end up owned by root, not by
             # the user who unpacked it.
-            sudo install -m 0755 -o root -g 0 "$TMP/$BIN" "/usr/local/bin/$BIN"
+            sudo install -m 0755 -o root -g 0 "$TMP/ardoise" /usr/local/bin/ardoise
             rm -rf "$TMP"
-            keep_old_name
         fi
         ;;
 
@@ -198,8 +171,7 @@ case "$OS" in
             brew install --cask ardoise-editor/tap/ardoise
         else
             # Manual install: extract binary to /usr/local/bin
-            TARBALL=$(pick_tarball "aarch64-apple-darwin")
-            BIN="${TARBALL%%-v*}"
+            TARBALL="ardoise-${VERSION}-aarch64-apple-darwin.tar.gz"
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
             TMP=$(mktemp -d)
             info "Downloading ${TARBALL}…"
@@ -209,9 +181,8 @@ case "$OS" in
             info "Installing binary to /usr/local/bin (requires sudo)…"
             # install(1), not mv: the binary must end up owned by root, not by
             # the user who unpacked it.
-            sudo install -m 0755 -o root -g 0 "$TMP/$BIN" "/usr/local/bin/$BIN"
+            sudo install -m 0755 -o root -g 0 "$TMP/ardoise" /usr/local/bin/ardoise
             rm -rf "$TMP"
-            keep_old_name
         fi
         ;;
 

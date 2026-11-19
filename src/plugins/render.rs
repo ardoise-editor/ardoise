@@ -2,12 +2,12 @@
 //! the tree of [`Node`]s the plugin sent, its controls sending back
 //! [`PluginMsg::Ui`] (and [`PluginMsg::Input`] for the fields).
 
+use ardoise_plugin::ui::{ButtonStyle, Item, Node, TextStyle, TreeItem};
 use iced::widget::{
     button, checkbox, column, container, pick_list, row, scrollable, text, text_input, Space,
 };
 use iced::{Alignment, Element, Length};
 use serde_json::{json, Value};
-use simpleedit_plugin::ui::{ButtonStyle, Item, Node, TextStyle, TreeItem};
 
 use super::{PanelKey, PluginMsg, Plugins};
 use crate::app::Message;
@@ -524,7 +524,7 @@ fn tree_row<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simpleedit_plugin::ui::tree_item;
+    use ardoise_plugin::ui::tree_item;
 
     #[test]
     fn only_the_open_rows_of_a_tree_show() {

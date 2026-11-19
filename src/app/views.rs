@@ -1254,9 +1254,9 @@ impl ArdoiseApp {
                     Message::TogglePanel(crate::sidebar::Panel::Projects),
                 ),
             ]
-            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Sidebar))
+            .extend(plugin_tools(ardoise_plugin::manifest::Location::Sidebar))
             .push(Space::new().height(Length::Fill))
-            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Bottom))
+            .extend(plugin_tools(ardoise_plugin::manifest::Location::Bottom))
             .extend([
                 tool(
                     crate::scratch::icon(shown(self.scratch.open)),

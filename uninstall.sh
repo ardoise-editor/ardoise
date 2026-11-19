@@ -12,7 +12,7 @@ REFRESH_USER=0
 # Everything goes by default: settings, session, plugins and their data,
 # language servers, and the passwords kept in the system keychain.
 # `--keep-data` (or ARDOISE_KEEP_DATA=1) keeps them for a reinstall.
-KEEP_DATA="${ARDOISE_KEEP_DATA:-${SIMPLEEDIT_KEEP_DATA:-0}}"
+KEEP_DATA="${ARDOISE_KEEP_DATA:-0}"
 for arg in "$@"; do
     case "$arg" in
         --keep-data) KEEP_DATA=1 ;;
@@ -21,7 +21,7 @@ for arg in "$@"; do
 done
 # The name the plugins keep their passwords under in the keychain (it kept its
 # first name, SimpleEdit, so as not to lose what is saved there).
-KEYCHAIN_SERVICE="SimpleEdit data source"
+KEYCHAIN_SERVICE="Ardoise data source"
 
 # ── platform detection ───────────────────────────────────────────────────────
 OS=$(uname -s)
@@ -111,7 +111,7 @@ case "$OS" in
         done
         if command -v brew &>/dev/null; then
             brew untap ardoise-editor/tap &>/dev/null || true
-            brew untap simple-edit-app/tap &>/dev/null || true
+            brew untap ardoise-editor/tap &>/dev/null || true
         fi
         for app in Ardoise SimpleEdit; do
             if [ -d "/Applications/${app}.app" ]; then

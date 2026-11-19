@@ -7,15 +7,15 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
+use ardoise_plugin::manifest::{self, Manifest};
 use serde::{Deserialize, Serialize};
-use simpleedit_plugin::manifest::{self, Manifest};
 
 /// The largest archive worth unpacking (the database plugin and its drivers
 /// are some tens of megabytes).
 const MAX_UNPACKED: u64 = 400 * 1024 * 1024;
 
 /// The ids kept for the official plugins.
-pub const OFFICIAL_PREFIX: &str = "simpleedit.";
+pub const OFFICIAL_PREFIX: &str = "ardoise.";
 
 pub fn root() -> Option<PathBuf> {
     crate::fsutil::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("plugins"))
@@ -86,17 +86,10 @@ fn installs_file(root: &Path) -> PathBuf {
 }
 
 fn read_origins(root: &Path) -> BTreeMap<String, Origin> {
-    let mut origins: BTreeMap<String, Origin> = std::fs::read_to_string(installs_file(root))
+    std::fs::read_to_string(installs_file(root))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-    // The official plugins installed before the organization was renamed.
-    for origin in origins.values_mut().filter(|o| o.official) {
-        if let Some(repository) = &origin.repository {
-            origin.repository = Some(super::remote::current_repository(repository));
-        }
-    }
-    origins
+        .unwrap_or_default()
 }
 
 fn write_origins(root: &Path, origins: &BTreeMap<String, Origin>) -> Result<(), String> {
@@ -585,32 +578,30 @@ pub(crate) mod tests {
         let root = root.path();
         // Only the official plugins have official ids.
         assert!(
-            install_archive_in(root, &plugin("simpleedit.git", "1.0.0"), from("x/y"), None)
-                .is_err()
+            install_archive_in(root, &plugin("ardoise.git", "1.0.0"), from("x/y"), None).is_err()
         );
         let official = Origin {
-            repository: Some("simple-edit-app/plugin-git".into()),
+            repository: Some("ardoise-editor/plugin-git".into()),
             official: true,
             linked: None,
         };
         install_archive_in(
             root,
-            &plugin("simpleedit.git", "1.0.0"),
+            &plugin("ardoise.git", "1.0.0"),
             official.clone(),
             None,
         )
         .unwrap();
         // Another repository cannot take its place.
         assert!(
-            install_archive_in(root, &plugin("simpleedit.git", "1.0.1"), from("x/y"), None)
-                .is_err()
+            install_archive_in(root, &plugin("ardoise.git", "1.0.1"), from("x/y"), None).is_err()
         );
         // The id must be the one the list says.
         assert!(install_archive_in(
             root,
-            &plugin("simpleedit.lint", "1.0.0"),
+            &plugin("ardoise.lint", "1.0.0"),
             official,
-            Some("simpleedit.git")
+            Some("ardoise.git")
         )
         .is_err());
         // Without the program it starts, it is no plugin.

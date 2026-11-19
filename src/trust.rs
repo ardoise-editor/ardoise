@@ -44,7 +44,7 @@ const LOCAL_CODE: [&str; 11] = [
     ".prettierrc.cjs",
     ".prettierrc.mjs",
     ".prettierrc.ts",
-    ".simpleedit/tasks.json",
+    ".ardoise/tasks.json",
     "build.rs",
     ".cargo/config.toml",
 ];

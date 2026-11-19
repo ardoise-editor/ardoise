@@ -3,12 +3,12 @@
 //! sends; they, the size the screen has, the wheel and a paste go back to
 //! the plugin. A selection is copied, a `file:line` opened with a click.
 
+use ardoise_plugin::ui::{MouseMode, Run, Screen as Grid, ScreenInput, TermColor};
 use iced::keyboard::{self, key::Named, Key};
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Text};
 use iced::{Color, Element, Length, Pixels, Point, Rectangle, Size, Theme};
 use serde_json::json;
-use simpleedit_plugin::ui::{MouseMode, Run, Screen as Grid, ScreenInput, TermColor};
 
 use super::{PanelKey, PluginMsg};
 use crate::app::Message;

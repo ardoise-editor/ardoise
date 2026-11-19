@@ -709,7 +709,7 @@
   "plugins.err_no_program": "The program the plugin starts is not in its archive",
   "plugins.err_no_release": "%{repo} has no release",
   "plugins.err_no_sums": "The latest release has no SHA256SUMS",
-  "plugins.err_official_id": "Only the official plugins may have an id starting with “simpleedit.”",
+  "plugins.err_official_id": "Only the official plugins may have an id starting with “ardoise.”",
   "plugins.err_platform": "Plugins are not available on this system",
   "plugins.err_program_missing": "the program %{program} was not found",
   "plugins.err_release": "The latest release has no version number (vMAJOR.MINOR.PATCH)",

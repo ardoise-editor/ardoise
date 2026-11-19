@@ -78,7 +78,7 @@ where
     let window_settings = program.window();
 
     let mut builder = EventLoop::with_user_event();
-    // SimpleEdit patch: winit's default macOS menu quits on Cmd+Q without
+    // Ardoise patch: winit's default macOS menu quits on Cmd+Q without
     // telling the app, which then loses its unsaved buffers. Without it, the
     // key reaches the app's own Quit shortcut.
     #[cfg(target_os = "macos")]

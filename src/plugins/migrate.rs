@@ -4,7 +4,7 @@
 use std::path::Path;
 
 /// The official Lint plugin.
-pub const LINT: &str = "simpleedit.lint";
+pub const LINT: &str = "ardoise.lint";
 
 /// The languages, tools and programs of the lint, as the Lint plugin keeps
 /// them (`settings.json` in its data folder). Written once: a file that is
@@ -34,7 +34,7 @@ fn carry_lint_settings_to(config: &crate::config::Config, dir: &Path) {
 }
 
 /// The official Spelling plugin.
-pub const SPELL: &str = "simpleedit.spell";
+pub const SPELL: &str = "ardoise.spell";
 
 /// The words the user added to the dictionary, kept by the editor before
 /// the Spelling plugin: copied to its data folder, once.
@@ -47,7 +47,7 @@ pub fn carry_personal_dictionary() {
 }
 
 /// The official API plugin.
-pub const API: &str = "simpleedit.api";
+pub const API: &str = "ardoise.api";
 
 /// The collections, environments and history of the API client, and what
 /// the client trusts and goes through: they become the API plugin's, once.
@@ -124,7 +124,7 @@ fn carry_api_tabs_to(saved: &[crate::session::ApiSession], dir: &Path) -> Vec<(S
 }
 
 /// The official Database plugin.
-pub const DATABASE: &str = "simpleedit.database";
+pub const DATABASE: &str = "ardoise.database";
 
 /// The data sources the editor kept before the Database plugin, and the
 /// queries of its console: they become the plugin's, once (the passwords
@@ -150,7 +150,7 @@ fn carry_database_to(config: &Path, data: &Path, dir: &Path) {
 }
 
 /// The official Git plugin.
-pub const GIT: &str = "simpleedit.git";
+pub const GIT: &str = "ardoise.git";
 
 /// How pull and merge were made, and how often to fetch, before Git became
 /// the Git plugin: they become its settings, once.
@@ -185,10 +185,10 @@ fn carry_git_settings_to(config: &crate::config::Config, dir: &Path) {
 }
 
 /// The official Terminal plugin.
-pub const TERMINAL: &str = "simpleedit.terminal";
+pub const TERMINAL: &str = "ardoise.terminal";
 
 /// The official Remote Files plugin.
-pub const REMOTE: &str = "simpleedit.remote";
+pub const REMOTE: &str = "ardoise.remote";
 
 /// The machines and the links of the copies of remote files the editor
 /// kept before the Remote Files plugin: they become the plugin's, once.
@@ -217,10 +217,10 @@ fn carry_remote_to(hosts: &[String], links: &[crate::session::RemoteSession], di
 }
 
 /// The official Tasks plugin.
-pub const TASKS: &str = "simpleedit.tasks";
+pub const TASKS: &str = "ardoise.tasks";
 
 /// The official Local History plugin.
-pub const HISTORY: &str = "simpleedit.history";
+pub const HISTORY: &str = "ardoise.history";
 
 /// The history the editor kept before the Local History plugin, and how
 /// long it kept it: they become the plugin's, once.

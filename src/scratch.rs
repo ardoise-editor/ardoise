@@ -23,7 +23,7 @@ pub fn dir_of(setting: &str) -> PathBuf {
 
 /// Dropped in a folder the application made or took over, so that moving the
 /// scratch files never sweeps up the files of someone else.
-const MARKER: &str = ".simpleedit-scratch";
+const MARKER: &str = ".ardoise-scratch";
 
 /// Whether the application owns `dir`: it is the default folder or it carries
 /// the marker.

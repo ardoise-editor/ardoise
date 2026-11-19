@@ -8,9 +8,8 @@ use super::*;
 use crate::plugins::{
     host, remote, store, Incoming, Installed, PanelKey, PluginMsg, Registry, Review,
 };
-use serde_json::Value;
-use simpleedit_plugin::manifest::{Event, Location};
-use simpleedit_plugin::protocol::{
+use ardoise_plugin::manifest::{Event, Location};
+use ardoise_plugin::protocol::{
     self as rpc, codes, methods, ActiveFile, ActiveFileParams, AnnotateParams, CommandParams,
     ConfirmParams, Context, CopyParams, DecorateParams, DiffParams, DiffTabParams, FileParams,
     InitializeParams, Level, MergeParams, Message as Rpc, NotifyParams, OpenFileParams,
@@ -18,6 +17,7 @@ use simpleedit_plugin::protocol::{
     ReplaceTextParams, RpcError, SaveFileParams, SearchItemsParams, SetBaseParams, Settings,
     StatusParams, TabDirtyParams, TabParams, UiEvent,
 };
+use serde_json::Value;
 
 /// A question of a plugin, waiting for the user.
 #[derive(Debug, Clone, PartialEq)]
@@ -389,7 +389,7 @@ impl ArdoiseApp {
                     let given = answer
                         .ok()
                         .and_then(|v| {
-                            serde_json::from_value::<simpleedit_plugin::protocol::DeleteOptions>(v)
+                            serde_json::from_value::<ardoise_plugin::protocol::DeleteOptions>(v)
                                 .ok()
                         })
                         .unwrap_or_default();
@@ -560,7 +560,7 @@ impl ArdoiseApp {
     /// Diffs a plugin gives, in a diff tab of its own (the one it had, if
     /// the id is the same: what it shows is replaced, where it is).
     fn plugin_diff_tab(&mut self, plugin: String, p: DiffTabParams) -> Task<Message> {
-        use simpleedit_plugin::protocol::DiffMode;
+        use ardoise_plugin::protocol::DiffMode;
         let mut entries = Vec::new();
         let mut diffs = Vec::new();
         let mut files = Vec::new();
@@ -633,7 +633,7 @@ impl ArdoiseApp {
 
     /// What the plugins say of how files stand, in the tree and the tabs.
     fn plugins_decorate(&mut self) {
-        use simpleedit_plugin::protocol::FileState as S;
+        use ardoise_plugin::protocol::FileState as S;
         let states = self
             .plugins
             .decorations
@@ -710,7 +710,7 @@ impl ArdoiseApp {
         host::notify(
             &plugin,
             methods::ANNOTATION_CLICKED,
-            simpleedit_plugin::protocol::LineParams {
+            ardoise_plugin::protocol::LineParams {
                 path: blame.path.clone(),
                 line,
             },
@@ -991,7 +991,7 @@ impl ArdoiseApp {
                     // A pasted line break is the Enter key.
                     text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
                 };
-                let input = simpleedit_plugin::ui::ScreenInput::Input { bytes };
+                let input = ardoise_plugin::ui::ScreenInput::Input { bytes };
                 self.plugin_update(PluginMsg::Ui(
                     plugin,
                     panel,
@@ -1455,7 +1455,7 @@ impl ArdoiseApp {
                     }
                     methods::SET_ORIGIN => {
                         if let Ok(p) = serde_json::from_value::<
-                            simpleedit_plugin::protocol::SetOriginParams,
+                            ardoise_plugin::protocol::SetOriginParams,
                         >(params)
                         {
                             match p.origin {
@@ -2066,8 +2066,8 @@ impl ArdoiseApp {
 }
 
 /// Whether the editor `id` of a tree of nodes is only read.
-fn editor_read_only(node: &simpleedit_plugin::ui::Node, id: &str) -> bool {
-    use simpleedit_plugin::ui::Node;
+fn editor_read_only(node: &ardoise_plugin::ui::Node, id: &str) -> bool {
+    use ardoise_plugin::ui::Node;
     match node {
         Node::Editor {
             id: this,
@@ -2247,7 +2247,7 @@ while True:
         let _ = app.update(Message::Plugin(PluginMsg::Incoming(incoming)));
         assert_eq!(
             app.plugins.views.get(&(id.clone(), "main".into())),
-            Some(&simpleedit_plugin::ui::text("hi"))
+            Some(&ardoise_plugin::ui::text("hi"))
         );
 
         // Its command sets a status item and asks a question.
@@ -2281,7 +2281,7 @@ while True:
                 Duration::from_secs(20),
             ))
             .unwrap();
-        let result: simpleedit_plugin::lint::LintResult = serde_json::from_value(answer).unwrap();
+        let result: ardoise_plugin::lint::LintResult = serde_json::from_value(answer).unwrap();
         assert_eq!(result.diagnostics[0].end_col, 3);
         assert_eq!(result.ran, vec!["Fake".to_string()]);
         // A question it never answers is given up on.
@@ -2355,12 +2355,12 @@ pub(super) async fn merge_written(
 #[cfg(test)]
 mod tab_tests {
     use super::*;
-    use simpleedit_plugin::ui::{column, editor};
+    use ardoise_plugin::ui::{column, editor};
 
     fn app_with_plugin() -> ArdoiseApp {
         let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
             r#"{"id": "test.tabs", "name": "Tabs", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
         )
         .unwrap();
@@ -2739,7 +2739,7 @@ mod tab_tests {
             id: id.into(),
             name: Default::default(),
             description: Default::default(),
-            repository: format!("simple-edit-app/{id}"),
+            repository: format!("ardoise-editor/{id}"),
         };
         let _ = app.update(Message::Plugin(PluginMsg::RegistryLoaded(Ok(expected
             .iter()

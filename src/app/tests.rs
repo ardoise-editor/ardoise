@@ -569,8 +569,8 @@ mod behavior_tests {
 
     /// The Git plugin, installed (its process is not running).
     fn with_git_plugin(app: &mut ArdoiseApp) {
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
-            r#"{"id": "simpleedit.git", "name": "Git", "version": "1.0.0", "api": 1,
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
+            r#"{"id": "ardoise.git", "name": "Git", "version": "1.0.0", "api": 1,
                 "command": ["bin/none"],
                 "contributes": {"panels": [{"id": "git", "title": "Git", "location": "bottom"}]}}"#,
         )
@@ -583,9 +583,9 @@ mod behavior_tests {
     }
 
     /// A message of the Git plugin to the editor.
-    fn from_git(app: &mut ArdoiseApp, message: simpleedit_plugin::protocol::Message) {
+    fn from_git(app: &mut ArdoiseApp, message: ardoise_plugin::protocol::Message) {
         let _ = app.update(Message::Plugin(crate::plugins::PluginMsg::Incoming(
-            crate::plugins::host::Incoming::Rpc("simpleedit.git".into(), message),
+            crate::plugins::host::Incoming::Rpc("ardoise.git".into(), message),
         )));
     }
 
@@ -597,9 +597,9 @@ mod behavior_tests {
             .collect();
         from_git(
             app,
-            simpleedit_plugin::protocol::Message::request(
+            ardoise_plugin::protocol::Message::request(
                 1,
-                simpleedit_plugin::protocol::methods::OPEN_DIFF_TAB,
+                ardoise_plugin::protocol::methods::OPEN_DIFF_TAB,
                 serde_json::json!({"tab": tab, "title": title, "files": files}),
             ),
         );
@@ -627,7 +627,7 @@ mod behavior_tests {
     #[test]
     fn the_boxes_a_plugin_adds_to_the_deletion_are_shown_and_ticked() {
         use crate::plugins::PluginMsg;
-        use simpleedit_plugin::protocol::DeleteOption;
+        use ardoise_plugin::protocol::DeleteOption;
         let mut app = app();
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("tracked.txt");
@@ -639,11 +639,11 @@ mod behavior_tests {
         };
         let _ = app.handle(Message::Plugin(PluginMsg::DeleteOptions(
             file.clone(),
-            vec![("simpleedit.git".into(), option.clone())],
+            vec![("ardoise.git".into(), option.clone())],
         )));
         assert_eq!(
             app.overlay,
-            ActiveOverlay::ConfirmFileDelete(file.clone(), vec![("simpleedit.git".into(), option)])
+            ActiveOverlay::ConfirmFileDelete(file.clone(), vec![("ardoise.git".into(), option)])
         );
         let _ = app.handle(Message::Plugin(PluginMsg::DeleteOptionToggled(0, false)));
         let ActiveOverlay::ConfirmFileDelete(_, options) = &app.overlay else {
@@ -754,7 +754,7 @@ mod behavior_tests {
         // Installed: its panel is a panel of a plugin, at the bottom; the
         // shortcut closes it when it is open.
         with_git_plugin(&mut app);
-        let git = ("simpleedit.git".to_string(), "git".to_string());
+        let git = ("ardoise.git".to_string(), "git".to_string());
         let _ = app.handle(Message::Plugin(crate::plugins::PluginMsg::TogglePanel(
             git.0.clone(),
             git.1.clone(),
@@ -774,9 +774,9 @@ mod behavior_tests {
         let open = |app: &mut ArdoiseApp| {
             from_git(
                 app,
-                simpleedit_plugin::protocol::Message::request(
+                ardoise_plugin::protocol::Message::request(
                     2,
-                    simpleedit_plugin::protocol::methods::OPEN_MERGE,
+                    ardoise_plugin::protocol::methods::OPEN_MERGE,
                     serde_json::json!({"tab": "merge:dir/f.txt", "path": "/tmp/no-such-repo/dir/f.txt",
                         "text": "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> t\nb\n"}),
                 ),

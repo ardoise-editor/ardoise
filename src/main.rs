@@ -84,7 +84,7 @@ fn wants_new_window(args: impl Iterator<Item = std::ffi::OsString>) -> bool {
 /// Started from the Finder, the app gets launchd's minimal `PATH`: the usual
 /// tool folders are added to it, so that what it starts (language servers
 /// and their `#!/usr/bin/env node`, formatters, `npm`) finds its programs.
-const PATH_MARK: &str = "__SIMPLEEDIT_PATH__";
+const PATH_MARK: &str = "__ARDOISE_PATH__";
 
 /// The `PATH` a login shell printed between two markers, so that what the
 /// shell's startup files echo around it is ignored.
@@ -253,7 +253,7 @@ fn main() -> iced::Result {
         std::env::var_os("XDG_ACTIVATION_TOKEN").or_else(|| std::env::var_os("DESKTOP_STARTUP_ID"))
     {
         // Single-threaded at this point.
-        std::env::set_var("SIMPLEEDIT_ACTIVATION_TOKEN", token);
+        std::env::set_var("ARDOISE_ACTIVATION_TOKEN", token);
     }
 
     #[cfg(target_os = "linux")]

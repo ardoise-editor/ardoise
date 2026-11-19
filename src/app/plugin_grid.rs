@@ -4,8 +4,8 @@
 use super::*;
 use crate::plugins::grid::{self, GridKey, GridMsg};
 use crate::plugins::{host, NodeCompletion, PluginMsg};
-use simpleedit_plugin::protocol::{methods, CompletionParams, Completions, UiEvent};
-use simpleedit_plugin::ui::{GridEvent, Node};
+use ardoise_plugin::protocol::{methods, CompletionParams, Completions, UiEvent};
+use ardoise_plugin::ui::{GridEvent, Node};
 
 /// How long a plugin has to answer for completions.
 const COMPLETION_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
@@ -67,7 +67,7 @@ fn editor_completes(node: &Node, id: &str) -> bool {
 }
 
 impl ArdoiseApp {
-    fn grid_node(&self, key: &GridKey) -> Option<&simpleedit_plugin::ui::Grid> {
+    fn grid_node(&self, key: &GridKey) -> Option<&ardoise_plugin::ui::Grid> {
         let root = self.plugins.views.get(&key.0)?;
         grid::find(root, &key.1)
     }
@@ -475,12 +475,12 @@ impl ArdoiseApp {
 mod tests {
     use super::*;
     use crate::plugins::host::Incoming;
-    use simpleedit_plugin::protocol::Message as Rpc;
+    use ardoise_plugin::protocol::Message as Rpc;
 
     fn app_with_panel(root: serde_json::Value) -> ArdoiseApp {
         let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
             r#"{"id": "test.grid", "name": "Grid", "version": "1.0.0", "api": 1, "command": ["bin/none"],
                 "contributes": {"panels": [{"id": "p", "title": "P", "location": "bottom"}]}}"#,
         )
@@ -640,7 +640,7 @@ mod tests {
         // Without it, "Lint settings" lead to the plugins.
         let _ = app.update(Message::OpenLintSettings);
         assert_eq!(app.preferences.page, PrefsPage::Plugins);
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
             r#"{"id": "test.lint", "name": "Lint", "version": "1.0.0", "api": 1, "command": ["bin/none"],
                 "contributes": {"linter": {"extensions": ["js"]},
                 "panels": [{"id": "settings", "title": "Linters", "location": "settings"}]}}"#,
@@ -671,7 +671,7 @@ mod tests {
     fn checking_for_an_update_of_the_app_updates_the_plugins_too() {
         let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
             r#"{"id": "test.old", "name": "Old", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
         )
         .unwrap();
@@ -708,7 +708,7 @@ mod tests {
         let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let add = |app: &mut ArdoiseApp, id: &str| {
-            let manifest = simpleedit_plugin::manifest::Manifest::parse(&format!(
+            let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
                 r#"{{"id": "{id}", "name": "Kept", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
             ))
             .unwrap();
@@ -778,8 +778,8 @@ mod tests {
         };
         assert_eq!(offered(&app), (false, false, false, false));
         assert!(shortcut_shown(ShortcutTarget::Undo, app.plugins.tools()));
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
-            r#"{"id": "simpleedit.git", "name": "Git", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
+            r#"{"id": "ardoise.git", "name": "Git", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
         )
         .unwrap();
         app.plugins.installed.push(crate::plugins::Installed {
@@ -835,11 +835,11 @@ mod tests {
             9,
             Ok(Completions {
                 items: vec![
-                    simpleedit_plugin::protocol::CompletionItem {
+                    ardoise_plugin::protocol::CompletionItem {
                         label: "name".into(),
                         ..Default::default()
                     },
-                    simpleedit_plugin::protocol::CompletionItem {
+                    ardoise_plugin::protocol::CompletionItem {
                         label: "nature".into(),
                         insert: Some("nature AS n".into()),
                         detail: "column".into(),

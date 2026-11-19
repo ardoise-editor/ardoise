@@ -161,23 +161,13 @@ fn install_supported() -> Result<(), String> {
     }
 }
 
-/// Where the binary of a macOS install lives, by the name it has: `ardoise`,
-/// or `simpleedit` for what was installed before the rename (the versions
-/// since update it in place, under the name it has).
-#[cfg(target_os = "macos")]
-const MACOS_BINARIES: [&str; 2] = ["ardoise", "simpleedit"];
-
-#[cfg(target_os = "macos")]
-fn macos_installed_name() -> Option<&'static str> {
-    let exe = std::env::current_exe().ok()?;
-    MACOS_BINARIES
-        .into_iter()
-        .find(|name| exe == Path::new("/usr/local/bin").join(name))
-}
-
 #[cfg(target_os = "macos")]
 fn install_supported() -> Result<(), String> {
-    if cfg!(target_arch = "aarch64") && macos_installed_name().is_some() {
+    let ok = cfg!(target_arch = "aarch64")
+        && std::env::current_exe()
+            .map(|p| p == Path::new("/usr/local/bin/ardoise"))
+            .unwrap_or(false);
+    if ok {
         Ok(())
     } else {
         Err(t!("update.err_unsupported").to_string())
@@ -367,11 +357,6 @@ fn install_blocking(path: &Path, expected: &str) -> Result<(), String> {
     // taken here and only then moves it into place. The paths and the hash
     // go in as AppleScript arguments and are quoted by `quoted form of`,
     // never spliced into the script text.
-    // Replaced where it is: one of two fixed names, never text of the user's.
-    let name = macos_installed_name().ok_or_else(|| t!("update.err_unsupported").to_string())?;
-    let script = format!(
-        "do shell script \"cp \" & src & \" /usr/local/bin/{name}.new && echo \" & digest & \"'  /usr/local/bin/{name}.new' | shasum -a 256 -c - >/dev/null && chmod +x /usr/local/bin/{name}.new && mv -f /usr/local/bin/{name}.new /usr/local/bin/{name}\" with administrator privileges"
-    );
     let ok = std::process::Command::new("osascript")
         .args([
             "-e",
@@ -381,7 +366,7 @@ fn install_blocking(path: &Path, expected: &str) -> Result<(), String> {
             "-e",
             "set digest to quoted form of (item 2 of argv)",
             "-e",
-            script.as_str(),
+            "do shell script \"cp \" & src & \" /usr/local/bin/ardoise.new && echo \" & digest & \"'  /usr/local/bin/ardoise.new' | shasum -a 256 -c - >/dev/null && chmod +x /usr/local/bin/ardoise.new && mv -f /usr/local/bin/ardoise.new /usr/local/bin/ardoise\" with administrator privileges",
             "-e",
             "end run",
         ])

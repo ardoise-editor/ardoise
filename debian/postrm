@@ -1,11 +1,6 @@
 #!/bin/sh
 set -e
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    # Only the link this package made (a replaced package's own file is gone
-    # with it).
-    if [ -L /usr/bin/simpleedit ] && [ "$(readlink /usr/bin/simpleedit)" = "ardoise" ]; then
-        rm -f /usr/bin/simpleedit
-    fi
     gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
     update-desktop-database /usr/share/applications 2>/dev/null || true
 fi

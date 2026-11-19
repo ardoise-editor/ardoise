@@ -629,13 +629,13 @@ const next = 1;
     #[test]
     fn markdown_is_not_refined_but_uses_the_palette() {
         let s = crate::theme::syntax(true);
-        let heading = colors("md", "# SimpleEdit", true);
-        assert_eq!(color_of(&heading, "SimpleEdit"), Some(s.keyword));
+        let heading = colors("md", "# Ardoise", true);
+        assert_eq!(color_of(&heading, "Ardoise"), Some(s.keyword));
         let bold = colors("md", "Un texte **rapide**, propre", true);
         assert_eq!(color_of(&bold, "rapide"), Some(s.string));
         // PascalCase in prose is not a type.
-        let prose = colors("md", "Voir SimpleEdit ici", true);
-        assert_eq!(color_of(&prose, "SimpleEdit"), None);
+        let prose = colors("md", "Voir Ardoise ici", true);
+        assert_eq!(color_of(&prose, "Ardoise"), None);
     }
 
     #[test]

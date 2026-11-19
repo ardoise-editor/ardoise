@@ -123,6 +123,7 @@ dependencies = [
 name = "ardoise"
 version = "2.1.0"
 dependencies = [
+ "ardoise-plugin",
  "dirs",
  "ed25519-dalek",
  "flate2",
@@ -142,7 +143,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "similar",
- "simpleedit-plugin",
  "syntect",
  "tar",
  "tempfile",
@@ -151,6 +151,14 @@ dependencies = [
  "ttf-parser",
  "two-face",
  "unicode-width",
+]
+
+[[package]]
+name = "ardoise-plugin"
+version = "0.12.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4394,15 +4402,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a9c6883ca9c3c7c90e888de77b7a5c849c779d25d74a1269b0218b14e8b136c"
 dependencies = [
  "log",
-]
-
-[[package]]
-name = "simpleedit-plugin"
-version = "0.11.0"
-source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.11.0#256cbf520bdb9209c822e038dabaf2589235c2dc"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

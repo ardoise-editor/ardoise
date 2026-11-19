@@ -1111,7 +1111,7 @@ impl ArdoiseApp {
                 continue;
             }
             self.plugins_file_event_with(
-                simpleedit_plugin::manifest::Event::FileSaved,
+                ardoise_plugin::manifest::Event::FileSaved,
                 &path,
                 Some(text.clone()),
             );
@@ -1132,7 +1132,7 @@ impl ArdoiseApp {
     fn replace_settle(&mut self, replaced: &mut Replaced, disk: Vec<DiskDone>) {
         for done in disk {
             self.plugins_file_event_with(
-                simpleedit_plugin::manifest::Event::FileSaved,
+                ardoise_plugin::manifest::Event::FileSaved,
                 &done.path,
                 Some(done.before.clone()),
             );

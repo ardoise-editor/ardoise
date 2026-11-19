@@ -67,12 +67,7 @@ jobs:
         run: |
           cd target/aarch64-apple-darwin/release
           tar czf ardoise-${TAG}-aarch64-apple-darwin.tar.gz ${{ env.BINARY_NAME }}
-          # The versions installed before the rename (SimpleEdit) look for
-          # this name, and for a binary called simpleedit inside it.
-          cp ${{ env.BINARY_NAME }} simpleedit
-          tar czf simpleedit-${TAG}-aarch64-apple-darwin.tar.gz simpleedit
-          rm simpleedit
-          mv ardoise-*.tar.gz simpleedit-*.tar.gz ${{ github.workspace }}/
+          mv ardoise-*.tar.gz ${{ github.workspace }}/
       - name: Build .app bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -130,7 +125,6 @@ jobs:
           name: ardoise-macos-aarch64
           path: |
             ardoise-*.tar.gz
-            simpleedit-*.tar.gz
             ardoise-*-macos-aarch64.zip
 
   build-linux:
@@ -160,11 +154,7 @@ jobs:
           cargo install --locked --version 3.8.0 cargo-deb
           # Packages what the build above made (with --locked).
           cargo deb --no-build
-          cp target/debian/ardoise_*.deb ${{ github.workspace }}/
-          # The versions installed before the rename (SimpleEdit) look for
-          # simpleedit_<version>-1_amd64.deb: the same package, which replaces
-          # theirs (Replaces/Conflicts) and keeps /usr/bin/simpleedit as a link.
-          cp target/debian/ardoise_*.deb "${{ github.workspace }}/simpleedit_${TAG#v}-1_amd64.deb"
+          cp target/debian/*.deb ${{ github.workspace }}/
       - name: Build AppImage
         run: |
           mkdir -p AppDir/usr/bin
@@ -202,7 +192,7 @@ jobs:
           merge-multiple: true
       # The in-app updater and install.sh verify downloads against this file.
       - name: Generate checksums
-        run: sha256sum ardoise-*.tar.gz simpleedit-*.tar.gz ardoise-*-macos-aarch64.zip *.deb *.AppImage > SHA256SUMS
+        run: sha256sum ardoise-*.tar.gz ardoise-*-macos-aarch64.zip *.deb *.AppImage > SHA256SUMS
       # Ed25519 signature over SHA256SUMS; the app embeds the public key and
       # refuses an update whose checksums aren't signed by it.
       # Two signatures while the key changes: SHA256SUMS.sig with the old key
@@ -231,7 +221,6 @@ jobs:
         with:
           files: |
             ardoise-*.tar.gz
-            simpleedit-*.tar.gz
             ardoise-*-macos-aarch64.zip
             *.deb
             *.AppImage

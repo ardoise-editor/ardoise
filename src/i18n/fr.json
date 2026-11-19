@@ -709,7 +709,7 @@
   "plugins.err_no_program": "Le programme que lance le plugin n'est pas dans son archive",
   "plugins.err_no_release": "%{repo} n'a aucune release",
   "plugins.err_no_sums": "La dernière release n'a pas de SHA256SUMS",
-  "plugins.err_official_id": "Seuls les plugins officiels peuvent avoir un identifiant qui commence par « simpleedit. »",
+  "plugins.err_official_id": "Seuls les plugins officiels peuvent avoir un identifiant qui commence par « ardoise. »",
   "plugins.err_platform": "Les plugins ne sont pas disponibles sur ce système",
   "plugins.err_program_missing": "le programme %{program} est introuvable",
   "plugins.err_release": "La dernière release n'a pas de numéro de version (vMAJEUR.MINEUR.CORRECTIF)",
