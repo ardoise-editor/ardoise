@@ -210,6 +210,8 @@ pub enum ActiveOverlay {
     ),
     /// A question of a plugin.
     PluginConfirm(Box<plugins::PluginQuestion>),
+    /// A plugin to uninstall, and whether its data goes too.
+    ConfirmPluginUninstall(String, bool),
 }
 
 #[derive(Debug, Clone)]
@@ -1986,6 +1988,36 @@ impl SimpleEditApp {
                     }
                     ActiveOverlay::ConfirmClose(path) => self.view_confirm_overlay(dark, path),
                     ActiveOverlay::PluginConfirm(q) => self.view_plugin_question(dark, q),
+                    ActiveOverlay::ConfirmPluginUninstall(id, with_data) => {
+                        let name = self
+                            .plugins
+                            .get(id)
+                            .map_or_else(|| id.clone(), |p| p.name());
+                        let with_data = *with_data;
+                        confirm_card_with(
+                            dark,
+                            t!("plugins.uninstall_title", name = name.as_str()).to_string(),
+                            t!("plugins.uninstall_message").to_string(),
+                            Some(
+                                iced::widget::checkbox(with_data)
+                                    .label(t!("plugins.uninstall_data").to_string())
+                                    .size(15)
+                                    .text_size(13)
+                                    .on_toggle(|on| {
+                                        Message::Plugin(
+                                            crate::plugins::PluginMsg::UninstallDataToggled(on),
+                                        )
+                                    })
+                                    .into(),
+                            ),
+                            t!("plugins.uninstall").to_string(),
+                            Message::Plugin(if with_data {
+                                crate::plugins::PluginMsg::UninstallWithData(id.clone())
+                            } else {
+                                crate::plugins::PluginMsg::Uninstall(id.clone())
+                            }),
+                        )
+                    }
                     ActiveOverlay::ConfirmFileDelete(path, options) => confirm_card_with(
                         dark,
                         t!("delete_file.title").to_string(),
@@ -2972,9 +3004,13 @@ impl SimpleEditApp {
             }
             Message::OpenLintSettings => {
                 self.show_preferences = true;
-                self.handle(Message::Preferences(PreferencesMessage::PageSelected(
-                    crate::preferences::PrefsPage::Lint,
-                )))
+                // Without the Lint plugin there is no Lint page: the plugins.
+                let page = if self.plugins.linter().is_some() {
+                    crate::preferences::PrefsPage::Lint
+                } else {
+                    crate::preferences::PrefsPage::Plugins
+                };
+                self.handle(Message::Preferences(PreferencesMessage::PageSelected(page)))
             }
             Message::LintNext(forward) => {
                 self.lint_next(forward);
@@ -3824,6 +3860,14 @@ impl SimpleEditApp {
                     crate::lsp::set_completion_options(&self.config.completion_options);
                     self.completion_servers_restarted();
                     return Task::future(crate::lsp::restart_servers()).discard();
+                }
+                // The Lint page shows the settings of the Lint plugin.
+                if matches!(
+                    msg,
+                    PreferencesMessage::PageSelected(crate::preferences::PrefsPage::Lint)
+                ) {
+                    let _ = self.preferences.update(msg, &mut self.config);
+                    return self.plugin_lint_settings_open();
                 }
                 let servers_page = matches!(
                     msg,
@@ -5064,7 +5108,13 @@ impl SimpleEditApp {
             }
             Message::CheckForUpdate => {
                 self.overlay = ActiveOverlay::UpdateChecking;
-                Task::perform(crate::updater::check_for_update(), Message::UpdateChecked)
+                // The plugins are updated with the app.
+                self.plugins.update_all = true;
+                let plugins = self.plugin_update(crate::plugins::PluginMsg::CheckUpdates);
+                Task::batch([
+                    Task::perform(crate::updater::check_for_update(), Message::UpdateChecked),
+                    plugins,
+                ])
             }
             Message::OpenChangelog => {
                 self.overlay = ActiveOverlay::Changelog;

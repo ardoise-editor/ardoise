@@ -1174,7 +1174,63 @@ impl SimpleEditApp {
                 }
                 Task::none()
             }
+            PluginMsg::AskUninstall(id) => {
+                self.overlay = ActiveOverlay::ConfirmPluginUninstall(id, false);
+                Task::none()
+            }
+            PluginMsg::UninstallDataToggled(on) => {
+                if let ActiveOverlay::ConfirmPluginUninstall(_, with_data) = &mut self.overlay {
+                    *with_data = on;
+                }
+                Task::none()
+            }
+            PluginMsg::UninstallWithData(id) => {
+                self.overlay = ActiveOverlay::None;
+                if !self.plugins.busy.insert(id.clone()) {
+                    return Task::none();
+                }
+                // Started if it is not: only it knows what it keeps outside
+                // of its folder.
+                if !self.plugin_ensure(&id) {
+                    return self.plugin_update(PluginMsg::DataForgotten(id, Ok(())));
+                }
+                let asked = id.clone();
+                Task::perform(
+                    async move {
+                        host::request(
+                            &asked,
+                            methods::FORGET_DATA,
+                            serde_json::Value::Null,
+                            std::time::Duration::from_secs(30),
+                        )
+                        .await
+                        .map(|_| ())
+                    },
+                    move |r| plugin_msg(PluginMsg::DataForgotten(id.clone(), r)),
+                )
+            }
+            PluginMsg::DataForgotten(id, result) => {
+                self.plugins.busy.remove(&id);
+                let task = self.plugin_update(PluginMsg::Uninstall(id.clone()));
+                if self.plugins.get(&id).is_some() {
+                    // The program could not be removed: its data stays too.
+                    return task;
+                }
+                match (store::remove_data(&id), result) {
+                    (Err(e), _) => {
+                        self.set_status(format!("{}: {e}", t!("status.error")), true);
+                    }
+                    // A plugin that does not know the request keeps nothing
+                    // outside of its folder.
+                    (Ok(()), Err(e)) if !e.contains("-32601") && !e.contains("not found") => {
+                        self.set_status(t!("plugins.data_forget_failed", error = e.as_str()), true);
+                    }
+                    (Ok(()), _) => self.set_status(t!("plugins.data_removed"), false),
+                }
+                task
+            }
             PluginMsg::Uninstall(id) => {
+                self.overlay = ActiveOverlay::None;
                 host::stop(&id);
                 match store::uninstall(&id) {
                     Ok(()) => {
@@ -1207,7 +1263,11 @@ impl SimpleEditApp {
                     .filter(|p| p.origin.linked.is_none())
                     .filter_map(|p| Some((p.id().to_string(), p.origin.repository.clone()?)))
                     .collect();
-                if list.is_empty() || self.plugins.checking_updates {
+                if list.is_empty() {
+                    self.plugins.update_all = false;
+                    return Task::none();
+                }
+                if self.plugins.checking_updates {
                     return Task::none();
                 }
                 self.plugins.checking_updates = true;
@@ -1231,6 +1291,15 @@ impl SimpleEditApp {
                             self.plugins.errors.insert(id, e);
                         }
                     }
+                }
+                // Asked with the app's update: the newer ones install now.
+                if std::mem::take(&mut self.plugins.update_all) {
+                    let newer: Vec<String> = self.plugins.updates.keys().cloned().collect();
+                    return Task::batch(
+                        newer
+                            .into_iter()
+                            .map(|id| self.plugin_update(PluginMsg::Update(id))),
+                    );
                 }
                 Task::none()
             }
@@ -1737,6 +1806,21 @@ impl SimpleEditApp {
 
     /// The buttons of the panels of the plugins at `location`, for the
     /// activity bar: icon, open, tooltip, message.
+    /// The settings of the Lint plugin opened, for its page of the
+    /// preferences (they are not shown in the list of the plugins).
+    pub(super) fn plugin_lint_settings_open(&mut self) -> Task<Message> {
+        let Some(id) = self.plugins.linter().map(|l| l.id().to_string()) else {
+            return Task::none();
+        };
+        let Some(panel) = self.plugins.settings_panel(&id).map(|p| p.id.clone()) else {
+            return Task::none();
+        };
+        if self.plugins.settings_open.as_ref() == Some(&(id.clone(), panel)) {
+            return Task::none();
+        }
+        self.plugin_update(PluginMsg::ToggleSettings(id))
+    }
+
     pub(super) fn plugin_tools(&self, location: Location) -> Vec<(String, bool, String, Message)> {
         let open = match location {
             Location::Sidebar => self.plugins.sidebar.as_ref().filter(|_| self.show_sidebar),
@@ -1750,13 +1834,7 @@ impl SimpleEditApp {
             .into_iter()
             .map(|(plugin, panel)| {
                 let title = panel.title.get(&locale).to_string();
-                let icon = panel.icon.clone().unwrap_or_else(|| {
-                    title
-                        .chars()
-                        .next()
-                        .map(|c| c.to_uppercase().to_string())
-                        .unwrap_or_default()
-                });
+                let icon = panel_icon(panel.icon.as_deref(), &title);
                 let is_open = open.is_some_and(|k| k.0 == plugin.id() && k.1 == panel.id);
                 (
                     icon,
@@ -2032,6 +2110,33 @@ fn invalid(e: impl std::fmt::Display) -> RpcError {
     RpcError {
         code: codes::INVALID_PARAMS,
         message: e.to_string(),
+    }
+}
+
+/// The icon of a panel in the activity bar: its glyph, or the first letter
+/// of its title when it has none (an empty one would be a blank square).
+fn panel_icon(icon: Option<&str>, title: &str) -> String {
+    match icon.map(str::trim).filter(|i| !i.is_empty()) {
+        Some(icon) => icon.to_string(),
+        None => title
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::panel_icon;
+
+    #[test]
+    fn a_panel_without_a_glyph_shows_the_letter_of_its_title() {
+        assert_eq!(panel_icon(Some("\u{e725}"), "Git"), "\u{e725}");
+        assert_eq!(panel_icon(Some(""), "git"), "G");
+        assert_eq!(panel_icon(Some("  "), "base"), "B");
+        assert_eq!(panel_icon(None, "Évents"), "É");
+        assert_eq!(panel_icon(None, ""), "");
     }
 }
 

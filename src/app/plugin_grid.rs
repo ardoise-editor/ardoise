@@ -632,6 +632,130 @@ mod tests {
     }
 
     #[test]
+    fn the_lint_page_is_there_with_the_lint_plugin_and_shows_its_settings() {
+        use crate::preferences::{PreferencesMessage, PrefsPage};
+        let mut app = SimpleEditApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        assert!(!PrefsPage::Lint.shown(&app.plugins), "no plugin, no page");
+        // Without it, "Lint settings" lead to the plugins.
+        let _ = app.update(Message::OpenLintSettings);
+        assert_eq!(app.preferences.page, PrefsPage::Plugins);
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "test.lint", "name": "Lint", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"linter": {"extensions": ["js"]},
+                "panels": [{"id": "settings", "title": "Linters", "location": "settings"}]}}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+        assert!(PrefsPage::Lint.shown(&app.plugins));
+        assert!(PrefsPage::Editor.shown(&app.plugins));
+        // The Lint page opens the settings of the plugin, not the list.
+        let _ = app.update(Message::Preferences(PreferencesMessage::PageSelected(
+            PrefsPage::Lint,
+        )));
+        assert_eq!(app.preferences.page, PrefsPage::Lint);
+        assert_eq!(
+            app.plugins.settings_open,
+            Some(("test.lint".to_string(), "settings".to_string()))
+        );
+        // Again: they stay open (not toggled shut).
+        let _ = app.update(Message::OpenLintSettings);
+        assert!(app.plugins.settings_open.is_some());
+    }
+
+    #[test]
+    fn checking_for_an_update_of_the_app_updates_the_plugins_too() {
+        let mut app = SimpleEditApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "test.old", "name": "Old", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: crate::plugins::store::Origin {
+                repository: Some("someone/plugin-old".into()),
+                official: false,
+                linked: None,
+            },
+        });
+        let newer = || {
+            Message::Plugin(PluginMsg::UpdatesChecked(vec![(
+                "test.old".to_string(),
+                Ok("1.1.0".to_string()),
+            )]))
+        };
+        // Checked from the list of the plugins: the update is offered only.
+        let _ = app.update(newer());
+        assert!(app.plugins.updates.contains_key("test.old"));
+        assert!(!app.plugins.busy.contains("test.old"));
+        // Checked with the app: it installs.
+        let _ = app.update(Message::CheckForUpdate);
+        assert!(app.plugins.update_all && app.plugins.checking_updates);
+        let _ = app.update(newer());
+        assert!(app.plugins.busy.contains("test.old"), "being updated");
+        assert!(!app.plugins.update_all);
+    }
+
+    #[test]
+    fn a_plugin_is_uninstalled_with_its_data_only_when_asked() {
+        use crate::app::ActiveOverlay;
+        let mut app = SimpleEditApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        let add = |app: &mut SimpleEditApp, id: &str| {
+            let manifest = simpleedit_plugin::manifest::Manifest::parse(&format!(
+                r#"{{"id": "{id}", "name": "Kept", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
+            ))
+            .unwrap();
+            app.plugins.installed.push(crate::plugins::Installed {
+                manifest,
+                dir: PathBuf::from("/nowhere"),
+                origin: Default::default(),
+            });
+            let data = crate::plugins::store::data_dir_of(id).unwrap();
+            std::fs::write(data.join("settings.json"), "{}").unwrap();
+            data
+        };
+        // The question comes first, the data unticked.
+        let data = add(&mut app, "test.keeps");
+        let _ = app.update(Message::Plugin(PluginMsg::AskUninstall(
+            "test.keeps".into(),
+        )));
+        assert_eq!(
+            app.overlay,
+            ActiveOverlay::ConfirmPluginUninstall("test.keeps".into(), false)
+        );
+        let _ = app.update(Message::Plugin(PluginMsg::Uninstall("test.keeps".into())));
+        assert!(app.plugins.get("test.keeps").is_none());
+        assert!(
+            data.join("settings.json").is_file(),
+            "kept for a later install"
+        );
+        // With its data: the folder goes too.
+        let data = add(&mut app, "test.forgets");
+        let _ = app.update(Message::Plugin(PluginMsg::AskUninstall(
+            "test.forgets".into(),
+        )));
+        let _ = app.update(Message::Plugin(PluginMsg::UninstallDataToggled(true)));
+        assert_eq!(
+            app.overlay,
+            ActiveOverlay::ConfirmPluginUninstall("test.forgets".into(), true)
+        );
+        // It cannot start here: nothing outside of its folder to forget.
+        let _ = app.update(Message::Plugin(PluginMsg::UninstallWithData(
+            "test.forgets".into(),
+        )));
+        assert!(app.plugins.get("test.forgets").is_none());
+        assert!(!data.exists(), "its data deleted");
+        assert!(!app.plugins.busy.contains("test.forgets"));
+    }
+
+    #[test]
     fn the_rows_scroll_to_a_cursor_moved_out_of_view() {
         let rows: Vec<_> = (0..50)
             .map(|i| serde_json::json!({"cells": [{"text": i.to_string()}]}))

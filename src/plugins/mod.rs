@@ -180,6 +180,14 @@ pub enum PluginMsg {
     /// The end of an install: what it was for (an id or a repository).
     Installed(String, Box<Result<Installed, String>>),
     Uninstall(String),
+    /// The question before a plugin is removed: whether its data goes too.
+    AskUninstall(String),
+    UninstallDataToggled(bool),
+    /// Removes the plugin and its data: it is asked first to take its
+    /// passwords out of the keychain.
+    UninstallWithData(String),
+    /// Its answer (an error: the keychain may still hold some).
+    DataForgotten(String, Result<(), String>),
     CheckUpdates,
     /// The newest version of each plugin that has a repository.
     UpdatesChecked(Vec<(String, Result<String, String>)>),
@@ -229,6 +237,9 @@ pub struct Plugins {
     /// The newer version of a plugin, by id.
     pub updates: HashMap<String, String>,
     pub checking_updates: bool,
+    /// The check of the plugins was asked with the app's: the newer ones
+    /// install as soon as they are known.
+    pub update_all: bool,
     pub repo_input: String,
     pub review: Option<Review>,
     /// What each panel shows, as the plugin last sent it.
@@ -419,6 +430,14 @@ impl Plugins {
         [&self.sidebar, &self.bottom, &self.settings_open]
             .into_iter()
             .any(|k| k.as_ref().is_some_and(|k| k.0 == id))
+    }
+
+    /// The plugin installed that finds problems in files (Lint): it has a
+    /// page of its own in the preferences.
+    pub fn linter(&self) -> Option<&Installed> {
+        self.installed
+            .iter()
+            .find(|p| p.manifest.contributes.linter.is_some())
     }
 
     /// The panel of a plugin's settings, if it has one.

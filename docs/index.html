@@ -568,8 +568,8 @@
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
       <p class="install-note">
-        <span data-lang="en">Detects how SimpleEdit was installed — Homebrew cask, <code>.deb</code> package or plain binary — and removes it. Your settings and session are left untouched — delete <code>~/.config/simpleedit</code> and <code>~/.local/share/simpleedit</code> (the session, which holds the text of your unsaved files) on Linux, or <code>~/Library/Application&nbsp;Support/simpleedit</code> on macOS, to remove them too.</span>
-        <span data-lang="fr">Détecte le mode d’installation — cask Homebrew, paquet <code>.deb</code> ou binaire simple — et le supprime. Vos réglages et votre session sont conservés — supprimez <code>~/.config/simpleedit</code> et <code>~/.local/share/simpleedit</code> (la session, qui contient le texte de vos fichiers non enregistrés) sous Linux, ou <code>~/Library/Application&nbsp;Support/simpleedit</code> sous macOS, pour les effacer aussi.</span>
+        <span data-lang="en">Detects how SimpleEdit was installed — Homebrew cask, <code>.deb</code> package or plain binary — and removes it, with everything it kept: settings, session (the text of unsaved files), plugins and their data, language servers, and the passwords the plugins saved in the system keychain. A scratch folder you chose yourself is left alone. Close SimpleEdit first. To keep your data for a reinstall: <code>… | bash -s -- --keep-data</code>.</span>
+        <span data-lang="fr">Détecte le mode d’installation — cask Homebrew, paquet <code>.deb</code> ou binaire simple — et le supprime, avec tout ce qu’il a gardé : réglages, session (le texte des fichiers non enregistrés), plugins et leurs données, serveurs de langage, et les mots de passe que les plugins ont enregistrés dans le trousseau du système. Un dossier de notes que vous avez choisi vous-même n’est pas touché. Fermez SimpleEdit avant. Pour garder vos données en vue d’une réinstallation : <code>… | bash -s -- --keep-data</code>.</span>
       </p>
     </div>
 

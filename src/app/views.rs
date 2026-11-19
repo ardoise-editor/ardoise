@@ -192,6 +192,7 @@ impl SimpleEditApp {
             | ActiveOverlay::ConfirmFolderDelete(_)
             | ActiveOverlay::ConfirmMove(..)
             | ActiveOverlay::PluginConfirm(_)
+            | ActiveOverlay::ConfirmPluginUninstall(..)
             | ActiveOverlay::ConfirmOverwrite(_) => Space::new().height(0).into(),
         };
 
