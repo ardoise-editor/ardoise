@@ -1,4 +1,4 @@
-//! The plugins on disk: each in `<data dir>/simpleedit/plugins/<id>/` with
+//! The plugins on disk: each in `<data dir>/ardoise/plugins/<id>/` with
 //! its `plugin.json`, and `installs.json` beside them saying where each came
 //! from. What a plugin keeps for itself is in `plugin-data/<id>/`, which an
 //! uninstall leaves.
@@ -18,13 +18,13 @@ const MAX_UNPACKED: u64 = 400 * 1024 * 1024;
 pub const OFFICIAL_PREFIX: &str = "simpleedit.";
 
 pub fn root() -> Option<PathBuf> {
-    crate::fsutil::data_dir().map(|d| d.join("simpleedit").join("plugins"))
+    crate::fsutil::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("plugins"))
 }
 
 /// The folder of a plugin's own data, made if missing.
 pub fn data_dir_of(id: &str) -> Option<PathBuf> {
     let dir = crate::fsutil::data_dir()?
-        .join("simpleedit")
+        .join(crate::fsutil::APP_DIR)
         .join("plugin-data")
         .join(id);
     std::fs::create_dir_all(&dir).ok()?;
@@ -37,7 +37,7 @@ pub struct Origin {
     /// `owner/name` of the GitHub repository of its releases.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
-    /// Signed by SimpleEdit.
+    /// Signed by Ardoise.
     #[serde(default)]
     pub official: bool,
     /// A folder of the user's, linked for development.
@@ -86,10 +86,17 @@ fn installs_file(root: &Path) -> PathBuf {
 }
 
 fn read_origins(root: &Path) -> BTreeMap<String, Origin> {
-    std::fs::read_to_string(installs_file(root))
+    let mut origins: BTreeMap<String, Origin> = std::fs::read_to_string(installs_file(root))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // The official plugins installed before the organization was renamed.
+    for origin in origins.values_mut().filter(|o| o.official) {
+        if let Some(repository) = &origin.repository {
+            origin.repository = Some(super::remote::current_repository(repository));
+        }
+    }
+    origins
 }
 
 fn write_origins(root: &Path, origins: &BTreeMap<String, Origin>) -> Result<(), String> {
@@ -350,7 +357,13 @@ pub fn remove_data(id: &str) -> Result<(), String> {
     let Some(base) = crate::fsutil::data_dir() else {
         return Ok(());
     };
-    remove_any(&base.join("simpleedit").join("plugin-data").join(id)).map_err(|e| e.to_string())
+    remove_any(
+        &base
+            .join(crate::fsutil::APP_DIR)
+            .join("plugin-data")
+            .join(id),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Removes a file, a link (not what it points to) or a folder.

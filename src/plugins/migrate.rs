@@ -39,7 +39,8 @@ pub const SPELL: &str = "simpleedit.spell";
 /// The words the user added to the dictionary, kept by the editor before
 /// the Spelling plugin: copied to its data folder, once.
 pub fn carry_personal_dictionary() {
-    let old = crate::fsutil::config_dir().map(|d| d.join("simpleedit").join("dictionary.txt"));
+    let old =
+        crate::fsutil::config_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("dictionary.txt"));
     if let (Some(old), Some(dir)) = (old, super::store::data_dir_of(SPELL)) {
         carry_file(&old, &dir.join("dictionary.txt"));
     }
@@ -55,7 +56,7 @@ pub fn carry_api(config: &crate::config::Config) {
     else {
         return;
     };
-    carry_api_to(config, &data.join("simpleedit").join("api"), &dir);
+    carry_api_to(config, &data.join(crate::fsutil::APP_DIR).join("api"), &dir);
 }
 
 fn carry_api_to(config: &crate::config::Config, old: &Path, dir: &Path) {
@@ -136,7 +137,11 @@ pub fn carry_database() {
     ) else {
         return;
     };
-    carry_database_to(&config.join("simpleedit"), &data.join("simpleedit"), &dir);
+    carry_database_to(
+        &config.join(crate::fsutil::APP_DIR),
+        &data.join(crate::fsutil::APP_DIR),
+        &dir,
+    );
 }
 
 fn carry_database_to(config: &Path, data: &Path, dir: &Path) {
@@ -226,7 +231,11 @@ pub fn carry_local_history(config: &crate::config::Config) {
     ) else {
         return;
     };
-    carry_local_history_to(config, &data.join("simpleedit").join("local-history"), &dir);
+    carry_local_history_to(
+        config,
+        &data.join(crate::fsutil::APP_DIR).join("local-history"),
+        &dir,
+    );
 }
 
 fn carry_local_history_to(config: &crate::config::Config, old: &Path, dir: &Path) {
@@ -245,8 +254,8 @@ fn carry_local_history_to(config: &crate::config::Config, old: &Path, dir: &Path
 /// the tools that were always there, and those they had set up.
 pub fn relied_on(config: &crate::config::Config) -> Vec<&'static str> {
     let (config_dir, data) = (
-        crate::fsutil::config_dir().map(|d| d.join("simpleedit")),
-        crate::fsutil::data_dir().map(|d| d.join("simpleedit")),
+        crate::fsutil::config_dir().map(|d| d.join(crate::fsutil::APP_DIR)),
+        crate::fsutil::data_dir().map(|d| d.join(crate::fsutil::APP_DIR)),
     );
     let api = data.as_ref().is_some_and(|d| d.join("api").exists());
     let database = config_dir

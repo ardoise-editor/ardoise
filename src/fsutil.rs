@@ -28,9 +28,37 @@ pub fn config_dir() -> Option<PathBuf> {
     }
 }
 
+/// The folder of the app in the data and the config directories.
+pub const APP_DIR: &str = "ardoise";
+
+/// What that folder was called before the app was renamed (it was Ardoise).
+pub const LEGACY_APP_DIR: &str = "simpleedit";
+
+/// Moves what the app kept under its old name to the new one, once: settings,
+/// session, plugins and their data, language servers. Nothing is touched when
+/// the new folder exists already, nor when there is no old one. Run before
+/// anything reads or writes there.
+pub fn migrate_legacy_dirs() {
+    let mut bases = vec![data_dir(), config_dir()];
+    bases.dedup();
+    for base in bases.into_iter().flatten() {
+        let _ = move_legacy_dir(&base);
+    }
+}
+
+/// `<base>/simpleedit` becomes `<base>/ardoise`; whether it moved.
+fn move_legacy_dir(base: &Path) -> std::io::Result<bool> {
+    let (old, new) = (base.join(LEGACY_APP_DIR), base.join(APP_DIR));
+    if !old.is_dir() || new.exists() {
+        return Ok(false);
+    }
+    std::fs::rename(&old, &new)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 fn test_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("simpleedit-test-{}", std::process::id()))
+    std::env::temp_dir().join(format!("ardoise-test-{}", std::process::id()))
 }
 
 /// Writes `data` to `path` through a temporary sibling file and a `rename`,
@@ -258,5 +286,38 @@ mod tests {
         let aside = set_aside(&path).unwrap();
         assert!(!path.exists());
         assert_eq!(std::fs::read_to_string(aside).unwrap(), "{ broken");
+    }
+
+    #[test]
+    fn what_the_app_kept_under_its_old_name_moves_once() {
+        let base = tempfile::tempdir().unwrap();
+        let old = base.path().join(LEGACY_APP_DIR);
+        std::fs::create_dir_all(old.join("plugins/simpleedit.git")).unwrap();
+        std::fs::write(old.join("session.json"), "{}").unwrap();
+        // Moved, with everything in it.
+        assert!(move_legacy_dir(base.path()).unwrap());
+        let new = base.path().join(APP_DIR);
+        assert!(!old.exists());
+        assert!(new.join("session.json").is_file());
+        assert!(new.join("plugins/simpleedit.git").is_dir());
+        // Nothing left to move.
+        assert!(!move_legacy_dir(base.path()).unwrap());
+        // A new folder that exists wins: the old one is left alone.
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("session.json"), "old").unwrap();
+        std::fs::write(new.join("session.json"), "new").unwrap();
+        assert!(!move_legacy_dir(base.path()).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(new.join("session.json")).unwrap(),
+            "new"
+        );
+        assert_eq!(
+            std::fs::read_to_string(old.join("session.json")).unwrap(),
+            "old"
+        );
+        // A file with the old name is not a folder to move.
+        let other = tempfile::tempdir().unwrap();
+        std::fs::write(other.path().join(LEGACY_APP_DIR), "x").unwrap();
+        assert!(!move_legacy_dir(other.path()).unwrap());
     }
 }

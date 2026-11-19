@@ -125,7 +125,7 @@ pub struct MarksState {
     pub marks: crate::diff::marks::ChangeMarks,
     /// The marks as the editor takes them, shared between frames.
     pub paint: [std::sync::Arc<Vec<usize>>; 3],
-    /// The buffer (see [`SimpleEditApp::buffer_stamp`]) the marks were computed for.
+    /// The buffer (see [`ArdoiseApp::buffer_stamp`]) the marks were computed for.
     pub rev: (u64, u64),
 }
 
@@ -731,7 +731,7 @@ pub struct Flags {
     pub files: Vec<crate::ipc::Target>,
 }
 
-pub struct SimpleEditApp {
+pub struct ArdoiseApp {
     config: Config,
     /// Folders asked about trust in this run (once each).
     trust_asked: HashSet<PathBuf>,
@@ -1040,7 +1040,7 @@ enum PreviewDoc {
     JsonError(String),
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// An app with one empty untitled tab, reading nothing from disk.
     fn blank(config: Config) -> Self {
         crate::trust::set_all(&config.trusted_folders);
@@ -1190,7 +1190,7 @@ impl SimpleEditApp {
     }
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     pub fn new(flags: Flags) -> (Self, Task<Message>) {
         // The first window owns the session; others start empty and leave it
         // alone, so closing them can't overwrite it.
@@ -1258,7 +1258,7 @@ impl SimpleEditApp {
             .map(file_label)
             .unwrap_or_else(|| t!("app.untitled").to_string());
         let dirty = if self.is_dirty { " •" } else { "" };
-        format!("SimpleEdit — {}{}", name, dirty)
+        format!("Ardoise — {}{}", name, dirty)
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -2189,7 +2189,7 @@ impl Message {
     }
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     fn handle(&mut self, message: Message) -> Task<Message> {
         // Passive/background messages must not close an open dropdown: X11
         // fires a spurious ModifiersChanged right after the very click that
@@ -7982,7 +7982,7 @@ fn remap_span(old: &str, new: &str, span: Span, line_shift: isize) -> Span {
 
 // ─── Editor pane ────────────────────────────────────────────────────────────
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The editor pane: the text editor alone, the preview, or both side by
     /// side (the mode switch lives in the panel's toolbar).
     fn editor_pane(

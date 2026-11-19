@@ -1,8 +1,8 @@
-name: simpleedit
-adopt-info: simpleedit
+name: ardoise
+adopt-info: ardoise
 summary: A fast, stable, cross-platform text editor
 description: |
-  SimpleEdit is a fast, stable text editor with syntax highlighting for 30+
+  Ardoise is a fast, stable text editor with syntax highlighting for 30+
   languages, a file sidebar, search/replace with regex, and full i18n support
   (English and French). Compatible with Ubuntu, Debian, and other Linux distros.
 
@@ -14,7 +14,7 @@ architectures:
   - build-on: amd64
 
 parts:
-  simpleedit:
+  ardoise:
     plugin: rust
     source: .
     # The snap's version is the crate's, so the two can't drift apart.
@@ -52,17 +52,17 @@ parts:
     plugin: dump
     source: snap/gui
     organize:
-      simpleedit.desktop: usr/share/applications/simpleedit.desktop
-      simpleedit.png: usr/share/icons/hicolor/256x256/apps/simpleedit.png
+      ardoise.desktop: usr/share/applications/ardoise.desktop
+      ardoise.png: usr/share/icons/hicolor/256x256/apps/ardoise.png
 
 layout:
   /usr/share/fonts:
     bind: $SNAP/usr/share/fonts
 
 apps:
-  simpleedit:
-    command: bin/simpleedit
-    desktop: usr/share/applications/simpleedit.desktop
+  ardoise:
+    command: bin/ardoise
+    desktop: usr/share/applications/ardoise.desktop
     environment:
       WINIT_UNIX_BACKEND: x11
       XKB_CONFIG_ROOT: $SNAP/usr/share/X11/xkb

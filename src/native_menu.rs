@@ -135,7 +135,7 @@ pub fn install(state: &State) {
 
 /// The first menu, named after the app by the system.
 fn app_menu(b: &mut Builder) -> Submenu {
-    let menu = Submenu::new("SimpleEdit", true);
+    let menu = Submenu::new("Ardoise", true);
     b.on(&menu, t!("menu.help_about"), Message::About);
     separator(&menu);
     b.on(

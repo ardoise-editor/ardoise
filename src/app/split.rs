@@ -116,7 +116,7 @@ impl Split {
     }
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// Splits the active pane in two; `show` is the file the new pane takes
     /// (and the focus), the current file otherwise.
     pub(super) fn split_editor(

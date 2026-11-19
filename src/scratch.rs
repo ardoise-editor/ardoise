@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 pub fn default_dir() -> PathBuf {
     crate::fsutil::data_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join("simpleedit")
+        .join(crate::fsutil::APP_DIR)
         .join("scratches")
 }
 

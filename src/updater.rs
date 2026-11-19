@@ -3,9 +3,8 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-const REPO: &str = "simple-edit-app/simpleedit";
-const RELEASES_API: &str =
-    "https://api.github.com/repos/simple-edit-app/simpleedit/releases/latest";
+const REPO: &str = "ardoise-editor/ardoise";
+const RELEASES_API: &str = "https://api.github.com/repos/ardoise-editor/ardoise/releases/latest";
 /// Public half of the signing key (Ed25519) of the releases and of the
 /// official plugins. `SHA256SUMS` must carry a valid signature from it, so a
 /// tampered release can't vouch for itself. The releases are signed with it
@@ -45,7 +44,7 @@ fn is_newer(latest: &str, current: &str) -> bool {
 
 pub(crate) fn client(timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("simpleedit-updater")
+        .user_agent("ardoise-updater")
         .timeout(timeout)
         .build()
         .map_err(|e| e.to_string())
@@ -136,12 +135,12 @@ pub async fn check_for_update() -> Result<Option<(String, Vec<crate::changelog::
 
 #[cfg(target_os = "linux")]
 fn asset_name(version: &str) -> String {
-    format!("simpleedit_{}-1_amd64.deb", version)
+    format!("ardoise_{}-1_amd64.deb", version)
 }
 
 #[cfg(target_os = "macos")]
 fn asset_name(version: &str) -> String {
-    format!("simpleedit-v{}-aarch64-apple-darwin.tar.gz", version)
+    format!("ardoise-v{}-aarch64-apple-darwin.tar.gz", version)
 }
 
 /// In-app install only works for the package this binary came from: a .deb
@@ -162,13 +161,23 @@ fn install_supported() -> Result<(), String> {
     }
 }
 
+/// Where the binary of a macOS install lives, by the name it has: `ardoise`,
+/// or `simpleedit` for what was installed before the rename (the versions
+/// since update it in place, under the name it has).
+#[cfg(target_os = "macos")]
+const MACOS_BINARIES: [&str; 2] = ["ardoise", "simpleedit"];
+
+#[cfg(target_os = "macos")]
+fn macos_installed_name() -> Option<&'static str> {
+    let exe = std::env::current_exe().ok()?;
+    MACOS_BINARIES
+        .into_iter()
+        .find(|name| exe == Path::new("/usr/local/bin").join(name))
+}
+
 #[cfg(target_os = "macos")]
 fn install_supported() -> Result<(), String> {
-    let ok = cfg!(target_arch = "aarch64")
-        && std::env::current_exe()
-            .map(|p| p == Path::new("/usr/local/bin/simpleedit"))
-            .unwrap_or(false);
-    if ok {
+    if cfg!(target_arch = "aarch64") && macos_installed_name().is_some() {
         Ok(())
     } else {
         Err(t!("update.err_unsupported").to_string())
@@ -252,7 +261,7 @@ pub async fn download_update(version: String) -> Result<(PathBuf, String), Strin
     // between this write and the privileged install. It is kept only once
     // the file is in it; any failure removes it on the way out.
     let dir = tempfile::Builder::new()
-        .prefix("simpleedit-update-")
+        .prefix("ardoise-update-")
         .tempdir()
         .map_err(|e| e.to_string())?;
     let dest = dir.path().join(&asset);
@@ -331,7 +340,7 @@ fn install_blocking(path: &Path, expected: &str) -> Result<(), String> {
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
 
     let mut child = std::process::Command::new("tar")
-        .args(["-xzOf", "-", "simpleedit"])
+        .args(["-xzOf", "-", "ardoise"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -349,7 +358,7 @@ fn install_blocking(path: &Path, expected: &str) -> Result<(), String> {
     if !output.status.success() || output.stdout.is_empty() {
         return Err(t!("update.err_extract").to_string());
     }
-    let binary = tmp_dir.join("simpleedit");
+    let binary = tmp_dir.join("ardoise");
     std::fs::write(&binary, &output.stdout).map_err(|e| e.to_string())?;
     let binary_hash = sha256_hex(&output.stdout);
 
@@ -358,6 +367,11 @@ fn install_blocking(path: &Path, expected: &str) -> Result<(), String> {
     // taken here and only then moves it into place. The paths and the hash
     // go in as AppleScript arguments and are quoted by `quoted form of`,
     // never spliced into the script text.
+    // Replaced where it is: one of two fixed names, never text of the user's.
+    let name = macos_installed_name().ok_or_else(|| t!("update.err_unsupported").to_string())?;
+    let script = format!(
+        "do shell script \"cp \" & src & \" /usr/local/bin/{name}.new && echo \" & digest & \"'  /usr/local/bin/{name}.new' | shasum -a 256 -c - >/dev/null && chmod +x /usr/local/bin/{name}.new && mv -f /usr/local/bin/{name}.new /usr/local/bin/{name}\" with administrator privileges"
+    );
     let ok = std::process::Command::new("osascript")
         .args([
             "-e",
@@ -367,7 +381,7 @@ fn install_blocking(path: &Path, expected: &str) -> Result<(), String> {
             "-e",
             "set digest to quoted form of (item 2 of argv)",
             "-e",
-            "do shell script \"cp \" & src & \" /usr/local/bin/simpleedit.new && echo \" & digest & \"'  /usr/local/bin/simpleedit.new' | shasum -a 256 -c - >/dev/null && chmod +x /usr/local/bin/simpleedit.new && mv -f /usr/local/bin/simpleedit.new /usr/local/bin/simpleedit\" with administrator privileges",
+            script.as_str(),
             "-e",
             "end run",
         ])
@@ -391,11 +405,11 @@ fn install_blocking(path: &Path, expected: &str) -> Result<(), String> {
 /// user something instead of the app just vanishing, which is what used to
 /// happen: the spawn failure was silently swallowed.
 pub fn restart() -> Result<(), String> {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("simpleedit"));
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ardoise"));
 
     // A package manager (dpkg, etc.) replaces the binary file in place while
     // this process is still running it. On Linux that makes current_exe()
-    // report something like "/usr/bin/simpleedit (deleted)", even though a
+    // report something like "/usr/bin/ardoise (deleted)", even though a
     // freshly installed file now sits at that same path. Strip the suffix
     // rather than resolving the bare name through PATH, which could pick up
     // an older copy (e.g. in ~/.local/bin).
@@ -444,9 +458,9 @@ mod tests {
 
     #[test]
     fn expected_hash_finds_the_asset_line() {
-        let sums = "ABC123  other.deb\nDEF456 *simpleedit.deb\n";
+        let sums = "ABC123  other.deb\nDEF456 *ardoise.deb\n";
         assert_eq!(
-            expected_hash(sums, "simpleedit.deb").as_deref(),
+            expected_hash(sums, "ardoise.deb").as_deref(),
             Some("def456")
         );
         assert_eq!(expected_hash(sums, "missing.deb"), None);

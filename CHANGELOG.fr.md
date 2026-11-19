@@ -1,5 +1,12 @@
 # Journal des modifications
 
+## [2.1.0] - 2026-11-20
+
+### Modifié
+- SimpleEdit devient **Ardoise** (Ardoise Editor sur le site et sur GitHub). La commande est `ardoise` (`simpleedit` la lance toujours), le paquet, le cask Homebrew (`brew install --cask ardoise-editor/tap/ardoise`) et l'application macOS sont `ardoise` / `Ardoise.app`, et le projet est sur github.com/ardoise-editor/ardoise.
+- Ce que l'application a gardé passe dans ses nouveaux dossiers au premier lancement (`~/.config/ardoise`, `~/.local/share/ardoise`, `~/Library/Application Support/ardoise`) : réglages, session, plugins et leurs données, serveurs de langage. Rien n'est perdu ; les plugins installés continuent de fonctionner.
+- Les mises à jour depuis SimpleEdit 2.0 se font comme avant : le paquet remplace l'ancien.
+
 ## [2.0.3] - 2026-11-19
 
 ### Corrigé

@@ -80,7 +80,7 @@ pub fn ribbon<'a, M: 'a>(color: Color, filled: bool) -> Element<'a, M> {
         .into()
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// Reads, for the bookmarked files that need it, the lines to show (off
     /// the interface thread). `all` forgets what was read before. A file open
     /// in a tab is shown as the tab has it, not as the disk has it.

@@ -135,7 +135,7 @@ const LOCALES: [LocaleChoice; 2] = [
 pub struct ServerStatus {
     /// Programs of the language servers that can be run.
     pub ready: std::collections::HashSet<&'static str>,
-    /// Of those, the ones SimpleEdit installed and can remove.
+    /// Of those, the ones Ardoise installed and can remove.
     pub removable: std::collections::HashSet<&'static str>,
     /// Programs being installed.
     pub installing: std::collections::HashSet<&'static str>,

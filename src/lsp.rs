@@ -2011,7 +2011,7 @@ impl Server {
         );
         let params = json!({
             "processId": std::process::id(),
-            "clientInfo": { "name": "SimpleEdit" },
+            "clientInfo": { "name": "Ardoise" },
             "initializationOptions": init_options(exe, root),
             "rootUri": root_uri,
             "workspaceFolders": [{ "uri": root_uri, "name": name }],

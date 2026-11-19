@@ -4,7 +4,7 @@
 use super::*;
 use iced::widget::column;
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// Shows `left` against `right`, each a (name, text).
     pub(super) fn open_comparison(
         &mut self,
@@ -190,7 +190,7 @@ pub(super) fn whole_diff(name: &str, old: &str, new: &str) -> crate::diff::FileD
         })
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The arrows and picks of the diff of a comparison.
     pub(super) fn compare_diff_nav(&mut self, nav: DiffNav) -> Task<Message> {
         let viewer = &mut self.history_diff;
@@ -228,11 +228,11 @@ impl SimpleEditApp {
 mod tests {
     use super::*;
 
-    fn app_with(text: &str) -> SimpleEditApp {
+    fn app_with(text: &str) -> ArdoiseApp {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.txt");
         std::fs::write(&path, text).unwrap();
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),

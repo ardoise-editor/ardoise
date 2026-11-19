@@ -1,4 +1,4 @@
-//! Visual identity for SimpleEdit: "Nocturne".
+//! Visual identity for Ardoise: "Nocturne".
 //!
 //! One flat dark grey background (IntelliJ's), square panels that touch,
 //! split by hairlines (as in Zed), and one warm coral accent (a darker coral
@@ -75,9 +75,9 @@ pub fn toolkit_theme(dark: bool) -> Theme {
         let p = contrast_palette(dark);
         return Theme::custom(
             if dark {
-                "SimpleEdit High Contrast".to_string()
+                "Ardoise High Contrast".to_string()
             } else {
-                "SimpleEdit High Contrast Light".to_string()
+                "Ardoise High Contrast Light".to_string()
             },
             iced::theme::Palette {
                 background: p.bg,
@@ -106,7 +106,7 @@ pub fn toolkit_theme(dark: bool) -> Theme {
 
 pub fn ink_dark() -> Theme {
     Theme::custom(
-        "SimpleEdit Nocturne".to_string(),
+        "Ardoise Nocturne".to_string(),
         iced::theme::Palette {
             background: rgb(0x07, 0x09, 0x0E),
             text: rgb(0xE9, 0xEC, 0xF4),
@@ -120,7 +120,7 @@ pub fn ink_dark() -> Theme {
 
 pub fn ink_light() -> Theme {
     Theme::custom(
-        "SimpleEdit Nocturne Light".to_string(),
+        "Ardoise Nocturne Light".to_string(),
         iced::theme::Palette {
             background: rgb(0xE9, 0xEC, 0xF3),
             text: rgb(0x13, 0x17, 0x24),

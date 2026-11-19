@@ -10,7 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  BINARY_NAME: simpleedit
+  BINARY_NAME: ardoise
   # The toolchain a release is built with: the same each time, not whatever
   # `stable` is on the day of the tag.
   RUST_TOOLCHAIN: "1.99.1"
@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # The .deb is named after Cargo.toml, the other assets after the tag, and
-      # the in-app updater looks for simpleedit_<tag>-1_amd64.deb.
+      # the in-app updater looks for ardoise_<tag>-1_amd64.deb.
       - run: |
           CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/version *= *"(.*)"/\1/')
           if [ "v${CARGO_VERSION}" != "$TAG" ]; then
@@ -66,40 +66,45 @@ jobs:
       - name: Package tarball
         run: |
           cd target/aarch64-apple-darwin/release
-          tar czf simpleedit-${TAG}-aarch64-apple-darwin.tar.gz ${{ env.BINARY_NAME }}
-          mv simpleedit-*.tar.gz ${{ github.workspace }}/
+          tar czf ardoise-${TAG}-aarch64-apple-darwin.tar.gz ${{ env.BINARY_NAME }}
+          # The versions installed before the rename (SimpleEdit) look for
+          # this name, and for a binary called simpleedit inside it.
+          cp ${{ env.BINARY_NAME }} simpleedit
+          tar czf simpleedit-${TAG}-aarch64-apple-darwin.tar.gz simpleedit
+          rm simpleedit
+          mv ardoise-*.tar.gz simpleedit-*.tar.gz ${{ github.workspace }}/
       - name: Build .app bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          APP="SimpleEdit.app"
+          APP="Ardoise.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
           cp target/aarch64-apple-darwin/release/${{ env.BINARY_NAME }} "$APP/Contents/MacOS/"
           chmod +x "$APP/Contents/MacOS/${{ env.BINARY_NAME }}"
 
           # .icns from the existing PNG, sized down from the largest square available
-          mkdir -p simpleedit.iconset
+          mkdir -p ardoise.iconset
           for size in 16 32 128 256 512; do
-            sips -z $size $size assets/simpleedit.png \
-              --out "simpleedit.iconset/icon_${size}x${size}.png" >/dev/null
-            sips -z $((size*2)) $((size*2)) assets/simpleedit.png \
-              --out "simpleedit.iconset/icon_${size}x${size}@2x.png" >/dev/null
+            sips -z $size $size assets/ardoise.png \
+              --out "ardoise.iconset/icon_${size}x${size}.png" >/dev/null
+            sips -z $((size*2)) $((size*2)) assets/ardoise.png \
+              --out "ardoise.iconset/icon_${size}x${size}@2x.png" >/dev/null
           done
-          iconutil -c icns simpleedit.iconset -o "$APP/Contents/Resources/simpleedit.icns"
-          rm -rf simpleedit.iconset
+          iconutil -c icns ardoise.iconset -o "$APP/Contents/Resources/ardoise.icns"
+          rm -rf ardoise.iconset
 
           cat > "$APP/Contents/Info.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>CFBundleName</key><string>SimpleEdit</string>
-            <key>CFBundleDisplayName</key><string>SimpleEdit</string>
-            <key>CFBundleIdentifier</key><string>app.simpleedit.SimpleEdit</string>
+            <key>CFBundleName</key><string>Ardoise</string>
+            <key>CFBundleDisplayName</key><string>Ardoise</string>
+            <key>CFBundleIdentifier</key><string>app.ardoise.Ardoise</string>
             <key>CFBundleVersion</key><string>${VERSION}</string>
             <key>CFBundleShortVersionString</key><string>${VERSION}</string>
             <key>CFBundleExecutable</key><string>${{ env.BINARY_NAME }}</string>
-            <key>CFBundleIconFile</key><string>simpleedit</string>
+            <key>CFBundleIconFile</key><string>ardoise</string>
             <key>CFBundlePackageType</key><string>APPL</string>
             <key>LSMinimumSystemVersion</key><string>11.0</string>
             <key>NSHighResolutionCapable</key><true/>
@@ -119,13 +124,14 @@ jobs:
           # Ad-hoc signature: unsigned bundles are rejected outright on Apple Silicon
           codesign --force --deep --sign - "$APP"
           ditto -c -k --keepParent "$APP" \
-            "simpleedit-${TAG}-macos-aarch64.zip"
+            "ardoise-${TAG}-macos-aarch64.zip"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: simpleedit-macos-aarch64
+          name: ardoise-macos-aarch64
           path: |
+            ardoise-*.tar.gz
             simpleedit-*.tar.gz
-            simpleedit-*-macos-aarch64.zip
+            ardoise-*-macos-aarch64.zip
 
   build-linux:
     name: Build Linux (x86_64)
@@ -147,31 +153,35 @@ jobs:
       - name: Package tarball
         run: |
           cd target/release
-          tar czf simpleedit-${TAG}-x86_64-linux.tar.gz ${{ env.BINARY_NAME }}
-          mv simpleedit-*.tar.gz ${{ github.workspace }}/
+          tar czf ardoise-${TAG}-x86_64-linux.tar.gz ${{ env.BINARY_NAME }}
+          mv ardoise-*.tar.gz ${{ github.workspace }}/
       - name: Build DEB
         run: |
           cargo install --locked --version 3.8.0 cargo-deb
           # Packages what the build above made (with --locked).
           cargo deb --no-build
-          cp target/debian/*.deb ${{ github.workspace }}/
+          cp target/debian/ardoise_*.deb ${{ github.workspace }}/
+          # The versions installed before the rename (SimpleEdit) look for
+          # simpleedit_<version>-1_amd64.deb: the same package, which replaces
+          # theirs (Replaces/Conflicts) and keeps /usr/bin/simpleedit as a link.
+          cp target/debian/ardoise_*.deb "${{ github.workspace }}/simpleedit_${TAG#v}-1_amd64.deb"
       - name: Build AppImage
         run: |
           mkdir -p AppDir/usr/bin
           cp target/release/${{ env.BINARY_NAME }} AppDir/usr/bin/
-          cp assets/simpleedit.desktop AppDir/
-          cp assets/simpleedit.png AppDir/
+          cp assets/ardoise.desktop AppDir/
+          cp assets/ardoise.png AppDir/
           ln -s usr/bin/${{ env.BINARY_NAME }} AppDir/AppRun
 
           curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
           echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool" | sha256sum -c -
           chmod +x appimagetool
-          ./appimagetool --appimage-extract-and-run AppDir simpleedit-${TAG}-x86_64.AppImage
+          ./appimagetool --appimage-extract-and-run AppDir ardoise-${TAG}-x86_64.AppImage
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: simpleedit-linux
+          name: ardoise-linux
           path: |
-            simpleedit-*.tar.gz
+            ardoise-*.tar.gz
             *.deb
             *.AppImage
 
@@ -192,7 +202,7 @@ jobs:
           merge-multiple: true
       # The in-app updater and install.sh verify downloads against this file.
       - name: Generate checksums
-        run: sha256sum simpleedit-*.tar.gz simpleedit-*-macos-aarch64.zip *.deb *.AppImage > SHA256SUMS
+        run: sha256sum ardoise-*.tar.gz simpleedit-*.tar.gz ardoise-*-macos-aarch64.zip *.deb *.AppImage > SHA256SUMS
       # Ed25519 signature over SHA256SUMS; the app embeds the public key and
       # refuses an update whose checksums aren't signed by it.
       # Two signatures while the key changes: SHA256SUMS.sig with the old key
@@ -220,8 +230,9 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
+            ardoise-*.tar.gz
             simpleedit-*.tar.gz
-            simpleedit-*-macos-aarch64.zip
+            ardoise-*-macos-aarch64.zip
             *.deb
             *.AppImage
             SHA256SUMS
@@ -247,34 +258,34 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::TAP_GITHUB_TOKEN is not set — skipping the Homebrew cask bump. Update Casks/simpleedit.rb by hand."
+            echo "::warning::TAP_GITHUB_TOKEN is not set — skipping the Homebrew cask bump. Update Casks/ardoise.rb by hand."
           fi
       - name: Check out the tap
         if: steps.tap.outputs.enabled == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: simple-edit-app/homebrew-tap
+          repository: ardoise-editor/homebrew-tap
           # PAT with `contents: write` on the tap repo.
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
       - name: Bump cask to ${{ github.ref_name }}
         if: steps.tap.outputs.enabled == 'true'
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          ZIP="simpleedit-${GITHUB_REF_NAME}-macos-aarch64.zip"
+          ZIP="ardoise-${GITHUB_REF_NAME}-macos-aarch64.zip"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ZIP}"
 
           curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o "$ZIP" "$URL"
           SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
           rm -f "$ZIP"
 
-          sed -i -E "s|^  version \".*\"|  version \"${VERSION}\"|" Casks/simpleedit.rb
-          sed -i -E "s|^  sha256 \".*\"|  sha256 \"${SHA}\"|"      Casks/simpleedit.rb
+          sed -i -E "s|^  version \".*\"|  version \"${VERSION}\"|" Casks/ardoise.rb
+          sed -i -E "s|^  sha256 \".*\"|  sha256 \"${SHA}\"|"      Casks/ardoise.rb
 
-          grep -q "\"${VERSION}\"" Casks/simpleedit.rb || { echo "version bump failed"; exit 1; }
-          grep -q "\"${SHA}\"" Casks/simpleedit.rb     || { echo "sha256 bump failed"; exit 1; }
+          grep -q "\"${VERSION}\"" Casks/ardoise.rb || { echo "version bump failed"; exit 1; }
+          grep -q "\"${SHA}\"" Casks/ardoise.rb     || { echo "sha256 bump failed"; exit 1; }
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/simpleedit.rb
-          git diff --staged --quiet || git commit -m "simpleedit ${VERSION}"
+          git add Casks/ardoise.rb
+          git diff --staged --quiet || git commit -m "ardoise ${VERSION}"
           git push

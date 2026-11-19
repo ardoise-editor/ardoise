@@ -11,59 +11,70 @@ REFRESH_SYS=0
 REFRESH_USER=0
 # Everything goes by default: settings, session, plugins and their data,
 # language servers, and the passwords kept in the system keychain.
-# `--keep-data` (or SIMPLEEDIT_KEEP_DATA=1) keeps them for a reinstall.
-KEEP_DATA="${SIMPLEEDIT_KEEP_DATA:-0}"
+# `--keep-data` (or ARDOISE_KEEP_DATA=1) keeps them for a reinstall.
+KEEP_DATA="${ARDOISE_KEEP_DATA:-${SIMPLEEDIT_KEEP_DATA:-0}}"
 for arg in "$@"; do
     case "$arg" in
         --keep-data) KEEP_DATA=1 ;;
         *) err "Unknown option: $arg" ;;
     esac
 done
-# The name the plugins keep their passwords under in the keychain.
+# The name the plugins keep their passwords under in the keychain (it kept its
+# first name, SimpleEdit, so as not to lose what is saved there).
 KEYCHAIN_SERVICE="SimpleEdit data source"
 
 # ── platform detection ───────────────────────────────────────────────────────
 OS=$(uname -s)
 
-# A running SimpleEdit writes its settings and session again as it quits, and
+# A running Ardoise writes its settings and session again as it quits, and
 # may hold unsaved work: it is closed first, by the user.
-if command -v pgrep &>/dev/null && pgrep -x simpleedit &>/dev/null; then
-    err "SimpleEdit is running. Close it (and save your work), then run this again."
+if command -v pgrep &>/dev/null && { pgrep -x ardoise || pgrep -x simpleedit; } &>/dev/null; then
+    err "Ardoise is running. Close it (and save your work), then run this again."
 fi
 
 case "$OS" in
     Linux)
         # .deb / apt package (also catches the leftover "config-files" state
         # left by older versions of this script that used `remove`, not `purge`)
-        if command -v dpkg &>/dev/null && dpkg -s simpleedit &>/dev/null; then
-            info "Removing .deb package (requires sudo)…"
-            sudo apt-get purge -y simpleedit 2>/dev/null || sudo dpkg -P simpleedit
-            REMOVED=1
-            REFRESH_SYS=1
-        fi
+        # (the package was called simpleedit before the app was renamed)
+        for pkg in ardoise simpleedit; do
+            if command -v dpkg &>/dev/null && dpkg -s "$pkg" &>/dev/null; then
+                info "Removing .deb package ${pkg} (requires sudo)…"
+                sudo apt-get purge -y "$pkg" 2>/dev/null || sudo dpkg -P "$pkg"
+                REMOVED=1
+                REFRESH_SYS=1
+            fi
+        done
 
         # snap package
-        if command -v snap &>/dev/null && snap list simpleedit &>/dev/null; then
-            info "Removing snap package…"
-            sudo snap remove simpleedit
-            REMOVED=1
-        fi
+        for pkg in ardoise simpleedit; do
+            if command -v snap &>/dev/null && snap list "$pkg" &>/dev/null; then
+                info "Removing snap package ${pkg}…"
+                sudo snap remove "$pkg"
+                REMOVED=1
+            fi
+        done
 
         # Stray binaries. Both dirs sit ahead of /usr/bin on a typical PATH, so
         # a leftover here silently shadows the packaged binary after a reinstall.
-        if [ -f /usr/local/bin/simpleedit ]; then
-            info "Removing binary from /usr/local/bin (requires sudo)…"
-            sudo rm -f /usr/local/bin/simpleedit
-            REMOVED=1
-        fi
-        if [ -f "$HOME/.local/bin/simpleedit" ]; then
-            info "Removing binary from ~/.local/bin…"
-            rm -f "$HOME/.local/bin/simpleedit"
-            REMOVED=1
-        fi
+        for name in ardoise simpleedit; do
+            if [ -e "/usr/local/bin/$name" ] || [ -L "/usr/local/bin/$name" ]; then
+                info "Removing /usr/local/bin/${name} (requires sudo)…"
+                sudo rm -f "/usr/local/bin/$name"
+                REMOVED=1
+            fi
+            if [ -e "$HOME/.local/bin/$name" ] || [ -L "$HOME/.local/bin/$name" ]; then
+                info "Removing ~/.local/bin/${name}…"
+                rm -f "$HOME/.local/bin/$name"
+                REMOVED=1
+            fi
+        done
 
         # AppImage and its desktop integration
-        for f in "$HOME/.local/bin/simpleedit.AppImage" \
+        for f in "$HOME/.local/bin/ardoise.AppImage" \
+                 "$HOME/Applications/ardoise.AppImage" \
+                 "$HOME/.local/share/applications/ardoise.desktop" \
+                 "$HOME/.local/bin/simpleedit.AppImage" \
                  "$HOME/Applications/simpleedit.AppImage" \
                  "$HOME/.local/share/applications/simpleedit.desktop"; do
             if [ -e "$f" ]; then
@@ -84,36 +95,52 @@ case "$OS" in
             update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
         fi
 
-        DATA_DIRS=("${XDG_CONFIG_HOME:-$HOME/.config}/simpleedit" "${XDG_DATA_HOME:-$HOME/.local/share}/simpleedit")
+        # (the folders were called simpleedit before the app was renamed)
+        DATA_DIRS=("${XDG_CONFIG_HOME:-$HOME/.config}/ardoise" "${XDG_DATA_HOME:-$HOME/.local/share}/ardoise"
+                   "${XDG_CONFIG_HOME:-$HOME/.config}/simpleedit" "${XDG_DATA_HOME:-$HOME/.local/share}/simpleedit")
         ;;
 
     Darwin)
-        if command -v brew &>/dev/null && brew list --cask simpleedit &>/dev/null; then
-            info "Uninstalling the Homebrew cask…"
-            brew uninstall --cask simpleedit
+        # (the cask was called simpleedit before the app was renamed)
+        for cask in ardoise simpleedit; do
+            if command -v brew &>/dev/null && brew list --cask "$cask" &>/dev/null; then
+                info "Uninstalling the Homebrew cask ${cask}…"
+                brew uninstall --cask "$cask"
+                REMOVED=1
+            fi
+        done
+        if command -v brew &>/dev/null; then
+            brew untap ardoise-editor/tap &>/dev/null || true
             brew untap simple-edit-app/tap &>/dev/null || true
-            REMOVED=1
         fi
-        if [ -d /Applications/SimpleEdit.app ]; then
-            info "Removing /Applications/SimpleEdit.app…"
-            # An app installed by an administrator needs sudo; try without first.
-            rm -rf /Applications/SimpleEdit.app 2>/dev/null || sudo rm -rf /Applications/SimpleEdit.app
-            REMOVED=1
-        fi
-        if [ -f /usr/local/bin/simpleedit ]; then
-            info "Removing binary from /usr/local/bin (requires sudo)…"
-            sudo rm -f /usr/local/bin/simpleedit
-            REMOVED=1
-        fi
-        if [ -f "$HOME/.local/bin/simpleedit" ]; then
-            info "Removing binary from ~/.local/bin…"
-            rm -f "$HOME/.local/bin/simpleedit"
-            REMOVED=1
-        fi
+        for app in Ardoise SimpleEdit; do
+            if [ -d "/Applications/${app}.app" ]; then
+                info "Removing /Applications/${app}.app…"
+                # An app installed by an administrator needs sudo; try without first.
+                rm -rf "/Applications/${app}.app" 2>/dev/null || sudo rm -rf "/Applications/${app}.app"
+                REMOVED=1
+            fi
+        done
+        for name in ardoise simpleedit; do
+            if [ -e "/usr/local/bin/$name" ] || [ -L "/usr/local/bin/$name" ]; then
+                info "Removing binary /usr/local/bin/${name} (requires sudo)…"
+                sudo rm -f "/usr/local/bin/$name"
+                REMOVED=1
+            fi
+            if [ -e "$HOME/.local/bin/$name" ] || [ -L "$HOME/.local/bin/$name" ]; then
+                info "Removing binary ~/.local/bin/${name}…"
+                rm -f "$HOME/.local/bin/$name"
+                REMOVED=1
+            fi
+        done
 
-        DATA_DIRS=("$HOME/Library/Application Support/simpleedit"
+        DATA_DIRS=("$HOME/Library/Application Support/ardoise"
+                   "$HOME/Library/Application Support/simpleedit"
+                   "$HOME/Library/Saved Application State/app.ardoise.Ardoise.savedState"
                    "$HOME/Library/Saved Application State/app.simpleedit.SimpleEdit.savedState"
+                   "$HOME/Library/Preferences/app.ardoise.Ardoise.plist"
                    "$HOME/Library/Preferences/app.simpleedit.SimpleEdit.plist"
+                   "$HOME/Library/Caches/app.ardoise.Ardoise"
                    "$HOME/Library/Caches/app.simpleedit.SimpleEdit")
         ;;
 
@@ -164,12 +191,12 @@ for dir in "${DATA_DIRS[@]}"; do
     [ -e "$dir" ] && HAS_DATA=1
 done
 if [ "$REMOVED" -eq 0 ] && { [ "$HAS_DATA" -eq 0 ] || [ "$KEEP_DATA" = "1" ]; }; then
-    err "SimpleEdit does not appear to be installed."
+    err "Ardoise does not appear to be installed."
 fi
 [ "$REMOVED" -eq 1 ] || info "The app itself was already removed: its data goes now."
 
 if [ "$KEEP_DATA" = "1" ]; then
-    ok "SimpleEdit uninstalled."
+    ok "Ardoise uninstalled."
     info "Your settings, plugins and their data were kept (--keep-data)."
     exit 0
 fi
@@ -197,7 +224,7 @@ for dir in "${DATA_DIRS[@]}"; do
 done
 
 # ── done ─────────────────────────────────────────────────────────────────────
-ok "SimpleEdit uninstalled, with its settings, plugins and their data."
+ok "Ardoise uninstalled, with its settings, plugins and their data."
 if [ -n "$SCRATCH" ] && [ -d "$SCRATCH" ]; then
     info "Your scratch files in ${SCRATCH/#$HOME/\~} were kept: they are yours."
 fi

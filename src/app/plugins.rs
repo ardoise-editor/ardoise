@@ -85,7 +85,7 @@ fn plugin_msg(msg: PluginMsg) -> Message {
     Message::Plugin(msg)
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     fn plugin_settings(&self) -> Settings {
         Settings {
             locale: rust_i18n::locale().to_string(),
@@ -2227,7 +2227,7 @@ while True:
         .unwrap();
         store::link_folder(folder.path()).unwrap();
 
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         app.plugins.reload();
         let id = "test.e2e".to_string();
         assert!(app
@@ -2317,7 +2317,7 @@ while True:
 
     #[test]
     fn a_question_closed_without_an_answer_is_a_no() {
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         app.overlay = ActiveOverlay::PluginConfirm(Box::new(PluginQuestion {
             plugin: "test.none".into(),
             request: 1,
@@ -2357,8 +2357,8 @@ mod tab_tests {
     use super::*;
     use simpleedit_plugin::ui::{column, editor};
 
-    fn app_with_plugin() -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app_with_plugin() -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let manifest = simpleedit_plugin::manifest::Manifest::parse(
             r#"{"id": "test.tabs", "name": "Tabs", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
@@ -2372,7 +2372,7 @@ mod tab_tests {
         app
     }
 
-    fn from_plugin(app: &mut SimpleEditApp, message: Rpc) {
+    fn from_plugin(app: &mut ArdoiseApp, message: Rpc) {
         let _ = app.update(Message::Plugin(PluginMsg::Incoming(Incoming::Rpc(
             "test.tabs".into(),
             message,
@@ -2543,7 +2543,7 @@ mod tab_tests {
         let mut app = app_with_plugin();
         let patch =
             "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO\n";
-        let open = |app: &mut SimpleEditApp, patch: &str| {
+        let open = |app: &mut ArdoiseApp, patch: &str| {
             from_plugin(
                 app,
                 Rpc::request(
@@ -2721,7 +2721,7 @@ mod tab_tests {
             local_history_days: 0,
             ..Config::default()
         };
-        let mut app = SimpleEditApp::blank(config);
+        let mut app = ArdoiseApp::blank(config);
         let _ = app.plugins_carry();
         assert!(app.config.plugins_carried);
         let mut wanted = app.config.plugins_to_carry.clone();

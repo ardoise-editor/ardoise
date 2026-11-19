@@ -1,9 +1,9 @@
-//! The language servers SimpleEdit knows, and how to install them from the
+//! The language servers Ardoise knows, and how to install them from the
 //! Preferences. Nothing is installed by default: until a server is there,
 //! go to definition falls back to the pattern search (see `definition`).
 //!
 //! Servers installed from here live in the application's own folder
-//! (`<data dir>/simpleedit/lsp`), so no administrator rights are needed and
+//! (`<data dir>/ardoise/lsp`), so no administrator rights are needed and
 //! nothing else on the machine is touched (except Rust's, which rustup
 //! manages).
 
@@ -129,7 +129,7 @@ pub const SERVERS: &[ServerInfo] = &[
 
 /// Where the servers installed from the Preferences live.
 pub fn managed_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("simpleedit").join("lsp"))
+    dirs::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("lsp"))
 }
 
 /// The folder holding their programs.
@@ -159,7 +159,7 @@ pub fn offer_for(extension: &str) -> Option<&'static ServerInfo> {
     (!any_ready).then_some(info)
 }
 
-/// Whether the program is in the folder SimpleEdit installs into.
+/// Whether the program is in the folder Ardoise installs into.
 fn is_managed(binary: &str) -> bool {
     managed_bin_dir().is_some_and(|dir| {
         ["", ".exe", ".cmd", ".bat"]
@@ -168,7 +168,7 @@ fn is_managed(binary: &str) -> bool {
     })
 }
 
-/// The ready servers that SimpleEdit can remove: the ones it installed (and
+/// The ready servers that Ardoise can remove: the ones it installed (and
 /// Rust's, which rustup manages). A server found elsewhere is not touched.
 pub fn removable() -> HashSet<&'static str> {
     ready()

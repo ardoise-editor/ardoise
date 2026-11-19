@@ -83,7 +83,7 @@ impl Bookmarks {
     }
 
     fn store() -> Option<PathBuf> {
-        crate::fsutil::data_dir().map(|d| d.join("simpleedit").join("bookmarks.json"))
+        crate::fsutil::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("bookmarks.json"))
     }
 
     pub fn load() -> Self {

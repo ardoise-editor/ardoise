@@ -66,7 +66,7 @@ fn editor_completes(node: &Node, id: &str) -> bool {
     }
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     fn grid_node(&self, key: &GridKey) -> Option<&simpleedit_plugin::ui::Grid> {
         let root = self.plugins.views.get(&key.0)?;
         grid::find(root, &key.1)
@@ -477,8 +477,8 @@ mod tests {
     use crate::plugins::host::Incoming;
     use simpleedit_plugin::protocol::Message as Rpc;
 
-    fn app_with_panel(root: serde_json::Value) -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app_with_panel(root: serde_json::Value) -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let manifest = simpleedit_plugin::manifest::Manifest::parse(
             r#"{"id": "test.grid", "name": "Grid", "version": "1.0.0", "api": 1, "command": ["bin/none"],
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn the_lint_page_is_there_with_the_lint_plugin_and_shows_its_settings() {
         use crate::preferences::{PreferencesMessage, PrefsPage};
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         assert!(!PrefsPage::Lint.shown(&app.plugins), "no plugin, no page");
         // Without it, "Lint settings" lead to the plugins.
@@ -669,7 +669,7 @@ mod tests {
 
     #[test]
     fn checking_for_an_update_of_the_app_updates_the_plugins_too() {
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let manifest = simpleedit_plugin::manifest::Manifest::parse(
             r#"{"id": "test.old", "name": "Old", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
@@ -705,9 +705,9 @@ mod tests {
     #[test]
     fn a_plugin_is_uninstalled_with_its_data_only_when_asked() {
         use crate::app::ActiveOverlay;
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
-        let add = |app: &mut SimpleEditApp, id: &str| {
+        let add = |app: &mut ArdoiseApp, id: &str| {
             let manifest = simpleedit_plugin::manifest::Manifest::parse(&format!(
                 r#"{{"id": "{id}", "name": "Kept", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
             ))
@@ -760,9 +760,9 @@ mod tests {
         use crate::config::ShortcutTarget;
         use crate::palette::PaletteCommand;
         use crate::preferences::shortcut_shown;
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
-        let offered = |app: &SimpleEditApp| {
+        let offered = |app: &ArdoiseApp| {
             let tools = app.plugins.tools();
             let palette: Vec<PaletteCommand> =
                 crate::palette::entries(&app.config, true, true, tools)

@@ -1,4 +1,4 @@
-//! One window for the files: `simpleedit file.rs:12` hands the file (and the
+//! One window for the files: `ardoise file.rs:12` hands the file (and the
 //! line) to the window that runs instead of opening another one, unless
 //! `--new-window` says so.
 
@@ -129,7 +129,7 @@ fn decode(text: &str) -> Vec<Target> {
 }
 
 fn socket_path() -> Option<PathBuf> {
-    crate::fsutil::data_dir().map(|d| d.join("simpleedit").join("instance.sock"))
+    crate::fsutil::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("instance.sock"))
 }
 
 /// Starts listening, if this window owns the session. `false` when the

@@ -173,7 +173,7 @@ pub(super) async fn pick_folder() -> Option<PathBuf> {
 }
 
 /// Reads a file for a tab. With `missing_ok`, a file that doesn't exist yet
-/// opens as an empty one that the first save creates (`simpleedit new.txt`).
+/// opens as an empty one that the first save creates (`ardoise new.txt`).
 pub(super) async fn read_file(path: PathBuf, missing_ok: bool) -> Result<Loaded, String> {
     let path = absolute(path);
     tokio::task::spawn_blocking(move || {
