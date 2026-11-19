@@ -1750,13 +1750,7 @@ impl SimpleEditApp {
             .into_iter()
             .map(|(plugin, panel)| {
                 let title = panel.title.get(&locale).to_string();
-                let icon = panel.icon.clone().unwrap_or_else(|| {
-                    title
-                        .chars()
-                        .next()
-                        .map(|c| c.to_uppercase().to_string())
-                        .unwrap_or_default()
-                });
+                let icon = panel_icon(panel.icon.as_deref(), &title);
                 let is_open = open.is_some_and(|k| k.0 == plugin.id() && k.1 == panel.id);
                 (
                     icon,
@@ -2032,6 +2026,33 @@ fn invalid(e: impl std::fmt::Display) -> RpcError {
     RpcError {
         code: codes::INVALID_PARAMS,
         message: e.to_string(),
+    }
+}
+
+/// The icon of a panel in the activity bar: its glyph, or the first letter
+/// of its title when it has none (an empty one would be a blank square).
+fn panel_icon(icon: Option<&str>, title: &str) -> String {
+    match icon.map(str::trim).filter(|i| !i.is_empty()) {
+        Some(icon) => icon.to_string(),
+        None => title
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::panel_icon;
+
+    #[test]
+    fn a_panel_without_a_glyph_shows_the_letter_of_its_title() {
+        assert_eq!(panel_icon(Some("\u{e725}"), "Git"), "\u{e725}");
+        assert_eq!(panel_icon(Some(""), "git"), "G");
+        assert_eq!(panel_icon(Some("  "), "base"), "B");
+        assert_eq!(panel_icon(None, "Évents"), "É");
+        assert_eq!(panel_icon(None, ""), "");
     }
 }
 
