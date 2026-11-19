@@ -6,8 +6,6 @@
 - Uninstalling a plugin asks first, with a box to delete its data too (settings, history, connections, and its passwords in the system keychain); unticked, the data is kept for a reinstall.
 - The uninstall script removes everything SimpleEdit kept: settings, session, plugins and their data, language servers, and the passwords of the plugins in the system keychain (a scratch folder you chose stays). `--keep-data` keeps them.
 
-## [2.0.1] - 2026-11-19
-
 ### Changed
 - "Check for updates" updates the plugins too.
 - Preferences: the Lint page is there once the Lint plugin is installed, and holds all of its settings, the linters by language included; the language is set on its own page only.
