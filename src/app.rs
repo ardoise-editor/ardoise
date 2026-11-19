@@ -3860,13 +3860,19 @@ impl ArdoiseApp {
                     self.completion_servers_restarted();
                     return Task::future(crate::lsp::restart_servers()).discard();
                 }
-                // The Lint page shows the settings of the Lint plugin.
+                // The Lint page shows the settings of the Lint plugin, the page
+                // of a plugin its own.
                 if matches!(
                     msg,
                     PreferencesMessage::PageSelected(crate::preferences::PrefsPage::Lint)
                 ) {
                     let _ = self.preferences.update(msg, &mut self.config);
                     return self.plugin_lint_settings_open();
+                }
+                if let PreferencesMessage::PluginPageSelected(id) = &msg {
+                    let id = id.clone();
+                    let _ = self.preferences.update(msg, &mut self.config);
+                    return self.plugin_settings_show(&id);
                 }
                 let servers_page = matches!(
                     msg,

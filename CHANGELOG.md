@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.2.0] - 2026-11-20
+
+### Changed
+- The settings of a plugin are a page of the Preferences, named after it, as soon as it is installed (Git, API, Local history…), as Lint has: the "Settings" button of the list of the plugins is gone.
+
 ## [2.1.0] - 2026-11-20
 
 ### Changed

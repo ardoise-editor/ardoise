@@ -791,6 +791,76 @@ mod tests {
     }
 
     #[test]
+    fn a_plugin_with_settings_has_a_page_of_its_own_in_the_preferences() {
+        use crate::preferences::{PreferencesMessage, PrefsPage};
+        let mut app = ArdoiseApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        let add = |app: &mut ArdoiseApp, json: &str| {
+            let manifest = ardoise_plugin::manifest::Manifest::parse(json).unwrap();
+            app.plugins.installed.push(crate::plugins::Installed {
+                manifest,
+                dir: PathBuf::from("/nowhere"),
+                origin: Default::default(),
+            });
+        };
+        assert!(app.plugins.settings_pages().is_empty());
+        add(
+            &mut app,
+            r#"{"id": "acme.zebra", "name": "Zebra", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "settings", "title": "Zebra", "location": "settings"}]}}"#,
+        );
+        add(
+            &mut app,
+            r#"{"id": "acme.alpha", "name": "alpha", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "settings", "title": "Alpha", "location": "settings"}]}}"#,
+        );
+        // No settings, no page; the linter has the Lint page instead.
+        add(
+            &mut app,
+            r#"{"id": "acme.plain", "name": "Plain", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
+        );
+        add(
+            &mut app,
+            r#"{"id": "acme.lint", "name": "Lint", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"linter": {"extensions": ["js"]},
+                "panels": [{"id": "settings", "title": "Linters", "location": "settings"}]}}"#,
+        );
+        let names: Vec<String> = app
+            .plugins
+            .settings_pages()
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect();
+        assert_eq!(names, vec!["alpha", "Zebra"], "by name, whatever the case");
+        // Its page opens its settings (and closes the ones that were open).
+        let _ = app.update(Message::Preferences(
+            PreferencesMessage::PluginPageSelected("acme.zebra".into()),
+        ));
+        assert_eq!(app.preferences.page, PrefsPage::PluginSettings);
+        assert_eq!(app.preferences.plugin_page.as_deref(), Some("acme.zebra"));
+        assert_eq!(
+            app.plugins.settings_open,
+            Some(("acme.zebra".to_string(), "settings".to_string()))
+        );
+        let _ = app.update(Message::Preferences(
+            PreferencesMessage::PluginPageSelected("acme.alpha".into()),
+        ));
+        assert_eq!(
+            app.plugins.settings_open,
+            Some(("acme.alpha".to_string(), "settings".to_string()))
+        );
+        // Removed, it has no page any more.
+        app.plugins.installed.retain(|p| p.id() != "acme.alpha");
+        let ids: Vec<String> = app
+            .plugins
+            .settings_pages()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(ids, vec!["acme.zebra"]);
+    }
+
+    #[test]
     fn the_rows_scroll_to_a_cursor_moved_out_of_view() {
         let rows: Vec<_> = (0..50)
             .map(|i| serde_json::json!({"cells": [{"text": i.to_string()}]}))

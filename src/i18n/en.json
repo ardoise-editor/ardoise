@@ -715,7 +715,6 @@
   "plugins.err_release": "The latest release has no version number (vMAJOR.MINOR.PATCH)",
   "plugins.err_repo": "Type a GitHub repository: owner/name",
   "plugins.err_taken": "Another plugin with this id is installed (from %{from}): uninstall it first",
-  "plugins.settings": "Settings",
   "plugins.carrying": "Installing the %{n} tools you used before, now plugins…",
   "plugins.not_running": "the plugin %{id} is not running",
   "plugins.no_conflict": "there is no conflict in this text",

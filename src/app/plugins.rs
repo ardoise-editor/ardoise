@@ -1807,18 +1807,24 @@ impl ArdoiseApp {
     /// The buttons of the panels of the plugins at `location`, for the
     /// activity bar: icon, open, tooltip, message.
     /// The settings of the Lint plugin opened, for its page of the
-    /// preferences (they are not shown in the list of the plugins).
+    /// preferences.
     pub(super) fn plugin_lint_settings_open(&mut self) -> Task<Message> {
-        let Some(id) = self.plugins.linter().map(|l| l.id().to_string()) else {
+        match self.plugins.linter().map(|l| l.id().to_string()) {
+            Some(id) => self.plugin_settings_show(&id),
+            None => Task::none(),
+        }
+    }
+
+    /// The settings of a plugin opened (the one open before closes), for its
+    /// page of the preferences; they stay open if they are.
+    pub(super) fn plugin_settings_show(&mut self, id: &str) -> Task<Message> {
+        let Some(panel) = self.plugins.settings_panel(id).map(|p| p.id.clone()) else {
             return Task::none();
         };
-        let Some(panel) = self.plugins.settings_panel(&id).map(|p| p.id.clone()) else {
-            return Task::none();
-        };
-        if self.plugins.settings_open.as_ref() == Some(&(id.clone(), panel)) {
+        if self.plugins.settings_open.as_ref() == Some(&(id.to_string(), panel)) {
             return Task::none();
         }
-        self.plugin_update(PluginMsg::ToggleSettings(id))
+        self.plugin_update(PluginMsg::ToggleSettings(id.to_string()))
     }
 
     pub(super) fn plugin_tools(&self, location: Location) -> Vec<(String, bool, String, Message)> {
