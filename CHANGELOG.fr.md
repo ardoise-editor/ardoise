@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## [2.2.0] - 2026-11-20
+
+### Modifié
+- Les réglages d'un plugin sont une page des Préférences, à son nom, dès qu'il est installé (Git, API, Historique local…), comme Lint : le bouton « Réglages » de la liste des plugins n'existe plus.
+
 ## [2.1.0] - 2026-11-20
 
 ### Modifié

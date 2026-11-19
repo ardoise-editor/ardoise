@@ -30,72 +30,17 @@ fn small_button(
     }
 }
 
-/// A plugin of a list: its label, a button for its settings if it has
-/// some, its controls; and under them its settings when they are open.
+/// A plugin of a list: its label and its controls. Its settings are a page of
+/// their own in the preferences.
 fn entry<'a>(
-    plugins: &'a Plugins,
-    id: &str,
     label: iced::widget::Column<'a, Message>,
     control: Element<'a, Message>,
-    dark: bool,
 ) -> Element<'a, Message> {
-    let installed = plugins.get(id).is_some();
-    let settings = plugins.settings_panel(id).filter(|_| installed);
-    // The Lint plugin's settings are on the Lint page: its button goes there.
-    let lints = plugins
-        .get(id)
-        .is_some_and(|p| p.manifest.contributes.linter.is_some());
-    let open = plugins
-        .settings_open
-        .as_ref()
-        .filter(|k| !lints && k.0 == id && settings.is_some_and(|p| p.id == k.1));
-    let mut line = row![label.width(Length::Fill)]
+    row![label.width(Length::Fill), control]
         .spacing(10)
-        .align_y(Alignment::Center);
-    if settings.is_some() {
-        line = line.push(
-            button(text(t!("plugins.settings").to_string()).size(12))
-                .padding([6, 12])
-                .on_press(if lints {
-                    Message::Preferences(crate::preferences::PreferencesMessage::PageSelected(
-                        crate::preferences::PrefsPage::Lint,
-                    ))
-                } else {
-                    msg(PluginMsg::ToggleSettings(id.to_string()))
-                })
-                .style(
-                    (theme::GhostButton {
-                        dark,
-                        active: open.is_some(),
-                    })
-                    .style(),
-                ),
-        );
-    }
-    let line = line.push(control).padding([12, 16]);
-    let Some(key) = open else {
-        return line.into();
-    };
-    let p = theme::palette(dark);
-    let body: Element<'a, Message> = match plugins.views.get(key) {
-        Some(node) => crate::plugins::render::view(plugins, key, node, dark),
-        None => text(t!("plugins.panel_loading").to_string())
-            .size(12)
-            .color(p.muted)
-            .into(),
-    };
-    column![
-        line,
-        container(body)
-            .padding(iced::Padding {
-                top: 0.0,
-                right: 16.0,
-                bottom: 14.0,
-                left: 28.0,
-            })
-            .width(Length::Fill),
-    ]
-    .into()
+        .align_y(Alignment::Center)
+        .padding([12, 16])
+        .into()
 }
 
 pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message> {
@@ -168,7 +113,7 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
                     if let Some(e) = plugins.errors.get(&listed.id) {
                         label = label.push(error(e.clone()));
                     }
-                    entry(plugins, &listed.id, label, control, dark)
+                    entry(label, control)
                 })
                 .collect(),
         ),
@@ -228,7 +173,7 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
                     false,
                 ));
             }
-            entry(plugins, &id, label, control.into(), dark)
+            entry(label, control.into())
         })
         .chain(plugins.broken.iter().map(|(name, why)| {
             setting_row(

@@ -715,7 +715,6 @@
   "plugins.err_release": "La dernière release n'a pas de numéro de version (vMAJEUR.MINEUR.CORRECTIF)",
   "plugins.err_repo": "Saisissez un dépôt GitHub : propriétaire/nom",
   "plugins.err_taken": "Un autre plugin avec cet identifiant est installé (depuis %{from}) : désinstallez-le d'abord",
-  "plugins.settings": "Réglages",
   "plugins.carrying": "Installation des %{n} outils que vous utilisiez, devenus des plugins…",
   "plugins.not_running": "le plugin %{id} ne tourne pas",
   "plugins.no_conflict": "ce texte ne contient aucun conflit",

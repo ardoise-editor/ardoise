@@ -448,6 +448,20 @@ impl Plugins {
         }
     }
 
+    /// The plugins that have a page of settings in the preferences, by name:
+    /// (id, name). The linter has the Lint page instead.
+    pub fn settings_pages(&self) -> Vec<(String, String)> {
+        let mut pages: Vec<(String, String)> = self
+            .installed
+            .iter()
+            .filter(|p| p.manifest.contributes.linter.is_none())
+            .filter(|p| self.settings_panel(p.id()).is_some())
+            .map(|p| (p.id().to_string(), p.name()))
+            .collect();
+        pages.sort_by_key(|(_, name)| name.to_lowercase());
+        pages
+    }
+
     /// The plugin installed that finds problems in files (Lint): it has a
     /// page of its own in the preferences.
     pub fn linter(&self) -> Option<&Installed> {

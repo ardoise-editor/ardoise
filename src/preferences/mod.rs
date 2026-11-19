@@ -19,6 +19,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum PreferencesMessage {
     PageSelected(PrefsPage),
+    /// The page of the settings of a plugin (its id).
+    PluginPageSelected(String),
     ExcludeTyped(String),
     FontSizeChanged(f32),
     TabWidthChanged(usize),
@@ -61,6 +63,9 @@ pub enum PrefsPage {
     Language,
     Lint,
     Servers,
+    /// The settings of a plugin: which one is `PreferencesState::plugin_page`.
+    /// Not in the list of the pages: each plugin has its own entry.
+    PluginSettings,
     Plugins,
     Updates,
 }
@@ -85,7 +90,7 @@ impl PrefsPage {
             PrefsPage::Language => t!("prefs.language"),
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
-            PrefsPage::Plugins => t!("prefs.nav_plugins"),
+            PrefsPage::PluginSettings | PrefsPage::Plugins => t!("prefs.nav_plugins"),
             PrefsPage::Updates => t!("prefs.nav_updates"),
         }
         .to_string()
@@ -145,6 +150,8 @@ pub struct ServerStatus {
 
 pub struct PreferencesState {
     pub page: PrefsPage,
+    /// The plugin whose settings are the page, on `PrefsPage::PluginSettings`.
+    pub plugin_page: Option<String>,
     pub scratch_draft: String,
     /// The names left out of the trees, as typed.
     pub exclude_draft: String,
@@ -154,6 +161,7 @@ impl PreferencesState {
     pub fn from_config(config: &Config) -> Self {
         Self {
             page: PrefsPage::Editor,
+            plugin_page: None,
             scratch_draft: config.scratch_dir.clone(),
             exclude_draft: config.projects_exclude.join(", "),
         }
@@ -169,6 +177,11 @@ impl PreferencesState {
             }
             PreferencesMessage::PageSelected(page) => {
                 self.page = page;
+                return false;
+            }
+            PreferencesMessage::PluginPageSelected(id) => {
+                self.page = PrefsPage::PluginSettings;
+                self.plugin_page = Some(id);
                 return false;
             }
             PreferencesMessage::FontSizeChanged(v) => {
@@ -298,26 +311,50 @@ impl PreferencesState {
         .height(46)
         .align_y(Alignment::Center);
 
-        let nav_items: Vec<Element<Message>> = PrefsPage::ALL
+        // The plugins that have settings have a page each; a page that is
+        // no longer there (its plugin removed) is the editor's.
+        let plugin_pages = plugin_state.settings_pages();
+        let current_plugin = self
+            .plugin_page
+            .as_ref()
+            .and_then(|id| plugin_pages.iter().find(|(page_id, _)| page_id == id));
+        let shown = match self.page {
+            PrefsPage::PluginSettings if current_plugin.is_some() => PrefsPage::PluginSettings,
+            PrefsPage::PluginSettings => PrefsPage::Editor,
+            other if other.shown(plugin_state) => other,
+            _ => PrefsPage::Editor,
+        };
+        let nav_entry = |label: String, msg: PreferencesMessage, selected: bool| {
+            button(text(label).size(13))
+                .padding([8, 12])
+                .width(Length::Fill)
+                .on_press(Message::Preferences(msg))
+                .style((theme::SidebarRow { dark, selected }).style())
+                .into()
+        };
+        let mut nav_items: Vec<Element<Message>> = Vec::new();
+        for page in PrefsPage::ALL
             .iter()
             .filter(|page| page.shown(plugin_state))
-            .map(|page| {
-                button(text(page.label()).size(13))
-                    .padding([8, 12])
-                    .width(Length::Fill)
-                    .on_press(Message::Preferences(PreferencesMessage::PageSelected(
-                        *page,
-                    )))
-                    .style(
-                        (theme::SidebarRow {
-                            dark,
-                            selected: self.page == *page,
-                        })
-                        .style(),
-                    )
-                    .into()
-            })
-            .collect();
+        {
+            // The settings of the plugins come before the list of the plugins.
+            if *page == PrefsPage::Plugins {
+                for (id, name) in &plugin_pages {
+                    let selected = shown == PrefsPage::PluginSettings
+                        && current_plugin.is_some_and(|(page_id, _)| page_id == id);
+                    nav_items.push(nav_entry(
+                        name.clone(),
+                        PreferencesMessage::PluginPageSelected(id.clone()),
+                        selected,
+                    ));
+                }
+            }
+            nav_items.push(nav_entry(
+                page.label(),
+                PreferencesMessage::PageSelected(*page),
+                shown == *page,
+            ));
+        }
 
         let nav = container(column(nav_items).spacing(2))
             .padding([16, 10])
@@ -335,12 +372,6 @@ impl PreferencesState {
                 ..container::Style::default()
             });
 
-        // A page that is no longer there (its plugin removed): the editor's.
-        let shown = if self.page.shown(plugin_state) {
-            self.page
-        } else {
-            PrefsPage::Editor
-        };
         let page: Element<Message> = match shown {
             PrefsPage::Editor => column![
                 self.editor_card(config, dark),
@@ -354,12 +385,21 @@ impl PreferencesState {
             PrefsPage::Language => self.language_card(config, dark),
             PrefsPage::Lint => lint_page(config, dark, plugin_state),
             PrefsPage::Servers => self.servers_page(dark, servers),
+            PrefsPage::PluginSettings => match current_plugin {
+                Some((id, _)) => plugin_settings_body(plugin_state, id, dark)
+                    .unwrap_or_else(|| Space::new().into()),
+                None => Space::new().into(),
+            },
             PrefsPage::Plugins => plugins::page(plugin_state, dark),
             PrefsPage::Updates => self.updates_card(dark),
         };
 
+        let page_title = match (shown, current_plugin) {
+            (PrefsPage::PluginSettings, Some((_, name))) => name.clone(),
+            _ => shown.title(),
+        };
         let content = scrollable(
-            column![text(self.page.title()).size(22).font(theme::UI_BOLD), page,]
+            column![text(page_title).size(22).font(theme::UI_BOLD), page,]
                 .spacing(18)
                 .padding(Padding {
                     top: 26.0,
@@ -1313,27 +1353,38 @@ fn lint_page<'a>(
     );
     let mut page = column![general, colors].spacing(14);
     // The settings of the plugin, drawn as it sends them.
-    let linter = plugins
-        .linter()
-        .and_then(|l| Some((l.id().to_string(), plugins.settings_panel(l.id())?)));
-    if let Some((id, panel)) = linter {
-        let key = (id, panel.id.clone());
-        let body: Element<'a, Message> = match plugins.views.get(&key) {
-            Some(node) => crate::plugins::render::view(plugins, &key, node, dark),
-            None => text(t!("plugins.panel_loading").to_string())
-                .size(12)
-                .color(p.muted)
-                .into(),
-        };
-        page = page.push(
-            text(panel.title.get(&rust_i18n::locale()).to_string())
-                .size(14)
-                .font(theme::UI_SEMIBOLD)
-                .color(p.text),
-        );
-        page = page.push(container(body).padding([4, 4]).width(Length::Fill));
+    if let Some(linter) = plugins.linter() {
+        if let (Some(panel), Some(body)) = (
+            plugins.settings_panel(linter.id()),
+            plugin_settings_body(plugins, linter.id(), dark),
+        ) {
+            page = page.push(
+                text(panel.title.get(&rust_i18n::locale()).to_string())
+                    .size(14)
+                    .font(theme::UI_SEMIBOLD)
+                    .color(p.text),
+            );
+            page = page.push(container(body).padding([4, 4]).width(Length::Fill));
+        }
     }
     page.into()
+}
+
+/// The settings of a plugin, as it draws them (a note while it is starting).
+fn plugin_settings_body<'a>(
+    plugins: &'a crate::plugins::Plugins,
+    id: &str,
+    dark: bool,
+) -> Option<Element<'a, Message>> {
+    let panel = plugins.settings_panel(id)?;
+    let key = (id.to_string(), panel.id.clone());
+    Some(match plugins.views.get(&key) {
+        Some(node) => crate::plugins::render::view(plugins, &key, node, dark),
+        None => text(t!("plugins.panel_loading").to_string())
+            .size(12)
+            .color(theme::palette(dark).muted)
+            .into(),
+    })
 }
 
 #[cfg(test)]
