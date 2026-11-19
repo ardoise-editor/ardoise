@@ -578,9 +578,6 @@ pub mod statusbar {
         pub use_spaces: bool,
         pub tab_width: usize,
         pub encoding: &'a str,
-        /// The Git branch (name, commits ahead, behind): a click opens the
-        /// switcher.
-        pub branch: Option<(String, u32, u32)>,
         /// How many problems the file has, once it was looked at: a click goes
         /// to the next one.
         pub problems: Option<crate::lint::Counts>,
@@ -592,6 +589,8 @@ pub mod statusbar {
         /// A language server that could be installed: its language, and
         /// what the button sends.
         pub offer: Option<(String, String, Message)>,
+        /// The items the plugins put there: text, tooltip, what a click sends.
+        pub plugin_items: Vec<(String, Option<String>, Option<Message>)>,
     }
 
     pub(super) fn size_label(b: u64) -> String {
@@ -653,6 +652,31 @@ pub mod statusbar {
                 .into()
         };
         let mut right = row![].spacing(10).align_y(Alignment::Center);
+        for (label, tip, on) in info.plugin_items {
+            let item = button(text(label).size(11.5).color(muted))
+                .padding([1, 8])
+                .on_press_maybe(on)
+                .style(
+                    (theme::GhostButton {
+                        dark,
+                        active: false,
+                    })
+                    .style(),
+                );
+            right = right.push(match tip {
+                Some(tip) => Element::from(
+                    iced::widget::tooltip(
+                        item,
+                        container(text(tip).size(12))
+                            .padding([4, 8])
+                            .style(theme::tooltip(dark)),
+                        iced::widget::tooltip::Position::Top,
+                    )
+                    .gap(6),
+                ),
+                None => item.into(),
+            });
+        }
         if let Some(hint) = info.lint_hint {
             right = right.push(
                 button(text(hint).size(11.5).color(muted))
@@ -687,27 +711,6 @@ pub mod statusbar {
                 button(label)
                     .padding([1, 8])
                     .on_press(Message::LintNext(true))
-                    .style(
-                        (theme::GhostButton {
-                            dark,
-                            active: false,
-                        })
-                        .style(),
-                    ),
-            );
-        }
-        if let Some((name, ahead, behind)) = info.branch {
-            let mut label = format!("⎇ {name}");
-            if ahead > 0 {
-                label.push_str(&format!(" ↑{ahead}"));
-            }
-            if behind > 0 {
-                label.push_str(&format!(" ↓{behind}"));
-            }
-            right = right.push(
-                button(text(label).size(11.5).color(p.text))
-                    .padding([1, 8])
-                    .on_press(Message::OpenBranchSwitcher)
                     .style(
                         (theme::GhostButton {
                             dark,

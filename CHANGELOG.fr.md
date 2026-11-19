@@ -1,5 +1,15 @@
 # Journal des modifications
 
+## [2.0.0] - 2026-11-19
+
+### Ajouté
+- Plugins : une nouvelle installation est un éditeur simple, et Préférences › Plugins installe et retire ce dont vous avez besoin. Les plugins officiels, chacun dans son dépôt de l'organisation `simple-edit-app`, sont signés : Git, Base de données (PostgreSQL, MySQL / MariaDB, SQLite), API, Lint, Orthographe, Historique local, Tâches, Fichiers distants (SSH) et Terminal. Chacun peut en écrire un, dans n'importe quel langage, et l'installer depuis un dépôt GitHub : voir « Créer un plugin » sur le site.
+- Les outils que vous utilisiez s'installent d'eux-mêmes comme plugins au premier lancement, avec leurs réglages et leurs données.
+
+### Modifié
+- Git, les bases de données, le client d'API, les linters, l'orthographe, l'historique local, les tâches, les fichiers distants et le terminal sont désormais des plugins, lancés comme des programmes à part : l'éditeur ne porte que ce que vous utilisez.
+- Les releases sont signées avec une nouvelle clé (`SHA256SUMS.sig2`) ; `SHA256SUMS.sig`, avec la clé précédente, reste pour les versions installées avant.
+
 ## [1.27.0] - 2026-11-13
 
 ### Corrigé

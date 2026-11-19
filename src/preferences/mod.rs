@@ -8,6 +8,8 @@ use iced::{
     Alignment, Element, Length, Padding,
 };
 
+mod plugins;
+
 use crate::{
     app::Message,
     config::{Config, ShortcutTarget},
@@ -28,10 +30,6 @@ pub enum PreferencesMessage {
     /// A completion setting of a language (`rust.postfix`, …).
     CompletionOption(String, bool),
     EverywhereTextToggled(bool),
-    HistoryDays(u32),
-    NetCa(String),
-    NetCert(String),
-    NetProxy(String),
     EverywhereGitToggled(bool),
     AutocompleteBracketsToggled(bool),
     AutocompleteQuotesToggled(bool),
@@ -61,23 +59,21 @@ pub enum PrefsPage {
     Appearance,
     Shortcuts,
     Language,
-    Git,
     Lint,
     Servers,
-    Network,
+    Plugins,
     Updates,
 }
 
 impl PrefsPage {
-    pub(crate) const ALL: [PrefsPage; 9] = [
+    pub(crate) const ALL: [PrefsPage; 8] = [
         PrefsPage::Editor,
         PrefsPage::Appearance,
         PrefsPage::Shortcuts,
         PrefsPage::Language,
-        PrefsPage::Git,
         PrefsPage::Lint,
         PrefsPage::Servers,
-        PrefsPage::Network,
+        PrefsPage::Plugins,
         PrefsPage::Updates,
     ];
 
@@ -87,10 +83,9 @@ impl PrefsPage {
             PrefsPage::Appearance => t!("prefs.nav_appearance"),
             PrefsPage::Shortcuts => t!("prefs.nav_shortcuts"),
             PrefsPage::Language => t!("prefs.language"),
-            PrefsPage::Git => t!("prefs.nav_git"),
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
-            PrefsPage::Network => t!("prefs.nav_network"),
+            PrefsPage::Plugins => t!("prefs.nav_plugins"),
             PrefsPage::Updates => t!("prefs.nav_updates"),
         }
         .to_string()
@@ -100,55 +95,6 @@ impl PrefsPage {
         match self {
             PrefsPage::Editor => t!("prefs.editor").to_string(),
             other => other.label(),
-        }
-    }
-}
-
-/// How often the Git panel fetches by itself, in minutes (0: never).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct AutoFetch(u32);
-
-/// How long the local history goes back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct HistoryDays(u32);
-
-impl HistoryDays {
-    const ALL: [HistoryDays; 7] = [
-        HistoryDays(0),
-        HistoryDays(1),
-        HistoryDays(5),
-        HistoryDays(14),
-        HistoryDays(30),
-        HistoryDays(90),
-        HistoryDays(365),
-    ];
-}
-
-impl std::fmt::Display for HistoryDays {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n = self.0.to_string();
-        f.write_str(&match self.0 {
-            0 => t!("prefs.history_off"),
-            _ => t!("prefs.history_days", n = n.as_str()),
-        })
-    }
-}
-
-impl AutoFetch {
-    const ALL: [AutoFetch; 5] = [
-        AutoFetch(0),
-        AutoFetch(1),
-        AutoFetch(5),
-        AutoFetch(10),
-        AutoFetch(30),
-    ];
-}
-
-impl std::fmt::Display for AutoFetch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            0 => f.write_str(&t!("prefs.git_fetch_never")),
-            n => f.write_str(&t!("prefs.git_fetch_every", n = n)),
         }
     }
 }
@@ -243,12 +189,6 @@ impl PreferencesState {
             PreferencesMessage::CompletionOption(key, v) => {
                 config.completion_options.insert(key, v);
             }
-            PreferencesMessage::NetCa(v) => config.api_ca_file = v,
-            PreferencesMessage::NetCert(v) => config.api_client_cert = v,
-            PreferencesMessage::NetProxy(v) => config.api_proxy = v,
-            PreferencesMessage::HistoryDays(days) => {
-                config.local_history_days = days;
-            }
             PreferencesMessage::EverywhereTextToggled(v) => {
                 config.everywhere_text = v;
             }
@@ -316,13 +256,13 @@ impl PreferencesState {
     }
 
     /// The whole window: title row, navigation column, page.
-    pub fn view(
-        &self,
+    pub fn view<'a>(
+        &'a self,
         config: &Config,
         capturing: Option<ShortcutTarget>,
         servers: &ServerStatus,
-        near: Option<&std::path::Path>,
-    ) -> Element<'_, Message> {
+        plugin_state: &'a crate::plugins::Plugins,
+    ) -> Element<'a, Message> {
         let dark = config.dark_mode;
         let p = theme::palette(dark);
 
@@ -400,10 +340,16 @@ impl PreferencesState {
             PrefsPage::Appearance => self.appearance_card(dark),
             PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing),
             PrefsPage::Language => self.language_card(config, dark),
-            PrefsPage::Git => self.git_card(config, dark),
-            PrefsPage::Lint => lint_page(config, dark, near),
+            PrefsPage::Lint => lint_page(
+                config,
+                dark,
+                plugin_state
+                    .installed
+                    .iter()
+                    .any(|p| p.manifest.contributes.linter.is_some()),
+            ),
             PrefsPage::Servers => self.servers_page(dark, servers),
-            PrefsPage::Network => self.network_card(config, dark),
+            PrefsPage::Plugins => plugins::page(plugin_state, dark),
             PrefsPage::Updates => self.updates_card(dark),
         };
 
@@ -664,7 +610,7 @@ impl PreferencesState {
                 PreferencesMessage::EverywhereTextToggled,
             ),
             toggle(
-                t!("prefs.everywhere_git").to_string(),
+                t!("prefs.everywhere_plugins").to_string(),
                 config.everywhere_git,
                 PreferencesMessage::EverywhereGitToggled,
             ),
@@ -781,59 +727,6 @@ impl PreferencesState {
         )
     }
 
-    /// How a pull and a merge are made when the Git panel asks for one.
-    fn git_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let pull = pick_list(
-            crate::git::PullMode::ALL,
-            Some(config.git_pull_mode),
-            Message::SetPullMode,
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-        let merge = pick_list(
-            crate::git::MergeMode::ALL,
-            Some(config.git_merge_mode),
-            Message::SetMergeMode,
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-        let fetch = pick_list(
-            AutoFetch::ALL,
-            Some(AutoFetch(config.git_auto_fetch_minutes)),
-            |choice| Message::SetAutoFetch(choice.0),
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-        let keep = pick_list(
-            HistoryDays::ALL,
-            Some(HistoryDays(config.local_history_days)),
-            |choice| Message::Preferences(PreferencesMessage::HistoryDays(choice.0)),
-        )
-        .padding([6, 12])
-        .width(220)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-        card_of_rows(
-            dark,
-            vec![
-                setting_row(t!("prefs.git_pull").to_string(), pull.into()),
-                setting_row(t!("prefs.git_merge").to_string(), merge.into()),
-                setting_row(t!("prefs.git_auto_fetch").to_string(), fetch.into()),
-                setting_row(t!("prefs.history_keep").to_string(), keep.into()),
-            ],
-        )
-    }
-
     fn language_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
         let selected = LOCALES.iter().copied().find(|l| l.code == config.locale);
         let select = pick_list(LOCALES, selected, |choice| {
@@ -901,50 +794,6 @@ impl PreferencesState {
         ]
         .spacing(12)
         .into()
-    }
-
-    /// What the API client trusts and goes through.
-    fn network_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let field = |hint: String, value: &str, on: fn(String) -> PreferencesMessage| {
-            text_input(&hint, value)
-                .on_input(move |v| Message::Preferences(on(v)))
-                .padding([6, 10])
-                .size(13)
-                .width(320)
-                .style(theme::Field::new(dark).style())
-        };
-        card_of_rows(
-            dark,
-            vec![
-                setting_row(
-                    t!("prefs.net_ca").to_string(),
-                    field(
-                        "/path/ca.pem".into(),
-                        &config.api_ca_file,
-                        PreferencesMessage::NetCa,
-                    )
-                    .into(),
-                ),
-                setting_row(
-                    t!("prefs.net_cert").to_string(),
-                    field(
-                        "/path/client.pem".into(),
-                        &config.api_client_cert,
-                        PreferencesMessage::NetCert,
-                    )
-                    .into(),
-                ),
-                setting_row(
-                    t!("prefs.net_proxy").to_string(),
-                    field(
-                        "http://proxy:3128".into(),
-                        &config.api_proxy,
-                        PreferencesMessage::NetProxy,
-                    )
-                    .into(),
-                ),
-            ],
-        )
     }
 
     fn updates_card(&self, dark: bool) -> Element<'_, Message> {
@@ -1298,17 +1147,11 @@ pub fn shortcuts_list(
     .into()
 }
 
-/// The Lint page: whether and how problems are shown, then the tools of
-/// each language.
-fn lint_page<'a>(
-    config: &Config,
-    dark: bool,
-    near: Option<&std::path::Path>,
-) -> Element<'a, Message> {
-    use crate::lint::tools::{availability, Availability, GROUPS, LSP};
+/// The Lint page: whether and how problems are shown. The linters are a
+/// plugin, with its own settings (Preferences › Plugins).
+fn lint_page<'a>(config: &Config, dark: bool, has_linter: bool) -> Element<'a, Message> {
     use crate::lint::Setting;
     let p = theme::palette(dark);
-    let near = near.unwrap_or(std::path::Path::new("/"));
     let general = card_of_rows(
         dark,
         vec![
@@ -1382,7 +1225,6 @@ fn lint_page<'a>(
             ),
         ],
     );
-    let note = |label: String| text(label).size(12).color(p.muted);
     let colors = card_of_rows(
         dark,
         [
@@ -1443,103 +1285,31 @@ fn lint_page<'a>(
         })
         .collect(),
     );
-    let mut blocks = column![
+    let hint = if has_linter {
+        t!("lint.plugin_settings")
+    } else {
+        t!("lint.plugin_missing")
+    };
+    column![
         general,
         colors,
-        text(t!("lint.languages_hint").to_string())
-            .size(12.5)
-            .color(p.muted)
+        row![
+            text(hint.to_string())
+                .size(12.5)
+                .color(p.muted)
+                .width(Length::Fill),
+            button(text(t!("prefs.nav_plugins").to_string()).size(12))
+                .padding([6, 12])
+                .on_press(Message::Preferences(PreferencesMessage::PageSelected(
+                    PrefsPage::Plugins
+                )))
+                .style((theme::Outline { dark }).style()),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center),
     ]
-    .spacing(14);
-    for group in GROUPS {
-        let on = config.lint_languages.contains(group.id);
-        let by_hand = config.lint_tools.get(group.id).filter(|_| on);
-        let mut rows = vec![setting_row(
-            group.name.to_string(),
-            switch(dark, on, Message::Lint(Setting::Language(group.id, !on))),
-        )];
-        if on {
-            rows.push(setting_row(
-                format!("    {}", t!("lint.automatic")),
-                switch(
-                    dark,
-                    by_hand.is_none(),
-                    Message::Lint(Setting::Auto(group.id, by_hand.is_some())),
-                ),
-            ));
-        }
-        if let Some(chosen) = by_hand {
-            let mut entries: Vec<(&'static str, String, String)> = group
-                .tools
-                .iter()
-                .filter_map(|id| crate::lint::tools::tool_by_id(id))
-                .map(|tool| {
-                    let chosen = config.lint_programs.get(tool.id).map(String::as_str);
-                    let state = match availability(tool, near, chosen) {
-                        Availability::Ready(_) => t!("lint.status_ready"),
-                        Availability::NoConfig(_) => t!("lint.status_no_config"),
-                        Availability::NoProgram => t!("lint.status_missing"),
-                    };
-                    (tool.id, tool.name.to_string(), state.to_string())
-                })
-                .collect();
-            if group.exts.iter().any(|e| crate::lint::tools::has_server(e)) {
-                let state = if group.exts.iter().any(|e| crate::lsp::installed(e)) {
-                    t!("lint.status_ready")
-                } else {
-                    t!("lint.status_missing")
-                };
-                entries.push((
-                    LSP,
-                    t!("lint.language_server").to_string(),
-                    state.to_string(),
-                ));
-            }
-            for (id, name, state) in entries {
-                // The path of the tool, when it is not where it is looked for.
-                let program: Element<Message> =
-                    match crate::lint::tools::tool_by_id(id).filter(|t| !t.program.is_empty()) {
-                        Some(tool) => {
-                            let value = config.lint_programs.get(id).cloned().unwrap_or_default();
-                            let placeholder = crate::lint::tools::program_path(tool, near, None)
-                                .map_or_else(
-                                    || t!("lint.path_placeholder").to_string(),
-                                    |p| p.display().to_string(),
-                                );
-                            iced::widget::text_input(&placeholder, &value)
-                                .on_input(move |t| Message::Lint(Setting::Program(id, t)))
-                                .size(12)
-                                .padding([5, 8])
-                                .width(260)
-                                .style(theme::Field::new(dark).style())
-                                .into()
-                        }
-                        None => Space::new().width(0).into(),
-                    };
-                rows.push(setting_row(
-                    format!("    {name}"),
-                    row![
-                        program,
-                        note(state),
-                        switch(
-                            dark,
-                            chosen.iter().any(|c| c == id),
-                            Message::Lint(Setting::Tool(
-                                group.id,
-                                id,
-                                !chosen.iter().any(|c| c == id),
-                            )),
-                        ),
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Center)
-                    .into(),
-                ));
-            }
-        }
-        blocks = blocks.push(card_of_rows(dark, rows));
-    }
-    blocks.into()
+    .spacing(14)
+    .into()
 }
 
 #[cfg(test)]

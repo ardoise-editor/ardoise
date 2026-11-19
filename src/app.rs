@@ -80,7 +80,7 @@ pub enum DiffNav {
     NextFile,
     ToggleSide,
     /// The mouse on the rows of the diff.
-    Pick(crate::git_panel::DiffPointer),
+    Pick(crate::diff_view::DiffPointer),
     /// The diff was scrolled: (offset, height shown).
     Scrolled(i32, i32),
     CopyPicked,
@@ -100,31 +100,29 @@ pub enum DiffNav {
 }
 
 /// A conflicted file open in an editor tab (`merge://N/path`).
-pub type MergeTabs = HashMap<PathBuf, crate::git_panel::merge::MergeTab>;
+pub type MergeTabs = HashMap<PathBuf, crate::diff_view::merge::MergeTab>;
 
-/// A diff shown in an editor tab (`diff://N/title`): the repository, the
-/// files to walk through, where it is.
+/// A diff shown in an editor tab (`diff://N/title`): the files to walk
+/// through, where it is.
 pub struct DiffTabState {
-    pub repo: PathBuf,
-    pub viewer: crate::git_panel::Viewer,
+    pub viewer: crate::diff_view::Viewer,
+    /// A tab of a plugin: the plugin, its id for the tab, and the file on
+    /// the disk of each diff. Its buttons go to the plugin.
+    pub owner: Option<(String, String, Vec<Option<PathBuf>>)>,
 }
 
-/// The blame column of a file: what is drawn, and the commit of each line.
+/// The column of annotations of a file (the blame of the Git plugin).
 pub struct BlameState {
     pub path: PathBuf,
-    pub repo: PathBuf,
-    /// The path inside the repository.
-    pub relative: String,
     pub annotations: crate::code_editor::Annotations,
-    pub shas: Vec<String>,
 }
 
 /// What the current file is compared with to mark its changed lines.
 pub struct MarksState {
     pub path: PathBuf,
-    /// What HEAD has of it (`None`: git doesn't know the file yet).
+    /// What a plugin said it is compared with (`None`: new, all added).
     pub base: Option<String>,
-    pub marks: crate::git::marks::ChangeMarks,
+    pub marks: crate::diff::marks::ChangeMarks,
     /// The marks as the editor takes them, shared between frames.
     pub paint: [std::sync::Arc<Vec<usize>>; 3],
     /// The buffer (see [`SimpleEditApp::buffer_stamp`]) the marks were computed for.
@@ -143,13 +141,6 @@ pub enum BlameOption {
     ShowHidden,
 }
 
-/// The diagram of a schema, as the window shows it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagramView {
-    pub schema: String,
-    pub diagram: crate::database::diagram::Diagram,
-}
-
 /// What the status bar's choice windows are about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextOption {
@@ -163,26 +154,17 @@ pub enum ActiveOverlay {
     None,
     /// The encoding, line endings or indentation of the file.
     TextOptions(TextOption),
-    /// The tasks of the project, to pick one.
-    TaskPicker,
     /// Two texts side by side (their names).
     Compare(String, String),
     /// A misspelled word, and what could replace it.
     Spelling(Box<spelling::Suggestion>),
     /// The languages of the dictionaries found.
     SpellLanguages,
-    /// A folder on another machine, to open a file from.
-    Remote(Box<remote_files::RemoteView>),
     /// The tables of a schema and the keys between them.
-    Diagram(Box<DiagramView>),
     /// The new name of the symbol under the cursor, being typed.
     Rename(String),
     /// Search everywhere (Shift twice).
     Everywhere,
-    /// The revisions of a file or a folder.
-    LocalHistory(Box<local_history::HistoryView>),
-    /// A name for a moment of the history.
-    HistoryLabel(String),
     About,
     /// Every release.
     Changelog,
@@ -193,8 +175,6 @@ pub enum ActiveOverlay {
     /// Where a name is used: the list to jump from.
     References(RefList),
     Shortcuts,
-    /// The files of an operation that are in conflict.
-    Conflicts,
     UpdateChecking,
     UpdateUpToDate,
     /// The new version, and what it changes.
@@ -214,9 +194,6 @@ pub enum ActiveOverlay {
     ConfirmOverwrite(PathBuf),
     /// A scratch file is about to be deleted for good.
     ConfirmScratchDelete(PathBuf),
-    /// A file is about to be replaced by what a revision has of it:
-    /// the repository, the file, the revision.
-    ConfirmGitGet(PathBuf, String, String),
     /// A text looked for in the files of the projects.
     FindInFiles,
     /// A name asked for a file or folder of a project.
@@ -225,20 +202,21 @@ pub enum ActiveOverlay {
     ConfirmFolderDelete(PathBuf),
     /// A file or folder dragged onto a folder, to move there.
     ConfirmMove(PathBuf, PathBuf),
-    /// A file to delete for good; `Some(on)`: git tracks it, and the box
-    /// "remove it from Git too" is (un)checked.
-    ConfirmFileDelete(PathBuf, Option<bool>),
-    /// The list that switches branch from the status bar, with what is typed.
-    BranchSwitch(String),
-    /// The Git actions of a file.
-    GitFile(PathBuf),
-    /// A branch, tag or revision to compare a file with.
-    GitPick(Box<git_file::Pick>),
+    /// A file to delete for good.
+    /// The file, and the boxes the plugins added: (plugin, box as ticked).
+    ConfirmFileDelete(
+        PathBuf,
+        Vec<(String, simpleedit_plugin::protocol::DeleteOption)>,
+    ),
+    /// A question of a plugin.
+    PluginConfirm(Box<plugins::PluginQuestion>),
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     EditorAction(text_editor::Action),
+    /// The plugins, and the Plugins page of the preferences.
+    Plugin(crate::plugins::PluginMsg),
     Sidebar(SidebarMessage),
     Search(SearchMessage),
     Preferences(PreferencesMessage),
@@ -271,7 +249,8 @@ pub enum Message {
     /// A tab was dragged from a place to another.
     TabMoved(usize, usize),
     /// A group of tabs folded or opened; the color of a project.
-    History(local_history::HistoryMsg),
+    /// The arrows and the picks of the diff of a comparison.
+    CompareDiff(DiffNav),
     TabGroupToggle(Option<PathBuf>),
     TabGroupClose(Option<PathBuf>),
     ProjectColor(PathBuf, usize),
@@ -316,20 +295,15 @@ pub enum Message {
     FindPickDir,
     ToggleHighContrast,
     OpenRemote,
-    RemoteHost(String),
-    RemoteDir(String),
-    RemoteConnect,
-    RemoteListed(String, Result<(String, Vec<crate::remote::Entry>), String>),
-    RemotePick(String),
-    RemoteDownloaded(
-        crate::remote::RemoteFile,
-        Result<(Vec<u8>, Option<u64>), String>,
-    ),
-    RemoteSent(PathBuf, Result<Option<u64>, String>),
     SpellFix,
     SpellChecked(Option<spelling::SpellChecked>),
     /// The dictionary of a language, read in the background.
-    SpellerLoaded(String, Option<crate::spell::Speller>),
+    /// The suggestions of the speller for the word at the cursor.
+    SpellSuggested(spelling::Suggestion),
+    /// The speller learnt a word (or why not).
+    SpellLearned(Option<String>),
+    /// The dictionaries of the speller.
+    SpellLanguagesLoaded(Vec<String>),
     SpellReplace(String),
     SpellAdd,
     SpellIgnore,
@@ -347,15 +321,6 @@ pub enum Message {
     OpenTodos,
     TodosFound(Result<Vec<finder::Occurrence>, String>),
     OpenTaskPicker,
-    RunTask(usize),
-    TaskEvent(u64, crate::tasks::Event),
-    /// The task log was scrolled: offset, viewport height, content height.
-    TaskScrolled(f32, f32, f32),
-    TaskStop,
-    TaskRerun,
-    TaskClear,
-    TaskToggle,
-    TaskOpenAt(crate::tasks::Location),
     IpcPoll,
     TargetOpened(crate::ipc::Target, Result<Loaded, String>),
     NewWindow,
@@ -395,9 +360,6 @@ pub enum Message {
     /// The open folders of the tree, read in the background.
     /// The text of the file of the preview of a search, read in the background.
     FinderPreviewRead(PathBuf, String),
-    /// Files put back by a revert of the local history (how many already, the
-    /// failure, the files on disk).
-    HistoryReverted(usize, Option<String>, Vec<local_history::Reverted>),
     ProjectsReloaded(Vec<crate::projects::LoadedDir>),
     ReplaceDone(Box<finder::Replaced>, Vec<finder::DiskDone>),
     /// A rename is done in the files on disk too.
@@ -486,8 +448,6 @@ pub enum Message {
     /// Takes a project out of the sidebar (nothing is deleted).
     RemoveProject(PathBuf),
     RefreshProjects,
-    /// How the files of the repositories stand (paths, states, folder or not).
-    FileStates(Vec<(PathBuf, crate::git::FileState, bool)>),
     /// Opens the folders of the tree down to a file.
     ShowInProjects(PathBuf),
     /// Closes every folder of the trees.
@@ -537,36 +497,21 @@ pub enum Message {
     /// Something done in a pane that has not the focus.
     SplitAction(split::PaneId, text_editor::Action),
     /// The edge of the file list is grabbed, dragged (x of the pointer) and let go.
-    /// The way a pull / a merge is made, chosen in the Git panel or the Preferences.
-    SetPullMode(crate::git::PullMode),
-    /// Minutes between two fetches in the background (0: never).
-    SetAutoFetch(u32),
-    /// The branch switcher of the status bar: open, typed in, chosen (the
-    /// name, and whether it is made first).
+    /// The branches (a shortcut of the Git plugin).
     OpenBranchSwitcher,
-    BranchSwitchFilter(String),
-    BranchSwitchChoose(String, bool),
-    SetMergeMode(crate::git::MergeMode),
-    /// A Git shortcut: opens the panel and does it.
+    /// A Git shortcut: the Git plugin does it.
     GitShortcut(GitShortcut),
-    /// The Database panel and its tables.
-    Db(crate::database::DbMsg),
     /// The API panel and its requests.
-    Api(crate::api::ApiMsg),
     SidebarResizeStart,
     SidebarResize(f32),
     SidebarResizeEnd,
     PanelResizeStart,
     PanelResize(f32),
     PanelResizeEnd,
-    /// Delete a file for good: ask first, then do it (from Git as well when tracked).
+    /// Delete a file for good: ask first, then do it.
     AskDeleteFile(PathBuf),
-    /// Whether git tracks the file asked about (it decides on the checkbox).
-    DeleteAsked(PathBuf, bool),
-    ToggleDeleteFromGit(bool),
-    /// Delete the file; `true`: from git as well.
-    DeleteFile(PathBuf, bool),
-    FileDeleted(Result<bool, String>),
+    DeleteFile(PathBuf),
+    FileDeleted(Result<(), String>),
     TogglePreferences,
     ThemeChanged(bool),
     /// Switches between the dark and the light theme.
@@ -575,70 +520,30 @@ pub enum Message {
     ToggleMenu(TopMenu),
     /// A click outside the open menu: it closes (nothing else happens).
     CloseMenu,
-    // Git
+    // Git: the Git plugin's panel opens or closes.
     ToggleGit,
-    Git(crate::git_panel::GitMsg),
-    /// A diff to show in an editor tab.
-    OpenDiffTab(crate::git_panel::DiffTab),
+    /// The buttons of a diff tab.
     DiffTab(DiffNav),
     // Conflicts
-    OpenConflicts,
-    OpenMergeTab(std::sync::Arc<crate::git_panel::MergeSpec>),
-    Merge(crate::git_panel::merge::MergeMsg),
+    Merge(crate::diff_view::merge::MergeMsg),
     MergeApplied(PathBuf, Result<(), String>),
-    /// A change was moved from one side of a diff to the other.
-    DiffApplied(Result<(), String>),
-    // Blame
+    // Blame: the Git plugin's.
     BlameFile,
-    BlameLoaded(
-        PathBuf,
-        Result<(PathBuf, String, Vec<crate::git::history::BlameLine>), String>,
-    ),
     CloseBlame,
     BlameOption(BlameOption),
     BlameLineClicked(usize),
     /// Shows the file as it was before the commit of the line that was
     /// right-clicked in the blame column, with its own blame.
     BlamePrevious,
-    BlamePreviousLoaded(
-        Result<
-            (
-                PathBuf,
-                String,
-                String,
-                String,
-                Vec<crate::git::history::BlameLine>,
-            ),
-            String,
-        >,
-    ),
     /// The bar of a changed line was clicked: the button that puts the change
     /// back opens under it (or closes).
     ChangeBar(usize),
     RevertChange,
     CloseRevert,
-    /// Closes the pop-up that announces conflicts.
-    CloseConflictToast,
-    /// What HEAD has of a file, for its changed-line marks.
-    MarksBase(PathBuf, Option<Option<String>>),
     // Terminal
     ToggleTerminal,
-    NewTerminal,
     // Scratch files
     ToggleScratch,
-    // The Git menu of a file
-    GitFileMenu(PathBuf),
-    GitFileDo(PathBuf, git_file::FileAction),
-    GitFileRoot(PathBuf, git_file::FileAction, Option<PathBuf>),
-    GitFileDone(Result<String, String>),
-    /// The restore of a file from a revision was confirmed.
-    GitGetConfirmed(PathBuf, String, String),
-    GitFileDiff(Result<crate::git_panel::DiffTab, String>),
-    GitFilePick(Result<git_file::Pick, String>),
-    GitPickFilter(String),
-    GitPickChoose(String),
-    /// The revision typed in the picker exists: (repository, file, revision).
-    GitPickVerified(Result<(PathBuf, String, String, bool), String>),
     // Bookmarks panel
     ToggleBookmarkPanel,
     BookmarkClick(bookmark_panel::Target),
@@ -658,22 +563,6 @@ pub enum Message {
     ScratchDirChosen(Option<PathBuf>),
     /// Keeps the scratch files in this folder ("" for the default one).
     SetScratchDir(String),
-    SelectTerminal(usize),
-    CloseTerminal(usize),
-    /// Time to repaint the terminal and drop the ones whose shell ended.
-    TerminalTick,
-    TerminalFocus(bool),
-    TerminalCopy(String),
-    /// A word of the terminal was clicked with Command: a place to open
-    /// (`file:line`), from the folder the shell started in.
-    TerminalOpen(String, PathBuf),
-    TerminalPaste,
-    /// Opens (or closes) the search of the terminal.
-    TerminalSearchToggle,
-    TerminalSearchInput(String),
-    /// To the next match: `true` goes back in the history.
-    TerminalSearchNext(bool),
-    TerminalPasteText(Option<String>),
     /// The pointer entered a menu title: switches menus if one is already open.
     HoverMenu(TopMenu),
     /// Resolves the on-screen position of an open top menu's button, so its
@@ -703,8 +592,6 @@ pub enum Message {
         ctrl: bool,
         shift: bool,
         alt: bool,
-        /// A widget (a text field, an editor) already acted on the key.
-        captured: bool,
     },
     EscapePressed,
     /// Enter pressed while a search field might own it; `shift` goes back.
@@ -748,7 +635,6 @@ pub enum Message {
     EverywhereSymbols(u64, crate::lsp::Symbols),
     EverywhereTextDue(u64),
     EverywhereText(u64, Result<Vec<crate::finder::TextHit>, String>),
-    EverywhereGit(Vec<String>, Vec<Commit>),
     EverywhereNonProject,
     EverywhereFilter,
     EverywhereFilterType(String, bool),
@@ -895,15 +781,7 @@ pub struct SimpleEditApp {
     panels: crate::sidebar::Panels,
     /// Width of the file list, and whether its edge is being dragged.
     sidebar_width: f32,
-    /// The Database panel: connections, driver, form.
-    db: crate::database::State,
-    /// The tables open as tabs (`db://N/...`).
-    db_tabs: HashMap<PathBuf, crate::database::TableTab>,
-    db_counter: usize,
     /// The API panel: collections, environments, history.
-    api: crate::api::State,
-    /// The requests open as tabs (`api://N/...`).
-    api_tabs: HashMap<PathBuf, crate::api::ApiTab>,
     sidebar_resizing: bool,
     /// The height of the bottom panels (Git, terminal, scratch files, bookmarks), and the drag that resizes it: where the
     /// pointer and the height were at its first move.
@@ -915,11 +793,8 @@ pub struct SimpleEditApp {
     capturing: Option<ShortcutTarget>,
     everywhere: everywhere::Everywhere,
     results: results::Results,
-    /// The diff of the local history, and whether the compact list shows.
-    history_diff: crate::git_panel::Viewer,
-    history_compact: bool,
-    /// How the blame looks for who wrote a line.
-    blame_options: crate::git::history::BlameOptions,
+    /// The diff of a comparison.
+    history_diff: crate::diff_view::Viewer,
     /// The groups of tabs that are folded.
     folded_tabs: BTreeSet<Option<PathBuf>>,
     open_menu: Option<TopMenu>,
@@ -935,10 +810,9 @@ pub struct SimpleEditApp {
     is_dirty: bool,
     is_formatting: bool,
     status_message: String,
-    terminal: crate::terminal::Panel,
     scratch: crate::scratch::Panel,
+    plugins: crate::plugins::Plugins,
     bookmark_panel: bookmark_panel::Panel,
-    git: crate::git_panel::Panel,
     diff_tabs: HashMap<PathBuf, DiffTabState>,
     diff_counter: u32,
     /// What files held before a rollback or an arrow of a diff changed them
@@ -951,13 +825,15 @@ pub struct SimpleEditApp {
     marks: Option<MarksState>,
     /// The file the marks were last asked for.
     marks_asked: Option<PathBuf>,
+    /// Typing in the result of a merge (the app's shortcuts wait).
+    merge_typing: bool,
     last_edit: std::time::Instant,
     /// A save by itself is under way (it says nothing in the status bar).
     /// How many saves of an auto-save batch are still on their way.
     autosaving: usize,
     ticks: u32,
-    /// Whether the window has the focus: the periodic checks of the disk and
-    /// of Git wait while it has not.
+    /// Whether the window has the focus: the periodic checks of the disk
+    /// wait while it has not.
     window_focused: bool,
     /// The disk is watched for changes.
     watch: crate::watch::Watch,
@@ -976,9 +852,6 @@ pub struct SimpleEditApp {
     /// The change whose revert button is open: file, line, and the buffer it was
     /// opened on (typing closes it).
     revert: Option<(PathBuf, usize, (u64, u64))>,
-    /// The pop-up that announces conflicts was closed by the user (until
-    /// the conflicts are gone and come back).
-    conflict_toast_closed: bool,
     /// A language server to offer in the status bar, in place of the message.
     server_offer: Option<&'static crate::lsp_install::ServerInfo>,
     status_is_error: bool,
@@ -1033,11 +906,9 @@ pub struct SimpleEditApp {
     symbol_token: u64,
     /// Other commands hand their files to this window.
     ipc_listening: bool,
-    tasks: tasks::TaskPanel,
     spell: spelling::SpellState,
     /// The local copies of remote files, where they came from and the date
     /// they had there.
-    remote_files: HashMap<PathBuf, (crate::remote::RemoteFile, Option<u64>)>,
     /// State on disk of the current file when it was last read or written,
     /// to notice edits made by other programs.
     disk_stamp: Option<DiskStamp>,
@@ -1172,11 +1043,6 @@ impl SimpleEditApp {
     fn blank(config: Config) -> Self {
         crate::trust::set_all(&config.trusted_folders);
         crate::lsp::set_completion_options(&config.completion_options);
-        crate::api::http::set_network(crate::api::http::Network {
-            ca_file: config.api_ca_file.clone(),
-            client_cert: config.api_client_cert.clone(),
-            proxy: config.api_proxy.clone(),
-        });
         Self {
             bookmarks: crate::bookmarks::Bookmarks::default(),
             editor: EditorState::new(),
@@ -1210,22 +1076,11 @@ impl SimpleEditApp {
             tree_view: (0.0, 0.0),
             tab_list: None,
             panels: crate::sidebar::Panels {
-                files: !config.show_database_panel
-                    && !config.show_api_panel
-                    && config.show_files_panel
+                files: config.show_files_panel
                     && (!config.show_projects_panel || config.projects.is_empty()),
-                projects: !config.show_database_panel
-                    && !config.show_api_panel
-                    && config.show_projects_panel
+                projects: config.show_projects_panel
                     && (!config.show_files_panel || !config.projects.is_empty()),
-                database: config.show_database_panel && !config.show_api_panel,
-                api: config.show_api_panel,
             },
-            db: crate::database::State::load(),
-            db_tabs: HashMap::new(),
-            db_counter: 0,
-            api: crate::api::State::load(),
-            api_tabs: HashMap::new(),
             trust_asked: HashSet::new(),
             session_writes: 0,
             abandoned_reads: HashSet::new(),
@@ -1239,8 +1094,6 @@ impl SimpleEditApp {
             everywhere: everywhere::Everywhere::default(),
             results: results::Results::default(),
             history_diff: Default::default(),
-            history_compact: false,
-            blame_options: Default::default(),
             folded_tabs: BTreeSet::new(),
             open_menu: None,
             recents_open: false,
@@ -1251,10 +1104,9 @@ impl SimpleEditApp {
             is_dirty: false,
             is_formatting: false,
             status_message: t!("status.ready").to_string(),
-            terminal: Default::default(),
             scratch: crate::scratch::Panel::new(&config.scratch_dir),
+            plugins: Default::default(),
             bookmark_panel: Default::default(),
-            git: Default::default(),
             diff_tabs: HashMap::new(),
             diff_counter: 0,
             work_undo: Vec::new(),
@@ -1264,6 +1116,7 @@ impl SimpleEditApp {
             blame: None,
             marks: None,
             marks_asked: None,
+            merge_typing: false,
             last_edit: std::time::Instant::now(),
             autosaving: 0,
             ticks: 0,
@@ -1276,7 +1129,6 @@ impl SimpleEditApp {
             gutter_click: false,
             gutter_line: None,
             revert: None,
-            conflict_toast_closed: false,
             server_offer: None,
             status_is_error: false,
             format_error: None,
@@ -1304,9 +1156,7 @@ impl SimpleEditApp {
             symbol_card: None,
             symbol_token: 0,
             ipc_listening: false,
-            tasks: Default::default(),
             spell: Default::default(),
-            remote_files: HashMap::new(),
             disk_stamp: None,
             saved_fp: None,
             pending_open: None,
@@ -1353,9 +1203,6 @@ impl SimpleEditApp {
             }
         };
         let mut app = Self::blank(flags.config);
-        app.git.pull_mode = app.config.git_pull_mode;
-        app.git.merge_mode = app.config.git_merge_mode;
-        app.git.branches.actions_width = app.config.git_actions_width;
         app.session_lock = lock;
         app.session_owner = owner;
         if owner {
@@ -1365,7 +1212,22 @@ impl SimpleEditApp {
         }
 
         app.bookmarks.prune_missing();
+        // The plugins first: the session brings back their tabs.
+        if owner {
+            crate::plugins::migrate::carry_lint_settings(&app.config);
+            crate::plugins::migrate::carry_personal_dictionary();
+            crate::plugins::migrate::carry_local_history(&app.config);
+            crate::plugins::migrate::carry_api(&app.config);
+            crate::plugins::migrate::carry_git_settings(&app.config);
+            crate::plugins::migrate::carry_database();
+        }
+        app.plugins = crate::plugins::Plugins::load();
+        app.plugins_start();
         let mut commands = vec![app.restore_session(loaded.session)];
+        // The tools the user had before the plugins come back as plugins.
+        if owner {
+            commands.push(app.plugins_carry());
+        }
         if let Some(aside) = loaded.set_aside {
             let name = aside
                 .file_name()
@@ -1375,13 +1237,6 @@ impl SimpleEditApp {
         }
         if let Some(name) = app.config.set_aside.clone() {
             app.set_status(t!("status.config_set_aside", name = name.as_str()), true);
-        }
-        if !app.api.set_aside.is_empty() {
-            let names = app.api.set_aside.join(", ");
-            app.set_status(
-                t!("status.api_collection_set_aside", name = names.as_str()),
-                true,
-            );
         }
         app.announce_new_version();
 
@@ -1406,6 +1261,9 @@ impl SimpleEditApp {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.update_message(message);
+        self.plugins_follow_settings();
+        self.plugins_follow_active();
+        self.plugins_follow_tab();
         // The tests run off the main thread, where the system menu is off limits.
         #[cfg(all(target_os = "macos", not(test)))]
         self.sync_native_menu();
@@ -1447,11 +1305,8 @@ impl SimpleEditApp {
                     | Message::SetRecents(_)
                     | Message::SessionWritten(_)
                     | Message::PreviewTick
-                    | Message::TerminalTick
-                    | Message::TaskScrolled(..)
                     | Message::WindowResized(..)
                     | Message::WindowFocus(_)
-                    | Message::Git(crate::git_panel::GitMsg::Pick(_))
                     | Message::DiffTab(DiffNav::Pick(_) | DiffNav::Scrolled(..))
             );
         let edits_text = !passive && !matches!(&message, Message::EditorAction(a) if !a.is_edit());
@@ -1466,15 +1321,9 @@ impl SimpleEditApp {
         if edits_text {
             self.last_edit = std::time::Instant::now();
         }
-        let status_before = matches!(
-            &message,
-            Message::Git(crate::git_panel::GitMsg::StatusLoaded(..))
-        )
-        .then(|| self.git.status.clone());
-        let git_done = matches!(&message, Message::Git(crate::git_panel::GitMsg::Done(_)));
         // The terminal redraws 30 times a second: it changes nothing the rest
         // of the window follows (the text, the preview, the lint, the marks).
-        let idle = matches!(&message, Message::TerminalTick);
+        let idle = false;
         let command = self.handle(message);
         if idle {
             return command;
@@ -1507,7 +1356,7 @@ impl SimpleEditApp {
             self.text_rev += 1;
         }
         self.sync_split();
-        let marks_task = self.after_message(edits_text, status_before, git_done);
+        let marks_task = self.after_message(edits_text);
         self.track_mru();
         let preview_task = self.settle_preview();
         let lint_task = self.lint_tick();
@@ -1586,7 +1435,6 @@ impl SimpleEditApp {
                 ctrl: modifiers.command(),
                 shift: modifiers.shift(),
                 alt: modifiers.alt(),
-                captured: !ignored,
             })
         });
 
@@ -1681,28 +1529,15 @@ impl SimpleEditApp {
                 },
             ));
         }
-        if self.git.branches.resizing {
+        if self.plugin_grid_resizing() {
             subscriptions.push(iced::event::listen_with(
                 |event, _status, _window| match event {
                     iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(
-                        Message::Git(crate::git_panel::GitMsg::ActionsResize(position.x)),
+                        Message::Plugin(crate::plugins::PluginMsg::GridResize(position.x)),
                     ),
                     iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
                         iced::mouse::Button::Left,
-                    )) => Some(Message::Git(crate::git_panel::GitMsg::ActionsResizeEnd)),
-                    _ => None,
-                },
-            ));
-        }
-        if self.db.resizing.is_some() {
-            subscriptions.push(iced::event::listen_with(
-                |event, _status, _window| match event {
-                    iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                        Some(Message::Db(crate::database::DbMsg::ResizeMove(position.x)))
-                    }
-                    iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
-                        iced::mouse::Button::Left,
-                    )) => Some(Message::Db(crate::database::DbMsg::ResizeEnd)),
+                    )) => Some(Message::Plugin(crate::plugins::PluginMsg::GridResizeEnd)),
                     _ => None,
                 },
             ));
@@ -1726,17 +1561,7 @@ impl SimpleEditApp {
                     .map(|_| Message::PreviewTick),
             );
         }
-        if self.git.open {
-            // The watcher says when to look; the clock is a safety net then.
-            let every = if self.watch.active() { 15 } else { 2 };
-            subscriptions.push(
-                iced::time::every(std::time::Duration::from_secs(every))
-                    .map(|_| Message::Git(crate::git_panel::GitMsg::Tick)),
-            );
-        }
-        if self.terminal.open {
-            subscriptions.push(crate::terminal::changes());
-        }
+        subscriptions.push(crate::plugins::host::events());
         #[cfg(all(target_os = "macos", not(test)))]
         subscriptions.push(crate::native_menu::subscription());
         iced::Subscription::batch(subscriptions)
@@ -1801,18 +1626,13 @@ impl SimpleEditApp {
             use_spaces: self.indent().0,
             tab_width: self.indent().1,
             encoding: self.format.encoding.label(),
-            branch: self
-                .git
-                .status
-                .as_ref()
-                .filter(|s| !s.branch.is_empty())
-                .map(|s| (s.branch.clone(), s.ahead, s.behind)),
             problems: self.problem_counts(),
             problem_colors: (
                 crate::lint::color(&self.config, crate::lint::Severity::Error),
                 crate::lint::color(&self.config, crate::lint::Severity::Warning),
             ),
             lint_hint: self.lint_hint(),
+            plugin_items: self.plugin_status_items(),
         });
 
         let error_panel: Option<Element<Message>> = if self.show_error_panel {
@@ -1886,18 +1706,6 @@ impl SimpleEditApp {
         if let Some(errors) = error_panel {
             panel = panel.push(errors);
         }
-        if self.terminal.open {
-            panel = panel.push(self.terminal_panel(dark));
-        } else if self.git.open {
-            panel =
-                panel.push(container(self.git.view(dark)).height(Length::Fixed(self.panel_height)));
-        }
-        if self.db.console.open {
-            panel = panel.push(
-                container(crate::database::view::console(&self.db, dark))
-                    .height(Length::Fixed(self.panel_height)),
-            );
-        }
         if self.scratch.open {
             panel = panel.push(self.scratch_panel(dark));
         }
@@ -1907,8 +1715,8 @@ impl SimpleEditApp {
         if self.results.open && !self.results.tabs.is_empty() {
             panel = panel.push(self.results_view(dark));
         }
-        if self.tasks.open {
-            panel = panel.push(self.tasks_panel(dark));
+        if let Some(bottom) = self.plugin_bottom(dark) {
+            panel = panel.push(bottom);
         }
         let editor_panel = container(panel.push(status_bar))
             .width(Length::Fill)
@@ -1919,16 +1727,12 @@ impl SimpleEditApp {
         // and the editor is the handle that resizes the list.
         let mut main_row = row![].height(Length::Fill);
         main_row = main_row.push(self.activity_bar(dark)).push(vrule(dark));
+        let plugin_sidebar = self.plugin_sidebar(dark);
         if self.show_sidebar
-            && (self.panels.files
-                || self.panels.projects
-                || self.panels.database
-                || self.panels.api)
+            && (self.panels.files || self.panels.projects || plugin_sidebar.is_some())
         {
-            let panel: Element<Message> = if self.panels.database {
-                crate::database::view::sidebar(&self.db, dark)
-            } else if self.panels.api {
-                crate::api::view::sidebar(&self.api, &self.api_tabs, dark)
+            let panel: Element<Message> = if let Some(panel) = plugin_sidebar {
+                panel
             } else {
                 self.sidebar.view(
                     dark,
@@ -1941,6 +1745,7 @@ impl SimpleEditApp {
                     self.panels,
                     self.tree_view,
                     self.sidebar_width,
+                    self.plugin_menus(),
                 )
             };
             main_row = main_row.push(container(panel).width(Length::Fixed(self.sidebar_width)));
@@ -2035,35 +1840,6 @@ impl SimpleEditApp {
             menu_at.y,
         );
 
-        // The modes behind the chevron of a Git button float where it was
-        // pressed, over everything below; a click anywhere else closes them.
-        let (split_outside, split_options, split_at): (
-            Element<Message>,
-            Element<Message>,
-            iced::Point,
-        ) = match self.git.split_overlay(dark) {
-            Some((at, options)) => {
-                let outside =
-                    iced::widget::mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
-                        .on_press(Message::Git(crate::git_panel::GitMsg::CloseSplit))
-                        .on_right_press(Message::Git(crate::git_panel::GitMsg::CloseSplit));
-                // Right edge under the chevron, a little below the button.
-                let x = (at.x - crate::git_panel::branches::SPLIT_OPTIONS_WIDTH + 14.0).max(4.0);
-                (outside.into(), options, iced::Point::new(x, at.y + 14.0))
-            }
-            None => (
-                Space::new().into(),
-                Space::new().into(),
-                iced::Point::ORIGIN,
-            ),
-        };
-        let with_dropdown: Element<Message> = crate::floating::at_point(
-            iced::widget::stack![with_dropdown, split_outside],
-            split_options,
-            split_at.x,
-            split_at.y,
-        );
-
         // The card of a problem floats under it. The layer is always there,
         // empty when no card is open: the tree of widgets must keep its shape,
         // or the editor loses its focus (and its caret) each time a card
@@ -2134,7 +1910,7 @@ impl SimpleEditApp {
                 &self.config,
                 self.capturing,
                 &self.servers,
-                self.current_file.as_deref(),
+                &self.plugins,
             ))
             .width(Length::Fill)
             .height(Length::Fill)
@@ -2150,147 +1926,6 @@ impl SimpleEditApp {
         } else {
             with_dropdown
         };
-
-        // The form of a database connection.
-        let with_prefs: Element<Message> = match &self.db.dialog {
-            Some(form) => crate::floating::modal(
-                with_prefs,
-                crate::database::view::dialog(&self.db, form, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
-        // The windows of the API panel.
-        let with_prefs: Element<Message> = match crate::api::view::dialog(&self.api, dark) {
-            Some(card) => crate::floating::modal(
-                with_prefs,
-                card,
-                Some(Message::Api(crate::api::ApiMsg::DialogClose)),
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        // The table designer, and the question before a drop or a deletion.
-        let with_prefs: Element<Message> = match &self.db.designer {
-            Some(designer) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::designer(designer, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.links {
-            Some(links) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::links(links, dark),
-                Some(Message::Db(crate::database::DbMsg::CloseLinks)),
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.backup {
-            Some(backup) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::backup(
-                    backup,
-                    self.db
-                        .connection(backup.conn)
-                        .is_some_and(|c| c.production),
-                    dark,
-                ),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.copy_table {
-            Some(copy) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::copy_table(copy, &self.db.connections, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.import {
-            Some(import) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::import(import, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.health {
-            Some(health) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::health(health, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        let with_prefs: Element<Message> = match &self.db.confirm {
-            Some(confirm) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::confirm(confirm, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
-        let with_prefs: Element<Message> = match &self.db.ssh_trust {
-            Some(trust) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::ssh_trust(trust, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
-        let with_prefs: Element<Message> = match &self.db.new_schema {
-            Some(n) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::new_schema(n, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-        // A text shown whole (a DDL, a long value).
-        let with_prefs: Element<Message> = match &self.db.text {
-            Some(view) => crate::floating::modal(
-                with_prefs,
-                crate::database::admin_view::text_view(view, dark),
-                None,
-                dark,
-                false,
-            ),
-            None => with_prefs,
-        };
-
-        // A pop-up at the top announces conflicts, until they are gone.
-        // Its layer is always there too, for the focus of the editor.
-        let toast: Element<Message> = self
-            .conflict_toast(dark)
-            .unwrap_or_else(|| Space::new().into());
-        let with_prefs: Element<Message> = iced::widget::stack![with_prefs, toast].into();
 
         // Modal overlays
         match &self.overlay {
@@ -2342,43 +1977,40 @@ impl SimpleEditApp {
                     ActiveOverlay::LanguagePicker => self.view_language_picker_overlay(dark),
                     ActiveOverlay::TextOptions(which) => self.view_text_options(dark, *which),
                     ActiveOverlay::Rename(name) => self.view_rename(dark, name),
-                    ActiveOverlay::TaskPicker => self.view_task_picker(dark),
                     ActiveOverlay::Compare(left, right) => self.view_compare(dark, left, right),
                     ActiveOverlay::Spelling(found) => self.view_spelling(dark, found),
                     ActiveOverlay::SpellLanguages => self.view_spell_languages(dark),
-                    ActiveOverlay::Remote(view) => self.view_remote(dark, view),
-                    ActiveOverlay::Diagram(view) => self.view_diagram(dark, view),
                     ActiveOverlay::Shortcuts => self.view_shortcuts_overlay(dark),
-                    ActiveOverlay::Conflicts => self.git.conflicts_card(dark),
                     ActiveOverlay::ConfirmOverwrite(path) => {
                         self.view_overwrite_overlay(dark, path)
                     }
                     ActiveOverlay::ConfirmClose(path) => self.view_confirm_overlay(dark, path),
-                    ActiveOverlay::GitFile(path) => self.git_file_overlay(dark, path),
-                    ActiveOverlay::GitPick(pick) => self.git_pick_overlay(dark, pick),
-                    ActiveOverlay::BranchSwitch(filter) => self.branch_switch_overlay(dark, filter),
-                    ActiveOverlay::ConfirmFileDelete(path, from_git) => {
-                        // Tracked by git: a box to remove it from git too.
-                        let extra: Option<Element<'static, Message>> = from_git.map(|on| {
-                            iced::widget::checkbox(on)
-                                .label(t!("delete_file.from_git").to_string())
-                                .size(15)
-                                .text_size(13)
-                                .on_toggle(Message::ToggleDeleteFromGit)
-                                .into()
-                        });
-                        confirm_card_with(
-                            dark,
-                            t!("delete_file.title").to_string(),
-                            t!("delete_file.message", name = file_label(path).as_str()).to_string(),
-                            extra,
-                            t!("delete_file.confirm").to_string(),
-                            Message::DeleteFile(path.clone(), from_git.unwrap_or(false)),
-                        )
-                    }
+                    ActiveOverlay::PluginConfirm(q) => self.view_plugin_question(dark, q),
+                    ActiveOverlay::ConfirmFileDelete(path, options) => confirm_card_with(
+                        dark,
+                        t!("delete_file.title").to_string(),
+                        t!("delete_file.message", name = file_label(path).as_str()).to_string(),
+                        // The boxes of the plugins ("Also remove it from Git").
+                        (!options.is_empty()).then(|| {
+                            column(options.iter().enumerate().map(|(i, (_, option))| {
+                                iced::widget::checkbox(option.checked)
+                                    .label(option.label.clone())
+                                    .size(15)
+                                    .text_size(13)
+                                    .on_toggle(move |on| {
+                                        Message::Plugin(
+                                            crate::plugins::PluginMsg::DeleteOptionToggled(i, on),
+                                        )
+                                    })
+                                    .into()
+                            }))
+                            .spacing(6)
+                            .into()
+                        }),
+                        t!("delete_file.confirm").to_string(),
+                        Message::DeleteFile(path.clone()),
+                    ),
                     ActiveOverlay::ProjectName(dialog) => self.view_name_overlay(dark, dialog),
-                    ActiveOverlay::HistoryLabel(name) => self.view_history_label(name, dark),
-                    ActiveOverlay::LocalHistory(view) => self.view_local_history(view, dark),
                     ActiveOverlay::ConfirmMove(source, dir) => confirm_card(
                         dark,
                         t!("projects.move_title").to_string(),
@@ -2392,13 +2024,6 @@ impl SimpleEditApp {
                         t!("projects.delete_message", name = file_label(dir).as_str()).to_string(),
                         t!("projects.delete_confirm").to_string(),
                         Message::DeleteFolder(dir.clone()),
-                    ),
-                    ActiveOverlay::ConfirmGitGet(repo, file, rev) => confirm_card(
-                        dark,
-                        t!("git.get_title").to_string(),
-                        git_get_message(file, rev),
-                        t!("git.get_confirm").to_string(),
-                        Message::GitGetConfirmed(repo.clone(), file.clone(), rev.clone()),
                     ),
                     ActiveOverlay::ConfirmScratchDelete(path) => confirm_card(
                         dark,
@@ -2456,20 +2081,20 @@ impl Message {
     /// Answers of background work and timers: not an action of the user.
     fn is_background(&self) -> bool {
         match self {
-            Message::Git(msg) => msg.is_background(),
-            Message::Db(msg) => matches!(
+            Message::CompareDiff(DiffNav::Scrolled(..)) => true,
+            Message::Plugin(msg) => matches!(
                 msg,
-                crate::database::DbMsg::Scrolled(..) | crate::database::DbMsg::DriverProbed(..)
+                crate::plugins::PluginMsg::Incoming(_)
+                    | crate::plugins::PluginMsg::RegistryLoaded(_)
+                    | crate::plugins::PluginMsg::Installed(..)
+                    | crate::plugins::PluginMsg::UpdatesChecked(_)
+                    | crate::plugins::PluginMsg::Fetched(_)
             ),
-            Message::History(msg) => msg.is_background(),
-            Message::BlameLoaded(..)
-            | Message::MarksBase(..)
-            | Message::SpellChecked(_)
-            | Message::SpellerLoaded(..) => true,
+            Message::SpellChecked(_)
+            | Message::SpellLearned(_) => true,
             // What comes by itself (answers, timers) or from the pointer
             // merely passing over something: an open menu stays open.
-            Message::FileStates(_)
-            | Message::LintDone(..)
+            Message::LintDone(..)
             | Message::LintFixesLoaded(..)
             | Message::LintCloseCheck(_)
             | Message::LintHover(_)
@@ -2486,7 +2111,6 @@ impl Message {
             | Message::EverywhereSymbols(..)
             | Message::EverywhereTextDue(_)
             | Message::EverywhereText(..)
-            | Message::EverywhereGit(..)
             | Message::CompletionInfo(..)
             | Message::CompletionAnswer(..)
             | Message::CompletionAnchor(..)
@@ -2505,7 +2129,6 @@ impl Message {
             | Message::FileSaved(..)
             | Message::FileReloaded(_)
             | Message::LargeRefreshed(..)
-            | Message::TaskEvent(..)
             | Message::BookmarkTexts(_)
             | Message::FinderPreviewRead(..)
             | Message::ProjectsReloaded(_) => true,
@@ -2549,8 +2172,6 @@ impl SimpleEditApp {
                     | Message::AutoSave
                     | Message::SessionWritten(_)
                     | Message::PreviewTick
-                    | Message::TerminalTick
-                    | Message::TaskScrolled(..)
                     | Message::WindowResized(..)
                     | Message::WindowFocus(_)
             );
@@ -2565,20 +2186,18 @@ impl SimpleEditApp {
             self.open_menu = None;
         }
 
-        if matches!(message, Message::Sidebar(_) | Message::NewFile) {
-            self.git.typing = false;
-        }
-
         match message {
             Message::EditorAction(action) => {
+                // The editor has the keyboard again.
+                self.plugins.grid_focus = None;
+                self.plugins.panel_focus = None;
+                self.plugins.editor_focus = None;
+                self.plugins.completion = None;
                 self.symbol_card = None;
                 self.symbol_token += 1;
-                self.git.typing = false;
+                self.merge_typing = false;
                 self.tree_focus = false;
                 self.results.focus = false;
-                // Back in the editor: Ctrl+A / Ctrl+C / Ctrl+Z are its own again.
-                self.git.viewer.selection = None;
-                self.git.stash.viewer.selection = None;
                 if action.is_edit() {
                     self.blame = None;
                 }
@@ -2686,7 +2305,6 @@ impl SimpleEditApp {
                     // The user went elsewhere in the meantime.
                     Ok(loaded) if self.abandoned_reads.remove(&loaded.path) => {}
                     Ok(loaded) => {
-                        self.history_record(&loaded.path, &loaded.text);
                         self.open_loaded(loaded);
                         self.apply_pending_jump();
                     }
@@ -2711,7 +2329,11 @@ impl SimpleEditApp {
                     // Too large to open whole: only its first part came.
                     Ok(loaded) if self.large.contains_key(&loaded.path) => {}
                     Ok(loaded) => {
-                        self.history_record(&loaded.path, &loaded.text);
+                        // Changed on the disk: the plugins that follow it hear of it.
+                        self.plugins_file_event(
+                            simpleedit_plugin::manifest::Event::FileSaved,
+                            &loaded.path,
+                        );
                         self.apply_reload(loaded);
                     }
                     Err(e) => self.set_status(format!("{}: {}", t!("status.error"), e), true),
@@ -2723,13 +2345,20 @@ impl SimpleEditApp {
                 Task::none()
             }
             Message::SaveFile => {
-                // A request of the API panel is kept in its collection.
-                if let Some(path) = self
+                // A tab of a plugin is the plugin's to keep.
+                if let Some(tab) = self
                     .current_file
-                    .clone()
-                    .filter(|p| self.api_tabs.contains_key(p))
+                    .as_ref()
+                    .and_then(|p| self.plugins.tabs.get(p))
                 {
-                    return self.api_message(crate::api::ApiMsg::Tab(path, crate::api::Act::Save));
+                    crate::plugins::host::notify(
+                        &tab.plugin,
+                        simpleedit_plugin::protocol::methods::TAB_SAVE,
+                        simpleedit_plugin::protocol::PanelParams {
+                            panel: tab.tab.clone(),
+                        },
+                    );
+                    return Task::none();
                 }
                 // Format first, when asked to: the save follows the formatting.
                 let skip_format = std::mem::take(&mut self.skip_format_once);
@@ -2767,9 +2396,10 @@ impl SimpleEditApp {
                 let mut tasks = Vec::new();
                 // The tab on screen goes through the usual save; a tab
                 // without a file waits for the user to name it.
-                let on_screen = self.current_file.as_ref().is_some_and(|p| {
-                    !is_untitled(p) && !is_virtual(p) && !self.api_tabs.contains_key(p)
-                });
+                let on_screen = self
+                    .current_file
+                    .as_ref()
+                    .is_some_and(|p| !is_untitled(p) && !is_virtual(p));
                 if self.is_dirty && on_screen {
                     tasks.push(self.handle(Message::SaveFile));
                 }
@@ -2833,7 +2463,10 @@ impl SimpleEditApp {
             Message::FileSaved(origin, result) => {
                 match result {
                     Ok((path, saved)) => {
-                        self.history_record(&path, &saved);
+                        self.plugins_file_event(
+                            simpleedit_plugin::manifest::Event::FileSaved,
+                            &path,
+                        );
                         self.size_for = None;
                         // The tab the save started from may no longer be the
                         // active one (the dialog is asynchronous).
@@ -2893,16 +2526,8 @@ impl SimpleEditApp {
                         self.autosaving = self.autosaving.saturating_sub(1);
                         // The tools that read the disk look again.
                         self.lint.force = self.config.lint_trigger != crate::lint::Trigger::Manual;
-                        // The Git panel and the open diffs follow the save.
-                        let panel = if self.git.open {
-                            Task::done(Message::Git(crate::git_panel::GitMsg::Refresh))
-                        } else {
-                            Task::none()
-                        };
-                        let sent = self.remote_send(&path);
-                        let told = Task::future(crate::lsp::did_save(path.clone(), saved.clone()))
+                        return Task::future(crate::lsp::did_save(path.clone(), saved.clone()))
                             .discard();
-                        return Task::batch([panel, self.refresh_diff_tabs(), sent, told]);
                     }
                     Err(e) if e == CANCELLED => self.autosaving = self.autosaving.saturating_sub(1),
                     Err(e) => {
@@ -2926,241 +2551,83 @@ impl SimpleEditApp {
             },
             // The menu closed above, like for any message that isn't passive.
             Message::CloseMenu => Task::none(),
-            Message::MarksBase(path, base) => {
-                self.marks_base_loaded(path, base);
-                Task::none()
-            }
-            Message::BlameFile => self.start_blame(),
-            Message::BlameLoaded(path, result) => {
-                self.blame_loaded(path, result);
-                Task::none()
-            }
+            Message::BlameFile => self.git_command("git.blame"),
             Message::CloseBlame => {
                 self.blame = None;
+                self.git_command("git.blame_close")
+            }
+            Message::BlameOption(option) => {
+                self.plugins.pointed_line = self.gutter_line;
+                self.git_command(match option {
+                    BlameOption::Blanks => "git.blame_blanks",
+                    BlameOption::MovesInFile => "git.blame_moves",
+                    BlameOption::MovesAcross => "git.blame_across",
+                    BlameOption::ShowHidden => "git.blame_show_hidden",
+                    BlameOption::HideLine => "git.blame_hide",
+                })
+            }
+            Message::BlameLineClicked(line) => {
+                self.plugin_annotation_clicked(line);
                 Task::none()
             }
-            Message::BlameOption(option) => self.blame_option(option),
-            Message::BlameLineClicked(line) => self.blame_line_clicked(line),
             Message::BlamePrevious => {
-                let (Some(line), Some(blame)) = (self.gutter_line, &self.blame) else {
-                    return Task::none();
-                };
-                let Some(sha) = blame
-                    .shas
-                    .get(line)
-                    .filter(|s| !s.chars().all(|c| c == '0'))
-                else {
-                    return Task::none();
-                };
-                let (repo, relative) = (blame.repo.clone(), blame.relative.clone());
-                let sha = sha.clone();
-                let options = self.blame_options.clone();
-                Task::perform(
-                    async move {
-                        let rev = format!("{sha}^");
-                        let lines =
-                            crate::git::history::blame_with(&repo, Some(&rev), &relative, &options)
-                                .await?;
-                        let text = crate::git::history::file_at(&repo, &rev, &relative).await?;
-                        let label = sha.chars().take(8).collect::<String>();
-                        Ok((repo, relative, label, text, lines))
-                    },
-                    Message::BlamePreviousLoaded,
-                )
+                self.plugins.pointed_line = self.gutter_line;
+                self.git_command("git.blame_previous")
             }
-            Message::BlamePreviousLoaded(result) => {
-                match result {
-                    Ok((repo, relative, label, text, lines)) => {
-                        // A tab of its own for that version, with its blame.
-                        self.untitled_counter += 1;
-                        let name = relative.rsplit('/').next().unwrap_or(&relative).to_string();
-                        let path = PathBuf::from(format!(
-                            "rev://{}/{name} @ {label}",
-                            self.untitled_counter
-                        ));
-                        let language = Path::new(&relative)
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .and_then(|e| crate::editor::extension_to_token(&e.to_lowercase()))
-                            .map(str::to_string);
-                        self.stash_current();
-                        self.sidebar.add_file(path.clone());
-                        let loaded = Loaded {
-                            path: path.clone(),
-                            text,
-                            format: TextFormat::default(),
-                            stamp: None,
-                        };
-                        self.load_buffer(path.clone(), CachedBuffer::from_loaded(loaded, language));
-                        self.blame_loaded(path, Ok((repo, relative, lines)));
-                    }
-                    Err(e) => self.set_status(format!("{}: {e}", t!("status.error")), true),
-                }
-                Task::none()
-            }
-            Message::OpenConflicts => {
-                if self
-                    .git
-                    .status
-                    .as_ref()
-                    .is_some_and(|s| s.conflicts().next().is_some())
-                {
-                    self.overlay = ActiveOverlay::Conflicts;
-                }
-                Task::none()
-            }
-            Message::OpenMergeTab(spec) => self.open_merge_tab(spec),
             Message::Merge(msg) => self.merge_msg(msg),
             Message::MergeApplied(path, result) => match result {
-                Ok(()) => {
-                    let close = self.close_path(path);
-                    Task::batch([
-                        close,
-                        Task::done(Message::Git(crate::git_panel::GitMsg::Refresh)),
-                    ])
-                }
+                Ok(()) => self.close_path(path),
                 Err(error) => {
                     self.set_status(format!("{}: {error}", t!("status.error")), true);
                     Task::none()
                 }
             },
-            Message::DiffApplied(result) => {
-                if let Err(error) = result {
-                    self.set_status(format!("{}: {error}", t!("status.error")), true);
-                }
-                Task::batch([
-                    self.refresh_diff_tabs(),
-                    Task::done(Message::Git(crate::git_panel::GitMsg::Refresh)),
-                ])
-            }
-            Message::OpenDiffTab(tab) => self.open_diff_tab(tab),
             Message::DiffTab(nav) => self.diff_nav(nav),
+            // Git is the Git plugin's: its panel opens or closes.
             Message::ToggleGit => {
-                let ctx = crate::git_panel::Ctx {
-                    current_file: self.current_file.as_deref(),
-                    ctrl: self.mod_ctrl,
-                    shift: self.mod_shift,
-                    roots: &self.projects.roots,
-                    colors: &self.config.project_colors,
-                };
-                let task = self.git.toggle(&ctx);
-                if self.git.open {
-                    // One tool panel at the bottom: the terminal steps aside.
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
-                    self.scratch.open = false;
-                    self.bookmark_panel.open = false;
-                    self.db.console.open = false;
+                let open = self
+                    .plugins
+                    .bottom
+                    .as_ref()
+                    .is_some_and(|k| k.0 == crate::plugins::migrate::GIT);
+                if open {
+                    self.plugin_bottom_yield();
+                    return Task::none();
                 }
-                task
+                self.git_command("git.show")
             }
-            Message::Git(msg) => {
-                // The panel closed: what went wrong is told in the status bar.
-                if let crate::git_panel::GitMsg::Done(Err(error)) = &msg {
-                    if !self.git.open && error != crate::git::CONFLICT {
-                        self.set_status(error.clone(), true);
-                    }
-                }
-                if matches!(&msg, crate::git_panel::GitMsg::ActionsResizeEnd) {
-                    self.config.git_actions_width = self.git.branches.actions_width;
-                    self.config_dirty = true;
-                }
-                self.remember_before_git(&msg);
-                if let crate::git_panel::GitMsg::Done(Ok(said)) = &msg {
-                    if said.starts_with("\u{2}") || said.starts_with("\u{5}") {
-                        self.history_label(t!("history.auto_commit").to_string(), true);
-                    }
-                }
-                let ctx = crate::git_panel::Ctx {
-                    current_file: self.current_file.as_deref(),
-                    ctrl: self.mod_ctrl,
-                    shift: self.mod_shift,
-                    roots: &self.projects.roots,
-                    colors: &self.config.project_colors,
-                };
-                let refreshing = matches!(
-                    msg,
-                    crate::git_panel::GitMsg::Tick | crate::git_panel::GitMsg::Refresh
-                );
-                // A diff may be the answer a tab in the editor waits for.
-                let tabs = if let crate::git_panel::GitMsg::DiffLoaded(token, result) = &msg {
-                    let tasks: Vec<_> = self
-                        .diff_tabs
-                        .values_mut()
-                        .filter(|tab| tab.viewer.owns(*token))
-                        .map(|tab| tab.viewer.loaded(*token, result.clone()))
-                        .collect();
-                    Task::batch(tasks)
-                } else {
-                    Task::none()
-                };
-                let panel = self.git.update(msg, &ctx);
-                let again = if refreshing {
-                    self.refresh_diff_tabs()
-                } else {
-                    Task::none()
-                };
-                Task::batch([panel, tabs, again])
-            }
+            // The terminal is the Terminal plugin's: its panel opens or closes.
             Message::ToggleTerminal => {
-                if self.terminal.open {
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
-                } else {
-                    if self.terminal.tabs.is_empty() {
-                        self.new_terminal();
-                    }
-                    self.terminal.open = !self.terminal.tabs.is_empty();
-                    self.terminal.focused = self.terminal.open;
-                    if self.terminal.open {
-                        // One tool panel at the bottom.
-                        self.scratch.open = false;
-                        self.bookmark_panel.open = false;
-                        self.git.open = false;
-                        self.db.console.open = false;
-                    }
+                let open = self
+                    .plugins
+                    .bottom
+                    .as_ref()
+                    .is_some_and(|k| k.0 == crate::plugins::migrate::TERMINAL);
+                if open {
+                    self.plugin_bottom_yield();
+                    return Task::none();
                 }
-                Task::none()
+                self.run_official_command(
+                    crate::plugins::migrate::TERMINAL,
+                    "terminal.toggle",
+                    t!("terminal.plugin_missing").to_string(),
+                )
             }
             Message::ToggleScratch => {
                 self.scratch.open = !self.scratch.open;
                 if self.scratch.open {
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
+                    self.plugin_bottom_yield();
                     self.bookmark_panel.open = false;
-                    self.git.open = false;
-                    self.db.console.open = false;
                     self.scratch.refresh();
                     self.scratch.error = None;
                 }
                 Task::none()
             }
-            Message::GitFileMenu(path) => {
-                self.overlay = ActiveOverlay::GitFile(path);
-                Task::none()
-            }
-            Message::GitFileDo(path, action) => self.git_file_do(path, action),
-            Message::GitFileRoot(path, action, root) => self.git_file_root(path, action, root),
-            Message::GitFileDone(result) => self.git_file_done(result),
-            Message::GitGetConfirmed(repo, file, rev) => self.git_get_confirmed(repo, file, rev),
-            Message::GitFileDiff(result) => self.git_file_diff(result),
-            Message::GitFilePick(result) => self.git_file_pick(result),
-            Message::GitPickFilter(filter) => {
-                if let ActiveOverlay::GitPick(pick) = &mut self.overlay {
-                    pick.filter = filter;
-                }
-                Task::none()
-            }
-            Message::GitPickChoose(rev) => self.git_pick_choose(rev),
-            Message::GitPickVerified(result) => self.git_pick_verified(result),
             Message::ToggleBookmarkPanel => {
                 self.bookmark_panel.open = !self.bookmark_panel.open;
                 if self.bookmark_panel.open {
-                    self.terminal.open = false;
-                    self.terminal.focused = false;
+                    self.plugin_bottom_yield();
                     self.scratch.open = false;
-                    self.git.open = false;
-                    self.db.console.open = false;
                     return self.refresh_bookmark_texts(true);
                 }
                 Task::none()
@@ -3246,88 +2713,6 @@ impl SimpleEditApp {
             }
             Message::ScratchDirChosen(None) => Task::none(),
             Message::SetScratchDir(dir) => self.set_scratch_dir(dir),
-            Message::NewTerminal => {
-                self.new_terminal();
-                self.terminal.open = !self.terminal.tabs.is_empty();
-                self.terminal.focused = self.terminal.open;
-                Task::none()
-            }
-            Message::SelectTerminal(index) => {
-                if index < self.terminal.tabs.len() {
-                    self.terminal.active = index;
-                    self.terminal.focused = true;
-                }
-                Task::none()
-            }
-            Message::CloseTerminal(index) => {
-                self.terminal.close(index);
-                Task::none()
-            }
-            Message::TerminalTick => {
-                self.terminal.prune_ended();
-                Task::none()
-            }
-            Message::TerminalFocus(focused) => {
-                self.terminal.focused = focused && self.terminal.open;
-                Task::none()
-            }
-            Message::TerminalCopy(text) => iced::clipboard::write(text),
-            Message::TerminalOpen(word, dir) => {
-                let dir = if dir.as_os_str().is_empty() {
-                    self.projects.roots.first().cloned().unwrap_or_default()
-                } else {
-                    dir
-                };
-                match crate::tasks::location_with(&word, &dir, &mut |p| p.is_file()) {
-                    Some(at) => self.task_open_at(at),
-                    None => Task::none(),
-                }
-            }
-            Message::TerminalPaste => iced::clipboard::read().map(Message::TerminalPasteText),
-            Message::TerminalSearchToggle => {
-                if self.terminal.search.is_some() {
-                    self.terminal.search = None;
-                    self.terminal.focused = true;
-                    Task::none()
-                } else {
-                    self.terminal.search = Some(String::new());
-                    self.terminal.focused = false;
-                    iced::widget::operation::focus(terminal_search_id())
-                }
-            }
-            Message::TerminalSearchInput(text) => {
-                if let Some(session) = self.terminal.active_session() {
-                    session.forget_found();
-                }
-                self.terminal.search = Some(text);
-                Task::none()
-            }
-            Message::TerminalSearchNext(older) => {
-                let query = self.terminal.search.clone().unwrap_or_default();
-                if let Some(session) = self.terminal.active_session() {
-                    if !session.find(&query, older) {
-                        self.set_status(t!("terminal.search_none"), false);
-                    }
-                }
-                Task::none()
-            }
-            Message::TerminalPasteText(text) => {
-                // No escape sequence may come from a paste: `ESC[201~` would
-                // end the bracketed paste and what follows would run.
-                let text = text.map(|t| paste_text_safe(&t));
-                if let (Some(text), Some(session)) = (text, self.terminal.active_session()) {
-                    let bracketed = session
-                        .with_screen(|screen| screen.bracketed_paste())
-                        .unwrap_or(false);
-                    if bracketed {
-                        session.write(format!("\x1b[200~{text}\x1b[201~").as_bytes());
-                    } else {
-                        // A pasted line break is the Enter key.
-                        session.write(text.replace("\r\n", "\r").replace('\n', "\r").as_bytes());
-                    }
-                }
-                Task::none()
-            }
             Message::ConfirmOverwrite => {
                 self.overlay = ActiveOverlay::None;
                 // Take the new on-disk state as the baseline, then save.
@@ -3348,10 +2733,6 @@ impl SimpleEditApp {
                 }
             }
             Message::Lint(setting) => {
-                // Turning a language on looks at the file at once.
-                if matches!(setting, crate::lint::Setting::Language(_, true)) {
-                    self.lint.force = true;
-                }
                 crate::lint::apply_setting(&mut self.config, setting);
                 self.config_dirty = true;
                 Task::none()
@@ -3362,6 +2743,10 @@ impl SimpleEditApp {
             }
             Message::LintHover(over) => self.lint_hover(over),
             Message::CompletionInvoke => {
+                // In an editor of a panel: the plugin is asked.
+                if let Some(slot) = self.plugins.editor_focus.clone() {
+                    return self.plugin_complete(slot);
+                }
                 self.completion_request(crate::lsp::Trigger::Invoked, true)
             }
             Message::CompletionInfo(key, info) => {
@@ -3529,17 +2914,19 @@ impl SimpleEditApp {
                 Task::none()
             }
             Message::OpenTerminalAt(dir) => {
-                if let Err(error) = self.terminal.add(&dir, &t!("terminal.local")) {
-                    self.set_status(format!("{}: {error}", t!("status.error")), true);
+                if self
+                    .plugins
+                    .get(crate::plugins::migrate::TERMINAL)
+                    .is_none()
+                {
+                    self.set_status(t!("terminal.plugin_missing"), true);
                     return Task::none();
                 }
-                self.terminal.open = true;
-                self.terminal.focused = true;
-                self.scratch.open = false;
-                self.bookmark_panel.open = false;
-                self.git.open = false;
-                self.db.console.open = false;
-                Task::none()
+                self.plugin_update(crate::plugins::PluginMsg::RunAt(
+                    crate::plugins::migrate::TERMINAL.to_string(),
+                    "terminal.here".to_string(),
+                    dir,
+                ))
             }
             Message::RevealInFileManager(path) => {
                 if let Err(e) = reveal_in_file_manager(&path) {
@@ -3558,15 +2945,11 @@ impl SimpleEditApp {
                 self.panels = crate::sidebar::Panels {
                     files: false,
                     projects: true,
-                    database: false,
-                    api: false,
                 };
                 self.show_sidebar = true;
                 self.config.show_sidebar = true;
                 self.config.show_files_panel = false;
                 self.config.show_projects_panel = true;
-                self.config.show_database_panel = false;
-                self.config.show_api_panel = false;
                 self.config_dirty = true;
                 // And scrolled to the file.
                 let index = self
@@ -3582,10 +2965,6 @@ impl SimpleEditApp {
                         y: crate::sidebar::tree_offset(index),
                     },
                 )
-            }
-            Message::FileStates(states) => {
-                self.file_marks.set_git(states);
-                Task::none()
             }
             Message::RefreshProjects => {
                 self.projects.refresh(true);
@@ -3620,7 +2999,7 @@ impl SimpleEditApp {
                 }
                 Task::none()
             }
-            Message::History(msg) => self.history_update(msg),
+            Message::CompareDiff(nav) => self.compare_diff_nav(nav),
             Message::TabGroupClose(project) => {
                 let targets = self.tabs_of(&project);
                 self.folded_tabs.remove(&project);
@@ -3737,26 +3116,22 @@ impl SimpleEditApp {
                 self.load_scope_files()
             }
             Message::FindDirText(text) => self.finder_dir_typed(text),
-            Message::OpenRemote => self.open_remote(),
-            Message::RemoteHost(host) => {
-                if let ActiveOverlay::Remote(view) = &mut self.overlay {
-                    view.host = host;
-                }
-                Task::none()
-            }
-            Message::RemoteDir(dir) => {
-                if let ActiveOverlay::Remote(view) = &mut self.overlay {
-                    view.dir = dir;
-                }
-                Task::none()
-            }
-            Message::RemoteConnect => self.remote_connect(),
-            Message::RemoteListed(host, result) => self.remote_listed(host, result),
-            Message::RemotePick(name) => self.remote_pick(name),
-            Message::RemoteDownloaded(file, result) => self.remote_downloaded(file, result),
-            Message::RemoteSent(path, result) => self.remote_sent(path, result),
+            // Files over SSH are the Remote Files plugin's.
+            Message::OpenRemote => self.run_official_command(
+                crate::plugins::migrate::REMOTE,
+                "remote.open",
+                t!("remote.plugin_missing").to_string(),
+            ),
             Message::SpellFix => self.open_spell_fix(),
-            Message::SpellerLoaded(code, speller) => self.speller_loaded(code, speller),
+            Message::SpellSuggested(found) => {
+                self.spell_suggested(found);
+                Task::none()
+            }
+            Message::SpellLearned(error) => self.spell_learned(error),
+            Message::SpellLanguagesLoaded(codes) => {
+                self.spell_languages_loaded(codes);
+                Task::none()
+            }
             Message::SpellChecked(done) => {
                 self.spell_checked(done);
                 Task::none()
@@ -3787,34 +3162,12 @@ impl SimpleEditApp {
                 }
                 Task::none()
             }
-            Message::OpenTaskPicker => self.open_task_picker(),
-            Message::RunTask(index) => {
-                self.overlay = ActiveOverlay::None;
-                match self.tasks.choices.get(index).cloned() {
-                    Some(task) => self.start_task(task),
-                    None => Task::none(),
-                }
-            }
-            Message::TaskEvent(run, event) => self.task_event(run, event),
-            Message::TaskScrolled(offset, height, content) => {
-                self.task_scrolled(offset, height, content);
-                Task::none()
-            }
-            Message::TaskStop => self.task_stop(),
-            Message::TaskRerun => match self.tasks.task.clone() {
-                Some(task) => self.start_task(task),
-                None => Task::none(),
-            },
-            Message::TaskClear => {
-                self.tasks.lines.clear();
-                self.tasks.away = None;
-                Task::none()
-            }
-            Message::TaskToggle => {
-                self.tasks.open = !self.tasks.open && self.tasks.task.is_some();
-                Task::none()
-            }
-            Message::TaskOpenAt(at) => self.task_open_at(at),
+            // The shortcut of the tasks runs the Tasks plugin's command.
+            Message::OpenTaskPicker => self.run_official_command(
+                crate::plugins::migrate::TASKS,
+                "tasks.run",
+                t!("tasks.plugin_missing").to_string(),
+            ),
             Message::IpcPoll => {
                 let mut tasks = Vec::new();
                 for batch in crate::ipc::take() {
@@ -4233,9 +3586,6 @@ impl SimpleEditApp {
             }
             Message::FindPreviewAction(action) => self.finder_preview_action(action),
             Message::FindPreviewMenu(what) => self.finder_preview_menu(what),
-            Message::HistoryReverted(done, failed, written) => {
-                self.history_reverted(done, failed, written)
-            }
             Message::FinderPreviewRead(path, text) => {
                 self.finder_preview_read(path, text);
                 Task::none()
@@ -4269,6 +3619,7 @@ impl SimpleEditApp {
             Message::FindUndoReplace => self.undo_replacement(),
             Message::FindToWindow => self.finder_to_window(),
             Message::Results(msg) => self.results_update(msg),
+            Message::Plugin(msg) => self.plugin_update(msg),
             Message::OpenTabList(at) => {
                 self.tab_list = Some(at);
                 Task::none()
@@ -4287,29 +3638,20 @@ impl SimpleEditApp {
                 let was_open = match panel {
                     crate::sidebar::Panel::Files => self.panels.files,
                     crate::sidebar::Panel::Projects => self.panels.projects,
-                    crate::sidebar::Panel::Database => self.panels.database,
-                    crate::sidebar::Panel::Api => self.panels.api,
                 };
                 self.panels = crate::sidebar::Panels {
                     files: panel == crate::sidebar::Panel::Files && !was_open,
                     projects: panel == crate::sidebar::Panel::Projects && !was_open,
-                    database: panel == crate::sidebar::Panel::Database && !was_open,
-                    api: panel == crate::sidebar::Panel::Api && !was_open,
                 };
                 // A panel that is asked for shows the sidebar if it was hidden.
                 if !was_open {
                     self.show_sidebar = true;
                     self.config.show_sidebar = true;
+                    self.plugin_sidebar_yield();
                 }
                 self.config.show_files_panel = self.panels.files;
                 self.config.show_projects_panel = self.panels.projects;
-                self.config.show_database_panel = self.panels.database;
-                self.config.show_api_panel = self.panels.api;
                 self.config_dirty = true;
-                // The first look at the panel finds out if the driver is there.
-                if self.panels.database && self.db.driver == crate::database::Driver::Unknown {
-                    return self.db_probe_driver();
-                }
                 Task::none()
             }
             Message::ToggleSidebar => {
@@ -4318,72 +3660,12 @@ impl SimpleEditApp {
                 self.config_dirty = true;
                 Task::none()
             }
-            Message::GitShortcut(what) => {
-                // The panel opens first: what happens shows there.
-                let open = if self.git.open {
-                    Task::none()
-                } else {
-                    self.handle(Message::ToggleGit)
-                };
-                self.git.tab = crate::git_panel::Tab::Commit;
-                let action = match what {
-                    GitShortcut::Commit => Task::none(),
-                    GitShortcut::Push => {
-                        Task::done(Message::Git(crate::git_panel::GitMsg::OpenPush))
-                    }
-                    GitShortcut::Pull => {
-                        Task::done(Message::Git(crate::git_panel::GitMsg::RefAction(
-                            crate::git_panel::branches::RefAction::Pull,
-                        )))
-                    }
-                };
-                Task::batch([open, action])
-            }
-            Message::OpenBranchSwitcher => {
-                if self.git.status.is_none() {
-                    return Task::none();
-                }
-                self.overlay = ActiveOverlay::BranchSwitch(String::new());
-                Task::batch([
-                    self.git.load_refs(),
-                    iced::widget::operation::focus(git_file::branch_input_id()),
-                ])
-            }
-            Message::BranchSwitchFilter(text) => {
-                if let ActiveOverlay::BranchSwitch(filter) = &mut self.overlay {
-                    *filter = text;
-                }
-                Task::none()
-            }
-            Message::BranchSwitchChoose(name, create) => {
-                self.overlay = ActiveOverlay::None;
-                if name.is_empty() {
-                    return Task::none();
-                }
-                self.git.switch_branch(name, create)
-            }
-            Message::SetAutoFetch(minutes) => {
-                self.config.git_auto_fetch_minutes = minutes;
-                self.config_dirty = true;
-                Task::none()
-            }
-            Message::SetPullMode(mode) => {
-                // Chosen behind the chevron of the Git panel: the modes close.
-                self.git.branches.menu = None;
-                self.git.pull_mode = mode;
-                self.config.git_pull_mode = mode;
-                self.config_dirty = true;
-                Task::none()
-            }
-            Message::SetMergeMode(mode) => {
-                self.git.branches.menu = None;
-                self.git.merge_mode = mode;
-                self.config.git_merge_mode = mode;
-                self.config_dirty = true;
-                Task::none()
-            }
-            Message::Db(msg) => self.db_message(msg),
-            Message::Api(msg) => self.api_message(msg),
+            Message::GitShortcut(what) => self.git_command(match what {
+                GitShortcut::Commit => "git.commit",
+                GitShortcut::Push => "git.push_options",
+                GitShortcut::Pull => "git.pull",
+            }),
+            Message::OpenBranchSwitcher => self.git_command("git.branches"),
             Message::SidebarResizeStart => {
                 self.sidebar_resizing = true;
                 Task::none()
@@ -4419,39 +3701,34 @@ impl SimpleEditApp {
                 self.config_dirty = true;
                 Task::none()
             }
-            Message::AskDeleteFile(path) => Task::perform(
-                async move {
-                    let tracked = is_tracked(&path).await;
-                    (path, tracked)
-                },
-                |(path, tracked)| Message::DeleteAsked(path, tracked),
-            ),
-            Message::DeleteAsked(path, tracked) => {
-                // Checked by default: a file git tracks is usually meant to go from it too.
-                self.overlay = ActiveOverlay::ConfirmFileDelete(path, tracked.then_some(true));
-                Task::none()
-            }
-            Message::ToggleDeleteFromGit(on) => {
-                if let ActiveOverlay::ConfirmFileDelete(_, from_git @ Some(_)) = &mut self.overlay {
-                    *from_git = Some(on);
+            Message::AskDeleteFile(path) => self.plugins_ask_delete(path),
+            Message::DeleteFile(path) => {
+                // The boxes of the plugins left ticked, by plugin.
+                let mut chosen: std::collections::BTreeMap<String, Vec<String>> =
+                    Default::default();
+                if let ActiveOverlay::ConfirmFileDelete(asked, options) = &self.overlay {
+                    if *asked == path {
+                        for (plugin, option) in options.iter().filter(|(_, o)| o.checked) {
+                            chosen
+                                .entry(plugin.clone())
+                                .or_default()
+                                .push(option.id.clone());
+                        }
+                    }
                 }
-                Task::none()
-            }
-            Message::DeleteFile(path, from_git) => {
                 self.overlay = ActiveOverlay::None;
                 self.bookmarks.clear(&path);
+                self.plugins_before_delete(&path, &chosen);
                 let close = self.close_path(path.clone());
-                let days = self.config.local_history_days;
-                let delete = Task::perform(delete_file(path, from_git, days), Message::FileDeleted);
+                let delete = Task::perform(delete_file(path), Message::FileDeleted);
                 Task::batch([close, delete])
             }
             Message::FileDeleted(result) => {
                 match result {
-                    Ok(true) => self.set_status(t!("status.file_deleted_git"), false),
-                    Ok(false) => self.set_status(t!("status.file_deleted"), false),
+                    Ok(()) => self.set_status(t!("status.file_deleted"), false),
                     Err(e) => self.set_status(format!("{}: {e}", t!("status.error")), true),
                 }
-                Task::done(Message::Git(crate::git_panel::GitMsg::Refresh))
+                Task::none()
             }
             Message::WindowFocus(focused) => {
                 self.window_focused = focused;
@@ -4552,13 +3829,24 @@ impl SimpleEditApp {
                     msg,
                     PreferencesMessage::PageSelected(crate::preferences::PrefsPage::Servers)
                 );
+                // The Plugins page: the list of the official ones and the
+                // updates are looked up when it is shown.
+                if matches!(
+                    msg,
+                    PreferencesMessage::PageSelected(crate::preferences::PrefsPage::Plugins)
+                ) {
+                    let _ = self.preferences.update(msg, &mut self.config);
+                    let list =
+                        if matches!(self.plugins.registry, crate::plugins::Registry::Loaded(_)) {
+                            Task::none()
+                        } else {
+                            self.plugin_update(crate::plugins::PluginMsg::LoadRegistry)
+                        };
+                    let updates = self.plugin_update(crate::plugins::PluginMsg::CheckUpdates);
+                    return Task::batch([list, updates]);
+                }
                 if self.preferences.update(msg, &mut self.config) {
                     self.config_dirty = true;
-                    crate::api::http::set_network(crate::api::http::Network {
-                        ca_file: self.config.api_ca_file.clone(),
-                        client_cert: self.config.api_client_cert.clone(),
-                        proxy: self.config.api_proxy.clone(),
-                    });
                 }
                 if servers_page {
                     return Task::perform(
@@ -4586,10 +3874,10 @@ impl SimpleEditApp {
                 self.overlay = ActiveOverlay::ConfirmQuit(t!("quit.unsaved").to_string());
                 Task::none()
             }
-            // Edits waiting in a table grid or a merge tab are not in the
-            // session: closing would throw them away.
+            // Edits waiting in a tab of a plugin or a merge tab are not in
+            // the session: closing would throw them away.
             Message::Quit
-                if self.db_tabs.values().any(|t| !t.pending.is_empty())
+                if self.plugins.tabs.values().any(|t| t.dirty)
                     || self.merge_tabs.values().any(|t| t.is_modified()) =>
             {
                 self.overlay = ActiveOverlay::ConfirmQuit(t!("quit.unsaved").to_string());
@@ -4602,9 +3890,8 @@ impl SimpleEditApp {
                     if self.session_owner {
                         self.config.save();
                     }
-                    self.api.save_environments_now();
-                    crate::tasks::stop_all();
                     crate::lsp::stop_servers();
+                    crate::plugins::host::stop_all();
                     std::process::exit(0)
                 }
                 // Unsaved buffers live on in the session file; if it can't be
@@ -4618,9 +3905,8 @@ impl SimpleEditApp {
                 if self.session_owner {
                     self.config.save();
                 }
-                self.api.save_environments_now();
-                crate::tasks::stop_all();
                 crate::lsp::stop_servers();
+                crate::plugins::host::stop_all();
                 std::process::exit(0)
             }
             Message::ContextCopy => {
@@ -4829,17 +4115,13 @@ impl SimpleEditApp {
                 self.show_error_panel = false;
                 Task::none()
             }
-            Message::Undo if self.on_diff_tab() || self.panel_diff_focused() => {
-                self.undo_work(true)
-            }
-            Message::Redo if self.on_diff_tab() || self.panel_diff_focused() => {
-                self.undo_work(false)
-            }
+            Message::Undo if self.on_diff_tab() => self.undo_work(true),
+            Message::Redo if self.on_diff_tab() => self.undo_work(false),
             Message::Undo if self.on_merge_tab() => {
-                self.merge_msg(crate::git_panel::merge::MergeMsg::Undo)
+                self.merge_msg(crate::diff_view::merge::MergeMsg::Undo)
             }
             Message::Redo if self.on_merge_tab() => {
-                self.merge_msg(crate::git_panel::merge::MergeMsg::Redo)
+                self.merge_msg(crate::diff_view::merge::MergeMsg::Redo)
             }
             Message::Undo => {
                 if self.editing_blocked() {
@@ -4871,8 +4153,7 @@ impl SimpleEditApp {
                     self.config_dirty = false;
                     self.config.save();
                 }
-                // The tree follows what happens on the disk, and its colors
-                // what Git says (now and then).
+                // The tree follows what happens on the disk.
                 // Not while the window is in the background.
                 let watching = self.window_focused;
                 // What is watched: the projects, and the folders of the open
@@ -4896,65 +4177,15 @@ impl SimpleEditApp {
                 if watching && every(2, self.ticks) {
                     reload = self.reload_projects();
                 }
-                let states = if watching && every(3, self.ticks) {
-                    self.refresh_file_states()
-                } else {
-                    Task::none()
-                };
                 let external = if watching && (!driven || changed || self.ticks.is_multiple_of(30))
                 {
                     self.check_external_change()
                 } else {
                     Task::none()
                 };
-                self.history_tick();
-                if self.ticks == 5 {
-                    self.history_prune();
-                }
                 self.ticks = self.ticks.wrapping_add(1);
-                // The marks follow HEAD, which a commit made elsewhere moves.
-                let marks = if every(10, self.ticks) {
-                    self.refresh_marks_base()
-                } else {
-                    self.refresh_marks_now();
-                    Task::none()
-                };
-                // With the Git panel closed, the status is still looked at now
-                // and then, to notice conflicts.
-                let probe = if watching
-                    && !self.git.open
-                    && (if driven {
-                        changed
-                    } else {
-                        self.ticks.is_multiple_of(5)
-                    })
-                    && self.current_file.as_deref().is_some_and(|p| !is_virtual(p))
-                {
-                    Task::done(Message::Git(crate::git_panel::GitMsg::Tick))
-                } else {
-                    Task::none()
-                };
-                // What the remotes have is looked at now and then, in the background.
-                let minutes = u64::from(self.config.git_auto_fetch_minutes);
-                let fetch = if watching
-                    && minutes > 0
-                    && (self.ticks as u64).is_multiple_of(minutes * 60)
-                    && self.git.repo.is_some()
-                {
-                    Task::done(Message::Git(crate::git_panel::GitMsg::AutoFetch))
-                } else {
-                    Task::none()
-                };
-                let external = Task::batch([
-                    external,
-                    self.auto_save_files(),
-                    scratch,
-                    reload,
-                    marks,
-                    probe,
-                    fetch,
-                    states,
-                ]);
+                self.refresh_marks_now();
+                let external = Task::batch([external, self.auto_save_files(), scratch, reload]);
                 // The session is built (on this thread) every third tick at
                 // most.
                 // On a big buffer the copy of its text waits for a pause in the
@@ -4976,10 +4207,6 @@ impl SimpleEditApp {
                 // A folder just made is watched now, not at the next sync:
                 // what is created in it straight away would be missed.
                 self.watch.watch_created();
-                // The Git panel does not wait for its own clock.
-                if self.git.open && self.watch.active() {
-                    return Task::done(Message::Git(crate::git_panel::GitMsg::Tick));
-                }
                 Task::none()
             }
             Message::SessionWritten(result) => {
@@ -5002,6 +4229,7 @@ impl SimpleEditApp {
             // --- Overlays ---
             Message::CloseOverlay => {
                 if self.overlay_is_dismissable() {
+                    self.dismiss_plugin_question();
                     self.capturing = None;
                     self.overlay = ActiveOverlay::None;
                 }
@@ -5073,10 +4301,6 @@ impl SimpleEditApp {
                 self.everywhere_text(generation, found);
                 Task::none()
             }
-            Message::EverywhereGit(branches, commits) => {
-                self.everywhere_git(branches, commits);
-                Task::none()
-            }
             Message::EverywhereNonProject => self.everywhere_non_project(),
             Message::EverywhereFilter => {
                 self.everywhere.filter_open = !self.everywhere.filter_open;
@@ -5104,17 +4328,7 @@ impl SimpleEditApp {
                 ctrl,
                 shift,
                 alt,
-                captured,
             } => {
-                // The keys of a table in front: arrows, F2, copy. A key a
-                // text field already used (Cmd/Ctrl+C on its selection,
-                // Option+Delete for a word) is not the grid's too; the app's
-                // own shortcuts below still see it.
-                if self.capturing.is_none() && !captured {
-                    if let Some(task) = self.db_key(&key, ctrl, shift, alt) {
-                        return task;
-                    }
-                }
                 // In shortcut capture mode: save the new binding
                 if let Some(target) = self.capturing {
                     let sc = ShortcutConfig {
@@ -5147,8 +4361,9 @@ impl SimpleEditApp {
                     self.capturing = None;
                     return Task::none();
                 }
-                // Typing a commit message: the app's shortcuts stay out of it.
-                if self.git.typing {
+                // Typing in the result of a merge: the app's shortcuts stay
+                // out of it.
+                if self.merge_typing {
                     // Going back in a merge result is still the user's own.
                     if self.on_merge_tab() && ctrl && key.eq_ignore_ascii_case("z") {
                         return self.handle(if shift { Message::Redo } else { Message::Undo });
@@ -5168,7 +4383,7 @@ impl SimpleEditApp {
                 }
                 // The terminal has the keyboard: it gets every key (it reads
                 // them itself), except the one that hides it.
-                if self.terminal.focused {
+                if self.plugins.screen_focus.is_some() {
                     let toggle = &self.config.shortcuts.toggle_terminal;
                     if toggle.key.eq_ignore_ascii_case(&key)
                         && toggle.ctrl == ctrl
@@ -5178,6 +4393,19 @@ impl SimpleEditApp {
                         return self.handle(Message::ToggleTerminal);
                     }
                     return Task::none();
+                }
+                // The completions of an editor of a panel, then the grid of
+                // a panel that has the keyboard.
+                if !ctrl && !alt {
+                    if let Some(task) = self.plugin_completion_key(&key) {
+                        return task;
+                    }
+                }
+                if let Some(task) = self.plugin_grid_key(&key, ctrl, alt, shift) {
+                    return task;
+                }
+                if let Some(task) = self.plugin_panel_key(&key, ctrl, alt, shift) {
+                    return task;
                 }
                 // The list of completions: its arrows, pages, Enter and Tab.
                 if self.completion_visible() && !ctrl && !alt {
@@ -5560,10 +4788,6 @@ impl SimpleEditApp {
                 self.revert = (!same).then(|| (path, line, self.buffer_stamp()));
                 Task::none()
             }
-            Message::CloseConflictToast => {
-                self.conflict_toast_closed = true;
-                Task::none()
-            }
             Message::CloseRevert => {
                 self.revert = None;
                 Task::none()
@@ -5577,7 +4801,7 @@ impl SimpleEditApp {
                 }
                 let base = self.marks.as_ref().and_then(|m| m.base.clone());
                 let old = crate::editor::buffer_text(&self.editor.content);
-                match crate::git::marks::revert(base.as_deref(), &old, line) {
+                match crate::diff::marks::revert(base.as_deref(), &old, line) {
                     Some(new_text) => self.apply_line_edit(&old, new_text, 0, None),
                     None => Task::none(),
                 }
@@ -5803,10 +5027,6 @@ impl SimpleEditApp {
                 }
             }
             Message::EscapePressed => {
-                // A table cell being typed in, or a date being picked.
-                if self.db_escape() {
-                    return Task::none();
-                }
                 // Several cursors go back to one.
                 if self.overlay == ActiveOverlay::None && self.editor.content.cursor_count() > 1 {
                     self.editor.content.clear_extras();
@@ -7049,17 +6269,11 @@ impl SimpleEditApp {
 
     /// Whether the tab for `path` holds unsaved changes.
     fn is_path_dirty(&self, path: &Path) -> bool {
-        // Tables with edits waiting for Commit and API requests that were
-        // changed hold their work outside the text buffers.
-        if self
-            .db_tabs
-            .get(path)
-            .is_some_and(|t| !t.pending.is_empty())
-            || self.api_tabs.get(path).is_some_and(|t| t.changed())
-        {
+        // The tabs of plugins hold their work outside the text buffers.
+        if self.plugins.tabs.get(path).is_some_and(|t| t.dirty) {
             return true;
         }
-        if self.db_tabs.contains_key(path) || self.api_tabs.contains_key(path) {
+        if self.plugins.tabs.contains_key(path) {
             return false;
         }
         if self.current_file.as_deref() == Some(path) {
@@ -7114,9 +6328,6 @@ impl SimpleEditApp {
                     Message::ConvertIndent(false),
                 ])
                 .collect(),
-            ActiveOverlay::TaskPicker => (0..self.tasks.choices.len())
-                .map(Message::RunTask)
-                .collect(),
             ActiveOverlay::SpellLanguages => {
                 let mut rows = vec![Message::SpellLanguage(String::new())];
                 rows.extend(
@@ -7137,40 +6348,11 @@ impl SimpleEditApp {
         }
     }
 
-    fn after_message(
-        &mut self,
-        edited: bool,
-        status_before: Option<Option<crate::git::Status>>,
-        git_done: bool,
-    ) -> Task<Message> {
-        // The conflicts are settled or the operation was given up: the next
-        // ones are announced again.
-        if self.git.conflict_summary().is_none() {
-            self.conflict_toast_closed = false;
-        }
-        // The dialog of conflicts closes once nothing is left to settle.
-        if matches!(self.overlay, ActiveOverlay::Conflicts)
-            && self
-                .git
-                .status
-                .as_ref()
-                .is_some_and(|s| s.conflicts().next().is_none() && s.operation.is_none())
-        {
-            self.overlay = ActiveOverlay::None;
-        }
-        // New commits on the remote (a fetch, here or in a terminal): said once.
-        if let (Some(Some(before)), Some(now)) = (&status_before, &self.git.status) {
-            if before.branch == now.branch && now.behind > before.behind {
-                let upstream = now.upstream.clone().unwrap_or_default();
-                let n = now.behind - before.behind;
-                let news = t!("git.behind_news", n = n, upstream = upstream.as_str());
-                self.set_status(news, false);
-            }
-        }
-        let moved = self.current_file != self.marks_asked;
-        let status_changed = status_before.is_some_and(|before| before != self.git.status);
-        if moved || status_changed || git_done {
-            return self.refresh_marks_base();
+    fn after_message(&mut self, edited: bool) -> Task<Message> {
+        // Another file in front: what it is compared with.
+        if self.current_file != self.marks_asked {
+            self.refresh_marks_base();
+            return Task::none();
         }
         let spelling = self.refresh_spelling();
         // A new window starts with its first row.
@@ -7191,27 +6373,19 @@ impl SimpleEditApp {
         spelling
     }
 
-    /// Asks git what HEAD has of the current file.
-    fn refresh_marks_base(&mut self) -> Task<Message> {
+    /// What the current file is compared with, as a plugin said it (none:
+    /// no marks).
+    fn refresh_marks_base(&mut self) {
         self.marks_asked = self.current_file.clone();
-        let Some(path) = self.current_file.clone().filter(|p| !is_untitled(p)) else {
-            self.marks = None;
-            return Task::none();
-        };
-        Task::perform(
-            async move {
-                // Not in a repository: no answer at all.
-                let base = match crate::git::repo_root(&path).await {
-                    Some(root) => match relative_to(&root, &path) {
-                        Some(relative) => Some(crate::git::head_text(&root, &relative).await),
-                        None => None,
-                    },
-                    None => None,
-                };
-                (path, base)
-            },
-            |(path, base)| Message::MarksBase(path, base),
-        )
+        let base = self
+            .current_file
+            .clone()
+            .filter(|p| !is_untitled(p))
+            .and_then(|path| Some((self.plugins.bases.get(&path).cloned()?, path)));
+        match base {
+            Some((base, path)) => self.plugin_base_loaded(path, base),
+            None => self.marks = None,
+        }
     }
 
     fn marks_base_loaded(&mut self, path: PathBuf, base: Option<Option<String>>) {
@@ -7243,7 +6417,7 @@ impl SimpleEditApp {
             return;
         }
         let text = crate::editor::buffer_text(&self.editor.content);
-        state.marks = crate::git::marks::compute(state.base.as_deref(), &text);
+        state.marks = crate::diff::marks::compute(state.base.as_deref(), &text);
         state.paint = [
             std::sync::Arc::new(state.marks.added.clone()),
             std::sync::Arc::new(state.marks.modified.clone()),
@@ -7373,203 +6547,13 @@ impl SimpleEditApp {
             .map(|b| b.annotations.clone())
     }
 
-    /// "Annotate with Git Blame": asks git who changed each line.
-    fn start_blame(&mut self) -> Task<Message> {
-        let Some(path) = self.current_file.clone().filter(|p| !is_untitled(p)) else {
-            return Task::none();
-        };
-        let options = self.blame_options.clone();
-        // What the editor shows, unsaved changes included.
-        let contents = crate::editor::buffer_text(&self.editor.content);
-        Task::perform(
-            async move {
-                let root = crate::git::repo_root(&path)
-                    .await
-                    .ok_or_else(|| t!("git.no_repo").to_string())?;
-                let relative =
-                    relative_to(&root, &path).ok_or_else(|| t!("git.no_repo").to_string())?;
-                let lines =
-                    crate::git::history::blame_contents(&root, &relative, &contents, &options)
-                        .await?;
-                Ok::<_, String>((path, (root, relative, lines)))
-            },
-            |result| match result {
-                Ok((path, data)) => Message::BlameLoaded(path, Ok(data)),
-                Err(error) => Message::BlameLoaded(PathBuf::new(), Err(error)),
-            },
-        )
-    }
-
-    /// An option of the blame changed: it is made again.
-    fn blame_option(&mut self, option: BlameOption) -> Task<Message> {
-        let options = &mut self.blame_options;
-        match option {
-            BlameOption::Blanks => options.ignore_blanks = !options.ignore_blanks,
-            BlameOption::MovesInFile => options.moves_in_file = !options.moves_in_file,
-            BlameOption::MovesAcross => options.moves_across = !options.moves_across,
-            BlameOption::ShowHidden => options.hidden.clear(),
-            BlameOption::HideLine => {
-                let sha = self.gutter_line.and_then(|line| {
-                    let blame = self.blame.as_ref()?;
-                    blame.shas.get(line).cloned()
-                });
-                let Some(sha) = sha else {
-                    return Task::none();
-                };
-                self.blame_options.hidden.push(sha);
-            }
+    /// The diff the clipboard keys act on: the tab in front.
+    fn diff_viewer(&mut self) -> Option<&mut crate::diff_view::Viewer> {
+        if !self.on_diff_tab() {
+            return None;
         }
-        self.start_blame()
-    }
-
-    fn blame_loaded(
-        &mut self,
-        path: PathBuf,
-        result: Result<(PathBuf, String, Vec<crate::git::history::BlameLine>), String>,
-    ) {
-        match result {
-            Ok((repo, relative, lines)) => {
-                let dark = self.config.dark_mode;
-                let p = se_theme::palette(dark);
-                // One tint per commit, from its hash.
-                let tints: [iced::Color; 6] = [
-                    iced::Color::from_rgba8(0x6e, 0xa8, 0xff, 0.16),
-                    iced::Color::from_rgba8(0x8f, 0xd1, 0x8f, 0.14),
-                    iced::Color::from_rgba8(0xff, 0x9b, 0x6b, 0.16),
-                    iced::Color::from_rgba8(0xc6, 0x8a, 0xe8, 0.16),
-                    iced::Color::from_rgba8(0xe6, 0xc0, 0x6a, 0.16),
-                    iced::Color::from_rgba8(0x5e, 0xcf, 0xd1, 0.16),
-                ];
-                // What a pointer on a line shows, once for each commit.
-                let mut details: Vec<Vec<String>> = Vec::new();
-                let mut index_of: std::collections::HashMap<&str, usize> =
-                    std::collections::HashMap::new();
-                for l in lines.iter().filter(|l| l.committed()) {
-                    index_of.entry(l.sha.as_str()).or_insert_with(|| {
-                        details.push(commit_card(l));
-                        details.len() - 1
-                    });
-                }
-                let notes: Vec<crate::code_editor::Annotation> = lines
-                    .iter()
-                    .map(|l| {
-                        let tint = if l.committed() {
-                            let n = l
-                                .sha
-                                .bytes()
-                                .take(4)
-                                .fold(0usize, |a, b| a * 31 + b as usize);
-                            tints[n % tints.len()]
-                        } else {
-                            iced::Color::TRANSPARENT
-                        };
-                        let text = if l.committed() {
-                            format!(
-                                "{}  {}",
-                                crate::git_panel::stash::format_date(l.time),
-                                l.author
-                            )
-                        } else {
-                            t!("git.not_committed").to_string()
-                        };
-                        let details = index_of.get(l.sha.as_str()).copied();
-                        crate::code_editor::Annotation {
-                            text,
-                            tint,
-                            details,
-                        }
-                    })
-                    .collect();
-                self.blame = Some(BlameState {
-                    path,
-                    repo,
-                    relative,
-                    annotations: crate::code_editor::Annotations {
-                        lines: std::sync::Arc::new(notes),
-                        text: p.muted,
-                        details: std::sync::Arc::new(details),
-                        link: p.accent,
-                        card_text: p.text,
-                        card_background: p.elevated,
-                        card_border: p.border_strong,
-                    },
-                    shas: lines.iter().map(|l| l.sha.clone()).collect(),
-                });
-            }
-            Err(error) => self.set_status(error, true),
-        }
-    }
-
-    /// A click on a line of the blame column shows its commit in the Git panel.
-    fn blame_line_clicked(&mut self, line: usize) -> Task<Message> {
-        let Some(blame) = &self.blame else {
-            return Task::none();
-        };
-        let Some(sha) = blame.shas.get(line).cloned() else {
-            return Task::none();
-        };
-        if sha.chars().all(|c| c == '0') {
-            return Task::none();
-        }
-        let (repo, relative) = (blame.repo.clone(), blame.relative.clone());
-        self.terminal.open = false;
-        self.terminal.focused = false;
-        self.git.reveal_commit(sha, Some(relative), repo)
-    }
-
-    /// Opens a conflicted file for settling by hand.
-    fn open_merge_tab(
-        &mut self,
-        spec: std::sync::Arc<crate::git_panel::MergeSpec>,
-    ) -> Task<Message> {
-        let spec =
-            std::sync::Arc::try_unwrap(spec).unwrap_or_else(|arc| crate::git_panel::MergeSpec {
-                repo: arc.repo.clone(),
-                path: arc.path.clone(),
-                merge: arc.merge.clone(),
-            });
-        let existing = self
-            .merge_tabs
-            .iter()
-            .find(|(_, t)| t.repo == spec.repo && t.path == spec.path)
-            .map(|(p, _)| p.clone());
-        let path = existing.unwrap_or_else(|| {
-            self.merge_counter += 1;
-            PathBuf::from(format!("merge://{}/{}", self.merge_counter, spec.path))
-        });
-        self.merge_tabs.insert(
-            path.clone(),
-            crate::git_panel::merge::MergeTab::new(spec.repo, spec.path, spec.merge),
-        );
-        self.overlay = ActiveOverlay::None;
-        self.sidebar.add_file(path.clone());
-        self.activate(path)
-    }
-
-    /// The diff the clipboard keys act on: the tab in front, or the panel's
-    /// once rows were picked there (and the editor has nothing selected).
-    fn diff_viewer(&mut self) -> Option<&mut crate::git_panel::Viewer> {
-        if self.on_diff_tab() {
-            let path = self.current_file.clone()?;
-            return self.diff_tabs.get_mut(&path).map(|tab| &mut tab.viewer);
-        }
-        if self.git.open
-            && !self.git.typing
-            && self.editor.content.selection().is_none()
-            && self.git.active_viewer().selection.is_some()
-        {
-            return Some(self.git.active_viewer());
-        }
-        None
-    }
-
-    /// The Git panel's diff was clicked last (and the editor has nothing
-    /// selected): the keyboard shortcuts of a diff are for it.
-    fn panel_diff_focused(&self) -> bool {
-        self.git.open
-            && !self.git.typing
-            && self.editor.content.selection().is_none()
-            && self.git.viewer.selection.is_some()
+        let path = self.current_file.clone()?;
+        self.diff_tabs.get_mut(&path).map(|tab| &mut tab.viewer)
     }
 
     fn diff_clipboard(&mut self, key: &str) -> Option<Task<Message>> {
@@ -7599,48 +6583,18 @@ impl SimpleEditApp {
         }
     }
 
-    /// A rollback or a delete from the Git panel: the file as it was is kept.
-    fn remember_before_git(&mut self, msg: &crate::git_panel::GitMsg) {
-        use crate::git_panel::GitMsg;
-        let viewer = &self.git.viewer;
-        let entry = match msg {
-            GitMsg::RollbackBlock(_) => viewer.current(),
-            GitMsg::Rollback(i) | GitMsg::Delete(i) => viewer.entries.get(*i),
-            _ => None,
-        };
-        let (Some(repo), Some(entry)) = (self.git.repo.as_ref(), entry) else {
-            return;
-        };
-        let path = repo.join(&entry.change.path);
-        self.remember_file(path);
-    }
-
     /// Ctrl+Z (or Ctrl+Y) in a diff: puts back the file as it was before the
     /// last rollback or arrow (or again after it).
     fn undo_work(&mut self, undo: bool) -> Task<Message> {
-        // Only what happened to the files this diff is about: a tab's own
-        // files, or anything in the repository of the panel.
-        let (repo, files): (Option<PathBuf>, Option<Vec<PathBuf>>) = match self
+        // Only what happened to the files this diff is about.
+        let files: Vec<PathBuf> = self
             .current_file
             .as_ref()
             .and_then(|p| self.diff_tabs.get(p))
-        {
-            Some(tab) => (
-                Some(tab.repo.clone()),
-                Some(
-                    tab.viewer
-                        .entries
-                        .iter()
-                        .map(|e| tab.repo.join(&e.change.path))
-                        .collect(),
-                ),
-            ),
-            None => (self.git.repo.clone(), None),
-        };
-        let in_scope = |path: &PathBuf| {
-            repo.as_ref().is_some_and(|r| path.starts_with(r))
-                && files.as_ref().is_none_or(|f| f.contains(path))
-        };
+            .and_then(|tab| tab.owner.as_ref())
+            .map(|(_, _, files)| files.iter().flatten().cloned().collect())
+            .unwrap_or_default();
+        let in_scope = |path: &PathBuf| files.contains(path);
         let stack = if undo {
             &mut self.work_undo
         } else {
@@ -7667,10 +6621,7 @@ impl SimpleEditApp {
             return Task::none();
         }
         self.set_status(label, false);
-        Task::batch([
-            self.refresh_diff_tabs(),
-            Task::done(Message::Git(crate::git_panel::GitMsg::Refresh)),
-        ])
+        Task::none()
     }
 
     fn on_merge_tab(&self) -> bool {
@@ -7680,7 +6631,7 @@ impl SimpleEditApp {
     }
 
     /// The buttons of the merge tab in front.
-    fn merge_msg(&mut self, msg: crate::git_panel::merge::MergeMsg) -> Task<Message> {
+    fn merge_msg(&mut self, msg: crate::diff_view::merge::MergeMsg) -> Task<Message> {
         let Some(path) = self.current_file.clone() else {
             return Task::none();
         };
@@ -7688,14 +6639,17 @@ impl SimpleEditApp {
             return Task::none();
         };
         // Typing in a result: the app's shortcuts stay out of it.
-        if matches!(msg, crate::git_panel::merge::MergeMsg::Edit(..)) {
-            self.git.typing = true;
+        if matches!(msg, crate::diff_view::merge::MergeMsg::Edit(..)) {
+            self.merge_typing = true;
         }
-        if matches!(msg, crate::git_panel::merge::MergeMsg::Apply) {
+        if matches!(msg, crate::diff_view::merge::MergeMsg::Apply) {
             if tab.merge.unresolved() > 0 {
                 return Task::none();
             }
             let (repo, relative, text) = (tab.repo.clone(), tab.path.clone(), tab.merge.render());
+            let Some((plugin, tab_id)) = tab.owner.clone() else {
+                return Task::none();
+            };
             // The merge was read from the disk: changes not saved in an
             // editor tab of the same file would be lost under it.
             if self.is_path_dirty(&repo.join(&relative)) {
@@ -7705,76 +6659,18 @@ impl SimpleEditApp {
                 );
                 return Task::none();
             }
+            // The file is written, the plugin does the rest.
+            let file = repo.join(&relative);
             return Task::perform(
-                async move { crate::git::resolve_with(&repo, &relative, &text).await },
+                plugins::merge_written(plugin, tab_id, file, text),
                 move |result| Message::MergeApplied(path.clone(), result),
             );
         }
         tab.update(msg)
     }
 
-    /// The pop-up that announces conflicts, with the button that settles
-    /// them: shown while there are some, unless closed or something else
-    /// is already asking for attention.
-    fn conflict_toast(&self, dark: bool) -> Option<Element<'_, Message>> {
-        if self.conflict_toast_closed
-            || self.show_preferences
-            || !matches!(self.overlay, ActiveOverlay::None)
-        {
-            return None;
-        }
-        let label = self.git.conflict_summary()?;
-        let p = se_theme::palette(dark);
-        let card = container(
-            row![
-                text("⚠").size(15).color(p.accent),
-                text(label).size(13),
-                button(text(t!("git.resolve_short").to_string()).size(12.5))
-                    .padding([4, 12])
-                    .on_press(Message::OpenConflicts)
-                    .style((se_theme::Primary { dark }).style()),
-                button(text("×").size(15))
-                    .padding([0, 7])
-                    .on_press(Message::CloseConflictToast)
-                    .style(
-                        (se_theme::GhostButton {
-                            dark,
-                            active: false,
-                        })
-                        .style()
-                    ),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center),
-        )
-        .padding([8, 12])
-        .style(se_theme::card(dark));
-        Some(
-            container(iced::widget::opaque(card))
-                .width(Length::Fill)
-                .align_x(iced::alignment::Horizontal::Center)
-                .padding(iced::Padding {
-                    top: 46.0,
-                    ..iced::Padding::ZERO
-                })
-                .into(),
-        )
-    }
-
-    /// What the status bar offers: settle conflicts first, else a language server.
+    /// What the status bar offers: a language server.
     fn status_offer(&self) -> Option<(String, String, Message)> {
-        let conflicts = self
-            .git
-            .status
-            .as_ref()
-            .map_or(0, |s| s.conflicts().count());
-        if conflicts > 0 {
-            return Some((
-                t!("git.conflict_bar").to_string(),
-                t!("git.resolve_short").to_string(),
-                Message::OpenConflicts,
-            ));
-        }
         self.server_offer.map(|info| {
             (
                 t!("status.server_offer", language = info.label).to_string(),
@@ -7784,115 +6680,56 @@ impl SimpleEditApp {
         })
     }
 
-    /// The diff of the working tree in front follows the files (the others
-    /// look again when they come to the front).
-    fn refresh_diff_tabs(&mut self) -> Task<Message> {
-        use crate::git::Source;
-        let Some(tab) = self
-            .current_file
-            .as_ref()
-            .and_then(|path| self.diff_tabs.get_mut(path))
-        else {
-            return Task::none();
-        };
-        let working_tree = tab.viewer.current().is_some_and(|e| {
-            matches!(
-                e.source,
-                Source::Staged | Source::Unstaged | Source::Untracked
-            )
-        });
-        if !working_tree {
-            return Task::none();
-        }
-        let repo = tab.repo.clone();
-        tab.viewer.refresh(&repo)
-    }
-
-    /// Opens a diff in an editor tab (one with the same title is reused).
-    fn open_diff_tab(&mut self, tab: crate::git_panel::DiffTab) -> Task<Message> {
-        let existing = self
-            .diff_tabs
-            .keys()
-            .find(|p| display_name(p) == format!("Δ {}", tab.title))
-            .cloned();
-        let path = existing.unwrap_or_else(|| {
-            self.diff_counter += 1;
-            PathBuf::from(format!("diff://{}/{}", self.diff_counter, tab.title))
-        });
-        let mut viewer = crate::git_panel::Viewer::default();
-        viewer.entries = tab.entries;
-        let load = viewer.open(&tab.repo, tab.start, crate::git_panel::Land::First);
-        self.diff_tabs.insert(
-            path.clone(),
-            DiffTabState {
-                repo: tab.repo,
-                viewer,
-            },
-        );
-        self.sidebar.add_file(path.clone());
-        let show = self.activate(path);
-        Task::batch([show, load])
-    }
-
     /// The arrows of the diff tab in front.
     fn diff_nav(&mut self, nav: DiffNav) -> Task<Message> {
+        use simpleedit_plugin::protocol::DiffAction;
         let Some(path) = self.current_file.clone() else {
             return Task::none();
         };
         let Some(tab) = self.diff_tabs.get_mut(&path) else {
             return Task::none();
         };
-        let repo = tab.repo.clone();
-        match nav {
-            DiffNav::NextChange => tab.viewer.next_change(&repo),
-            DiffNav::PrevChange => tab.viewer.prev_change(&repo),
-            DiffNav::NextFile => tab.viewer.next_file(&repo, crate::git_panel::Land::First),
-            DiffNav::PrevFile => tab.viewer.prev_file(&repo, crate::git_panel::Land::First),
+        let (plugin, tab_id, files) = tab.owner.clone().unwrap_or_default();
+        let file = tab.viewer.index.unwrap_or(0);
+        let disk = files.get(file).cloned().flatten();
+        // What the plugin is asked to do.
+        let action = match nav {
+            DiffNav::NextChange => return tab.viewer.next_change(),
+            DiffNav::PrevChange => return tab.viewer.prev_change(),
+            DiffNav::NextFile => return tab.viewer.next_file(crate::diff_view::Land::First),
+            DiffNav::PrevFile => return tab.viewer.prev_file(crate::diff_view::Land::First),
             DiffNav::Pick(pick) => {
                 tab.viewer.pick(pick);
-                Task::none()
+                return Task::none();
             }
             DiffNav::Scrolled(top, height) => {
                 tab.viewer.view_top.set(top as f32);
                 tab.viewer.view_height.set(height as f32);
-                Task::none()
+                return Task::none();
             }
-            DiffNav::CopyPicked => match tab.viewer.selected_text() {
-                Some(text) => iced::clipboard::write(text),
-                None => Task::none(),
-            },
+            DiffNav::CopyPicked => {
+                return match tab.viewer.selected_text() {
+                    Some(text) => iced::clipboard::write(text),
+                    None => Task::none(),
+                };
+            }
             DiffNav::PickAll => {
                 tab.viewer.select_all();
-                Task::none()
+                return Task::none();
             }
             DiffNav::ToggleSide => {
                 tab.viewer.side_by_side = !tab.viewer.side_by_side;
                 tab.viewer.selection = None;
-                tab.viewer.scroll_to_change()
-            }
-            DiffNav::ToggleCompare => {
-                let Some(index) = tab.viewer.index else {
-                    return Task::none();
-                };
-                if let Some(entry) = tab.viewer.entries.get_mut(index) {
-                    entry.source = match entry.source.clone() {
-                        crate::git::Source::Commit(rev) => crate::git::Source::Tree(rev),
-                        crate::git::Source::Tree(rev) => crate::git::Source::Commit(rev),
-                        other => other,
-                    };
-                }
-                tab.viewer.open(&repo, index, crate::git_panel::Land::First)
+                return tab.viewer.scroll_to_change();
             }
             DiffNav::OpenFile => {
-                let Some(entry) = tab.viewer.current() else {
-                    return Task::none();
+                return match disk.filter(|f| f.is_file()) {
+                    Some(f) => self.activate(f),
+                    None => {
+                        self.set_status(t!("git.file_gone"), true);
+                        Task::none()
+                    }
                 };
-                let file = repo.join(&entry.change.path);
-                if !file.is_file() {
-                    self.set_status(t!("git.file_gone"), true);
-                    return Task::none();
-                }
-                self.activate(file)
             }
             DiffNav::StageBlock(_) | DiffNav::StageSelection => {
                 let block = match nav {
@@ -7902,50 +6739,41 @@ impl SimpleEditApp {
                 let Some((patch, reverse)) = tab.viewer.index_patch(block) else {
                     return Task::none();
                 };
-                Task::perform(
-                    async move { crate::git::apply_patch(&repo, &patch, reverse).await },
-                    Message::DiffApplied,
-                )
+                DiffAction::ApplyToIndex { patch, reverse }
+            }
+            DiffNav::Apply(block) => {
+                // What the file holds is kept: Ctrl+Z in the diff brings it back.
+                if let Some(disk) = disk {
+                    self.remember_file(disk);
+                }
+                DiffAction::Rollback { block }
             }
             DiffNav::ToggleBlanks => {
                 tab.viewer.ignore_blanks = !tab.viewer.ignore_blanks;
-                tab.viewer.reopen(&repo)
+                DiffAction::Options {
+                    ignore_blanks: tab.viewer.ignore_blanks,
+                    context: tab.viewer.context,
+                }
             }
             DiffNav::CycleContext => {
                 tab.viewer.cycle_context();
-                tab.viewer.reopen(&repo)
+                DiffAction::Options {
+                    ignore_blanks: tab.viewer.ignore_blanks,
+                    context: tab.viewer.context,
+                }
             }
-            DiffNav::Apply(block) => {
-                let (Some(entry), Some(diff)) = (
-                    tab.viewer.current().cloned(),
-                    tab.viewer.file_diff().cloned(),
-                ) else {
-                    return Task::none();
-                };
-                self.remember_file(repo.join(&entry.change.path));
-                Task::perform(
-                    async move {
-                        crate::git::rollback_block(&repo, &entry.change.path, &diff, block).await
-                    },
-                    Message::DiffApplied,
-                )
-            }
-        }
-    }
-
-    /// Opens a terminal in the project of the current file (or the home folder).
-    fn new_terminal(&mut self) {
-        let cwd = self
-            .current_file
-            .as_deref()
-            .filter(|p| !is_untitled(p))
-            .and_then(crate::definition::project_root)
-            .filter(|p| p.is_dir())
-            .or_else(dirs::home_dir)
-            .unwrap_or_else(|| PathBuf::from("/"));
-        if let Err(error) = self.terminal.add(&cwd, &t!("terminal.local")) {
-            self.set_status(format!("{}: {error}", t!("status.error")), true);
-        }
+            DiffNav::ToggleCompare => DiffAction::ToggleCompare,
+        };
+        crate::plugins::host::notify(
+            &plugin,
+            simpleedit_plugin::protocol::methods::DIFF_ACTION,
+            simpleedit_plugin::protocol::DiffActionParams {
+                tab: tab_id,
+                file,
+                action,
+            },
+        );
+        Task::none()
     }
 
     /// Closes every tab but `keep` (none: all of them), asking once first if
@@ -8022,10 +6850,29 @@ impl SimpleEditApp {
         self.file_cache.remove(&path);
         self.undo_cache.remove(&path);
         self.large.remove(&path);
-        self.diff_tabs.remove(&path);
-        self.merge_tabs.remove(&path);
-        self.db_tabs.remove(&path);
-        self.api_tabs.remove(&path);
+        // A diff or a conflict of a plugin: it hears the tab is gone.
+        let owner = self
+            .diff_tabs
+            .remove(&path)
+            .and_then(|t| t.owner.map(|(plugin, tab, _)| (plugin, tab)))
+            .or_else(|| self.merge_tabs.remove(&path).and_then(|t| t.owner));
+        if let Some((plugin, tab)) = owner {
+            crate::plugins::host::notify(
+                &plugin,
+                simpleedit_plugin::protocol::methods::TAB_CLOSED,
+                simpleedit_plugin::protocol::PanelParams { panel: tab },
+            );
+        }
+        if let Some(tab) = self.plugins.tabs.remove(&path) {
+            crate::plugins::host::notify(
+                &tab.plugin,
+                simpleedit_plugin::protocol::methods::TAB_CLOSED,
+                simpleedit_plugin::protocol::PanelParams {
+                    panel: tab.tab.clone(),
+                },
+            );
+            self.plugins.views.remove(&(tab.plugin, tab.tab));
+        }
         self.sidebar.remove_path(&path);
         // An untitled file is gone for good once closed; a saved one keeps
         // its bookmarks for the next time it is opened.
@@ -8060,6 +6907,9 @@ impl SimpleEditApp {
         // The session is written by the next tick (in the background), not
         // here: closing many tabs would otherwise write it once per tab.
         self.session_rev = self.rev.wrapping_sub(1);
+        if index.is_some() {
+            self.plugins_file_event(simpleedit_plugin::manifest::Event::FileClosed, &path);
+        }
         if index.is_some() && !is_untitled(&path) && !is_virtual(&path) {
             // The language servers that had it open let go of it.
             let closed = Task::future(crate::lsp::did_close(path)).discard();
@@ -8323,25 +7173,6 @@ impl SimpleEditApp {
         Task::none()
     }
 
-    /// Asks Git how the files of the projects and of the tabs stand.
-    fn refresh_file_states(&self) -> Task<Message> {
-        let mut dirs: Vec<PathBuf> = self.projects.roots.clone();
-        for file in self.sidebar.files() {
-            if let Some(dir) = file
-                .parent()
-                .filter(|_| !is_untitled(file) && !is_virtual(file))
-            {
-                if !dirs.iter().any(|d| dir.starts_with(d)) {
-                    dirs.push(dir.to_path_buf());
-                }
-            }
-        }
-        if dirs.is_empty() {
-            return Task::none();
-        }
-        Task::perform(crate::git::file_states_of(dirs), Message::FileStates)
-    }
-
     /// Scrolls the tree just enough to show the line picked.
     fn scroll_tree_to_selected(&self) -> Task<Message> {
         let Some(index) = self
@@ -8441,8 +7272,21 @@ impl SimpleEditApp {
     }
 
     /// Makes a file just read the active tab.
+    /// Opens the file a place names (a click in the terminal), at its line
+    /// and column.
+    fn open_place(&mut self, at: crate::places::Location) -> Task<Message> {
+        let col = crate::places::byte_col(&at.path, at.line, at.col);
+        self.jump_to(crate::definition::Hit {
+            path: at.path,
+            line: at.line.saturating_sub(1),
+            col: col.saturating_sub(1),
+            len: 0,
+        })
+    }
+
     fn open_loaded(&mut self, loaded: Loaded) {
         let path = loaded.path.clone();
+        self.plugins_file_event(simpleedit_plugin::manifest::Event::FileOpened, &path);
         self.pending_open = None;
         if self.current_file.as_ref() == Some(&path) {
             // Opening the file being edited again: bring it up to date, but
@@ -8625,8 +7469,7 @@ impl SimpleEditApp {
             self.pending_open = None;
             self.stash_current();
             self.load_buffer(path, CachedBuffer::blank());
-            // A diff that was behind may be out of date.
-            self.refresh_diff_tabs()
+            Task::none()
         } else {
             // TabRead parks the current buffer once the read succeeds.
             Task::perform(read_file(path, false), Message::TabRead)
@@ -8948,12 +7791,6 @@ impl SimpleEditApp {
     }
 }
 
-/// What the question before restoring a file from a revision says.
-fn git_get_message(file: &str, rev: &str) -> String {
-    let short = rev.chars().take(8).collect::<String>();
-    t!("git.get_message", file = file, rev = short.as_str()).to_string()
-}
-
 /// The text of the buffer as of a stamp.
 type SharedText = ((u64, u64), std::sync::Arc<String>);
 
@@ -9109,28 +7946,21 @@ impl SimpleEditApp {
         {
             return tab.view(dark);
         }
-        if let Some((path, tab)) = self
+        if let Some(tab) = self
             .current_file
             .as_ref()
-            .and_then(|p| self.db_tabs.get(p).map(|tab| (p, tab)))
+            .and_then(|p| self.plugins.tabs.get(p))
         {
-            return crate::database::view::table(path, tab, dark);
-        }
-        if let Some((path, tab)) = self
-            .current_file
-            .as_ref()
-            .and_then(|p| self.api_tabs.get(p).map(|tab| (p, tab)))
-        {
-            return crate::api::view::tab(path, tab, &self.api, dark);
+            return self.plugin_tab_view(tab, dark);
         }
         if let Some(tab) = self
             .current_file
             .as_ref()
             .and_then(|p| self.diff_tabs.get(p))
         {
-            return crate::git_panel::diff_view::view(
+            return crate::diff_view::view::view(
                 &tab.viewer,
-                &crate::git_panel::diff_view::Nav::tab(),
+                &crate::diff_view::view::Nav::tab(),
                 dark,
                 t!("git.no_diff").to_string(),
             );
@@ -9195,11 +8025,12 @@ impl SimpleEditApp {
             .and_then(Path::parent)
             .map(short_dir)
             .unwrap_or_default();
-        // A copy of a remote file says where it comes from.
+        // A file a plugin brought (a copy of a remote one) says where it
+        // comes from.
         let dir = self
             .current_file
-            .as_deref()
-            .and_then(|p| self.remote_label(p))
+            .as_ref()
+            .and_then(|p| self.plugins.origins.get(p).cloned())
             .unwrap_or(dir);
 
         let on_diff = self.current_file.as_deref().is_some_and(is_virtual);
@@ -9281,7 +8112,6 @@ impl SimpleEditApp {
         let lbl_lint_fix = t!("menu.lint_fix").to_string();
         let lbl_lint_now = t!("menu.lint_check").to_string();
         let has_problems = !self.lint.diagnostics.is_empty();
-        let lint_off = self.lint_group_off();
         let lbl_format_sel = t!("ctx.format_selection").to_string();
         let lbl_format_all = t!("ctx.format_all").to_string();
         let has_fmt_ctx = self
@@ -9303,8 +8133,6 @@ impl SimpleEditApp {
         };
         let (sh_cut, sh_copy, sh_paste) = (clip("X"), clip("C"), clip("V"));
         let bookmark_state = self.bookmark_state();
-        let git_path = self.current_file.clone().filter(|p| git_menu_applies(p));
-        let lbl_git = t!("sidebar.git").to_string();
         let sh_bookmark = self.config.shortcuts.toggle_bookmark.display();
 
         let minimap_width = if self.config.show_minimap {
@@ -9314,40 +8142,22 @@ impl SimpleEditApp {
         };
         let gutter_menu = self.gutter_click;
         let blame_on = self.blame_shown();
-        // A line of the blame that a commit made: its previous version is there.
-        let previous_ok = self.gutter_line.is_some_and(|line| {
-            self.blame
-                .as_ref()
-                .and_then(|b| b.shas.get(line))
-                .is_some_and(|sha| !sha.chars().all(|c| c == '0'))
-        });
+        // The options of the blame are the Git plugin's (it knows how they
+        // are set): each one switches.
         let lbl_previous = t!("git.blame_previous").to_string();
-        let lbl_history = t!("history.show").to_string();
-        let ticked = |on: bool, label: String| format!("{} {label}", if on { "✓" } else { "  " });
-        let blame_opts = &self.blame_options;
-        let mut blame_items = vec![
-            (
-                ticked(blame_opts.ignore_blanks, t!("git.blame_blanks").to_string()),
-                BlameOption::Blanks,
-            ),
-            (
-                ticked(blame_opts.moves_in_file, t!("git.blame_moves").to_string()),
-                BlameOption::MovesInFile,
-            ),
-            (
-                ticked(blame_opts.moves_across, t!("git.blame_across").to_string()),
-                BlameOption::MovesAcross,
-            ),
+        let blame_items = [
+            (t!("git.blame_blanks").to_string(), BlameOption::Blanks),
+            (t!("git.blame_moves").to_string(), BlameOption::MovesInFile),
+            (t!("git.blame_across").to_string(), BlameOption::MovesAcross),
             (t!("git.blame_hide").to_string(), BlameOption::HideLine),
-        ];
-        if !blame_opts.hidden.is_empty() {
-            blame_items.push((
+            (
                 t!("git.blame_show_hidden").to_string(),
                 BlameOption::ShowHidden,
-            ));
-        }
+            ),
+        ];
         let lbl_blame = t!("git.blame").to_string();
         let lbl_blame_close = t!("git.blame_close").to_string();
+        let plugin_menus = self.plugin_menus();
         let menu = crate::pointer_area::context_menu(editor_widget, move || {
             use crate::menu_bar::{disabled_item, item, separator};
             if gutter_menu {
@@ -9361,11 +8171,12 @@ impl SimpleEditApp {
                     .padding(6)
                     .width(Length::Fixed(264.0));
                 if blame_on {
-                    entries = entries.push(if previous_ok {
-                        item(lbl_previous.clone(), None, dark, Message::BlamePrevious)
-                    } else {
-                        disabled_item(lbl_previous.clone(), dark)
-                    });
+                    entries = entries.push(item(
+                        lbl_previous.clone(),
+                        None,
+                        dark,
+                        Message::BlamePrevious,
+                    ));
                     for (label, option) in &blame_items {
                         entries = entries.push(item(
                             label.clone(),
@@ -9419,12 +8230,6 @@ impl SimpleEditApp {
                     Message::RenameSymbol,
                 ),
                 item(
-                    lbl_history.clone(),
-                    None,
-                    dark,
-                    Message::History(HistoryMsg::OpenCurrent),
-                ),
-                item(
                     lbl_select_all.clone(),
                     Some(sh_select_all.clone()),
                     dark,
@@ -9441,27 +8246,26 @@ impl SimpleEditApp {
                 dark,
                 Some(sh_bookmark.clone()),
             ));
-            ctx_items.push(separator(dark));
-            ctx_items.push(match &git_path {
-                Some(path) => item(
-                    lbl_git.clone(),
-                    None,
-                    dark,
-                    Message::GitFileMenu(path.clone()),
-                ),
-                None => disabled_item(lbl_git.clone(), dark),
-            });
-            ctx_items.push(separator(dark));
-            if let Some(group) = lint_off {
-                ctx_items.push(item(
-                    t!("lint.turn_on", name = group.name).to_string(),
-                    None,
-                    dark,
-                    Message::Lint(crate::lint::Setting::Language(group.id, true)),
-                ));
-            } else {
-                ctx_items.push(item(lbl_lint_now.clone(), None, dark, Message::LintNow));
+            let ours: Vec<_> = plugin_menus
+                .iter()
+                .filter(|m| m.menu == simpleedit_plugin::manifest::Menu::Editor)
+                .collect();
+            if !ours.is_empty() {
+                ctx_items.push(separator(dark));
+                for m in ours {
+                    ctx_items.push(item(
+                        m.label.clone(),
+                        None,
+                        dark,
+                        Message::Plugin(crate::plugins::PluginMsg::Run(
+                            m.plugin.clone(),
+                            m.command.clone(),
+                        )),
+                    ));
+                }
             }
+            ctx_items.push(separator(dark));
+            ctx_items.push(item(lbl_lint_now.clone(), None, dark, Message::LintNow));
             ctx_items.push(if has_problems {
                 item(lbl_lint_fix.clone(), None, dark, Message::LintFixAll)
             } else {
@@ -9568,31 +8372,24 @@ impl SimpleEditApp {
 #[path = "app/file_io.rs"]
 mod file_io;
 use file_io::*;
-mod api;
 #[path = "app/bookmark_panel.rs"]
 mod bookmark_panel;
 mod compare;
 #[path = "app/completion.rs"]
 mod completion;
-mod database;
-mod db_tools;
-mod db_tree;
 #[path = "app/everywhere.rs"]
 mod everywhere;
 pub(crate) use completion::Floating;
-pub(crate) use everywhere::Commit;
-pub(crate) use local_history::HistoryMsg;
 #[path = "app/finder.rs"]
 mod finder;
-#[path = "app/git_file.rs"]
-mod git_file;
 #[path = "app/lint.rs"]
 mod lint;
-#[path = "app/local_history.rs"]
-mod local_history;
+#[path = "app/plugin_grid.rs"]
+mod plugin_grid;
+#[path = "app/plugins.rs"]
+mod plugins;
 #[path = "app/project_ops.rs"]
 mod project_ops;
-mod remote_files;
 #[path = "app/results.rs"]
 mod results;
 mod spelling;
@@ -9600,8 +8397,6 @@ mod spelling;
 mod split;
 #[path = "app/tab_groups.rs"]
 mod tab_groups;
-mod table_admin;
-mod tasks;
 #[path = "app/views.rs"]
 mod views;
 pub(crate) use views::resize_edge;
@@ -9622,11 +8417,8 @@ pub fn display_name(path: &Path) -> String {
         let rest = path.to_str().unwrap_or("").trim_start_matches("db://");
         let title = rest.split_once('/').map_or(rest, |(_, t)| t);
         format!("▦ {title}")
-    } else if is_api(path) {
-        // api://3/title
-        let rest = path.to_str().unwrap_or("").trim_start_matches("api://");
-        let title = rest.split_once('/').map_or(rest, |(_, t)| t);
-        format!("⇄ {title}")
+    } else if let Some(title) = crate::plugins::tab_title(path) {
+        title
     } else if is_merge(path) {
         // merge://3/dir/file.rs
         let rest = path.to_str().unwrap_or("").trim_start_matches("merge://");
@@ -9811,10 +8603,6 @@ fn rename_field_id() -> iced::widget::Id {
     iced::widget::Id::new("rename-field")
 }
 
-fn terminal_search_id() -> iced::widget::Id {
-    iced::widget::Id::new("terminal-search")
-}
-
 fn goto_line_id() -> iced::widget::Id {
     iced::widget::Id::new("goto-line")
 }
@@ -9867,43 +8655,6 @@ pub fn splittable(path: &Path) -> bool {
 }
 
 /// A tab that is not a file: an untitled buffer, or a diff.
-/// Whether a Git menu makes sense for this tab: a real file.
-pub fn git_menu_applies(path: &Path) -> bool {
-    !is_virtual(path) && path.is_absolute()
-}
-
-/// What a pointer on a blame line shows of its commit: the hash, who and
-/// when, then the message wrapped to a readable width.
-fn commit_card(line: &crate::git::history::BlameLine) -> Vec<String> {
-    let (name, email) = (line.author.as_str(), line.email.as_str());
-    let date = crate::git_panel::stash::format_time(line.time);
-    let mut card = vec![
-        t!("git.blame_commit", sha = line.sha.as_str()).to_string(),
-        t!("git.blame_author", name = name, email = email).to_string(),
-        t!("git.blame_date", date = date.as_str()).to_string(),
-        String::new(),
-    ];
-    let message: &str = if line.message.is_empty() {
-        &line.summary
-    } else {
-        &line.message
-    };
-    for paragraph in message.lines() {
-        let mut current = String::new();
-        for word in paragraph.split_whitespace() {
-            if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > 72 {
-                card.push(std::mem::take(&mut current));
-            }
-            if !current.is_empty() {
-                current.push(' ');
-            }
-            current.push_str(word);
-        }
-        card.push(current);
-    }
-    card
-}
-
 /// Bounds of the file list's width.
 /// The height the bottom panels start with, and the least they can take.
 pub(crate) const PANEL_HEIGHT: f32 = 340.0;
@@ -9927,36 +8678,13 @@ pub fn display_path(path: &Path) -> String {
 }
 
 /// Whether git tracks a file (it is in a repository and in its index).
-pub(crate) async fn is_tracked(path: &Path) -> bool {
-    let Some(root) = crate::git::repo_root(path).await else {
-        return false;
-    };
-    let Some(rel) = relative_to(&root, path) else {
-        return false;
-    };
-    crate::git::run(&root, &["ls-files", "--error-unmatch", "--", &rel])
-        .await
-        .is_ok()
-}
-
-/// Deletes a file from the disk and, if `from_git` and git tracks it, from
-/// the index too (`git rm`). `true`: it was removed from git as well.
-async fn delete_file(path: PathBuf, from_git: bool, days: u32) -> Result<bool, String> {
-    local_history::record_before_delete(&path, days);
-    if from_git && is_tracked(&path).await {
-        if let Some(root) = crate::git::repo_root(&path).await {
-            if let Some(rel) = relative_to(&root, &path) {
-                crate::git::run(&root, &["rm", "-f", "--", &rel]).await?;
-                return Ok(true);
-            }
-        }
-    }
+/// Deletes a file from the disk (to the trash when there is one).
+async fn delete_file(path: PathBuf) -> Result<(), String> {
     let target = path.clone();
     tokio::task::spawn_blocking(move || crate::fsutil::trash_or_remove(&target))
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(false)
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
 
 pub fn is_untitled(path: &Path) -> bool {
@@ -9967,20 +8695,9 @@ pub fn is_untitled(path: &Path) -> bool {
                 || s.starts_with("merge://")
                 || s.starts_with("rev://")
                 || s.starts_with("db://")
-                || s.starts_with("api://")
+                || s.starts_with("plugin://")
         })
         .unwrap_or(false)
-}
-
-/// `path` relative to `root`, comparing real paths when a link is in the way.
-fn relative_to(root: &Path, path: &Path) -> Option<String> {
-    if let Ok(rel) = path.strip_prefix(root) {
-        return Some(rel.to_string_lossy().into_owned());
-    }
-    let (real, real_root) = (path.canonicalize().ok()?, root.canonicalize().ok()?);
-    real.strip_prefix(real_root)
-        .ok()
-        .map(|rel| rel.to_string_lossy().into_owned())
 }
 
 /// A tab that shows a diff (`diff://N/title`).
@@ -9995,12 +8712,12 @@ pub fn is_merge(path: &Path) -> bool {
 
 /// A tab that is not a file and is never saved or remembered.
 pub fn is_virtual(path: &Path) -> bool {
-    is_diff(path) || is_merge(path) || is_db(path) || is_api(path)
+    is_diff(path) || is_merge(path) || is_db(path) || is_plugin_tab(path)
 }
 
-/// A tab that holds a request to an API (`api://N/title`).
-pub fn is_api(path: &Path) -> bool {
-    path.to_str().is_some_and(|s| s.starts_with("api://"))
+/// A tab of a plugin (`plugin://<plugin>/<tab>/<title>`).
+pub fn is_plugin_tab(path: &Path) -> bool {
+    path.to_str().is_some_and(|s| s.starts_with("plugin://"))
 }
 
 /// A tab that shows a table of a database (`db://N/schema.table`).

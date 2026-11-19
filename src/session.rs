@@ -94,6 +94,10 @@ pub struct Session {
     /// The local copies of files of another machine, to send back on save.
     #[serde(default)]
     pub remote_files: Vec<RemoteSession>,
+    /// The tabs of plugins among the files (their paths): each plugin keeps
+    /// what they hold.
+    #[serde(default)]
+    pub plugin_tabs: Vec<String>,
 }
 
 /// The link of a local copy to the file it came from (over SSH).
@@ -109,9 +113,10 @@ pub struct RemoteSession {
 /// A request of an API tab that was changed and not kept.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiSession {
-    pub request: crate::api::model::Request,
+    /// As the editor kept it before the API plugin (carried over to it).
+    pub request: serde_json::Value,
     /// The request as it was last kept.
-    pub kept: crate::api::model::Request,
+    pub kept: serde_json::Value,
     pub origin: Option<(u64, u64)>,
 }
 
@@ -234,6 +239,7 @@ mod tests {
             untitled_counter: 3,
             api_tabs: vec![],
             remote_files: vec![],
+            plugin_tabs: vec![],
         };
         let back: Session = serde_json::from_str(&session.to_json().unwrap()).unwrap();
         assert_eq!(back.files[0].path(), PathBuf::from("/a/b.txt"));

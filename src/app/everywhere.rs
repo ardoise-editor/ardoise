@@ -25,15 +25,6 @@ const TEXT_AFTER: std::time::Duration = std::time::Duration::from_millis(250);
 /// "All" shows text results when the other groups have fewer lines.
 const FEW: usize = 10;
 
-/// A commit of the Git tab.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Commit {
-    pub hash: String,
-    pub subject: String,
-    pub author: String,
-    pub when: String,
-}
-
 /// A setting that is on or off, listed among the actions.
 struct Setting {
     label: fn() -> String,
@@ -108,7 +99,7 @@ const SETTINGS: &[Setting] = &[
         set: PreferencesMessage::EverywhereTextToggled,
     },
     Setting {
-        label: || t!("prefs.everywhere_git").to_string(),
+        label: || t!("prefs.everywhere_plugins").to_string(),
         get: |c| c.everywhere_git,
         set: PreferencesMessage::EverywhereGitToggled,
     },
@@ -127,11 +118,13 @@ pub enum Row {
     Dir(PathBuf, String),
     Symbol(SymbolHit),
     Action(Entry),
+    /// A command of a plugin: the plugin, the command, its label.
+    PluginCommand(String, String, String),
     Setting(usize),
     Page(PrefsPage),
     Text(TextHit),
-    Branch(String),
-    Commit(Commit),
+    /// Something a plugin offers (a branch, a commit…): the plugin, the item.
+    Found(String, simpleedit_plugin::protocol::SearchItem),
     /// A line that says something (loading, nothing found).
     Note(String),
 }
@@ -180,8 +173,6 @@ pub struct Everywhere {
     text_error: Option<String>,
     text_waiting: bool,
     text_generation: u64,
-    branches: Vec<String>,
-    commits: Vec<Commit>,
     /// An abbreviation being written for an action.
     pub abbreviating: Option<(PaletteCommand, String)>,
 }
@@ -316,7 +307,7 @@ impl SimpleEditApp {
         if self.overlay == ActiveOverlay::Everywhere && self.everywhere.tab == Some(tab) {
             return self.everywhere_non_project();
         }
-        let tab = if tab == Tab::Git && !self.config.everywhere_git {
+        let tab = if tab == Tab::Plugins && !self.config.everywhere_git {
             Tab::All
         } else {
             tab
@@ -330,7 +321,7 @@ impl SimpleEditApp {
         // The last search is there again, selected: typing replaces it.
         Task::batch([
             self.everywhere_load_files(),
-            self.everywhere_load_git(),
+            self.everywhere_load_plugins(),
             self.everywhere_searches(),
             iced::widget::operation::focus(field_id()),
             iced::widget::operation::select_all(field_id()),
@@ -346,7 +337,7 @@ impl SimpleEditApp {
         self.everywhere.filter_open = false;
         self.everywhere_refresh();
         Task::batch([
-            self.everywhere_load_git(),
+            self.everywhere_load_plugins(),
             self.everywhere_searches(),
             iced::widget::operation::focus(field_id()),
         ])
@@ -434,57 +425,12 @@ impl SimpleEditApp {
         self.everywhere_searches()
     }
 
-    /// The branches and the last commits, for the Git tab.
-    fn everywhere_load_git(&mut self) -> Task<Message> {
-        if self.everywhere_tab() != Tab::Git {
-            return Task::none();
+    /// The Plugins tab opened: the plugins may give their items again.
+    fn everywhere_load_plugins(&mut self) -> Task<Message> {
+        if self.everywhere_tab() == Tab::Plugins {
+            crate::plugins::host::notify_all(simpleedit_plugin::protocol::methods::SEARCH_OPENED);
         }
-        let Some(repo) = self.git.repo.clone() else {
-            return Task::none();
-        };
-        Task::perform(
-            async move {
-                let branches =
-                    crate::git::run(&repo, &["branch", "-a", "--format=%(refname:short)"])
-                        .await
-                        .unwrap_or_default()
-                        .lines()
-                        .map(str::to_string)
-                        .filter(|b| !b.is_empty() && !b.ends_with("/HEAD"))
-                        .collect::<Vec<_>>();
-                let commits = crate::git::run(
-                    &repo,
-                    &[
-                        "log",
-                        "--all",
-                        "-n",
-                        "2000",
-                        "--format=%H%x1f%s%x1f%an%x1f%ar",
-                    ],
-                )
-                .await
-                .unwrap_or_default()
-                .lines()
-                .filter_map(|l| {
-                    let mut f = l.split('\u{1f}');
-                    Some(Commit {
-                        hash: f.next()?.to_string(),
-                        subject: f.next()?.to_string(),
-                        author: f.next()?.to_string(),
-                        when: f.next()?.to_string(),
-                    })
-                })
-                .collect::<Vec<_>>();
-                (branches, commits)
-            },
-            |(branches, commits)| Message::EverywhereGit(branches, commits),
-        )
-    }
-
-    pub(super) fn everywhere_git(&mut self, branches: Vec<String>, commits: Vec<Commit>) {
-        self.everywhere.branches = branches;
-        self.everywhere.commits = commits;
-        self.everywhere_refresh();
+        Task::none()
     }
 
     /// The servers to ask for names: for each project, one file of each
@@ -868,6 +814,14 @@ impl SimpleEditApp {
                     .map(|s| (s, Row::Action(e)))
             })
             .collect();
+        scored.extend(
+            self.plugin_commands()
+                .into_iter()
+                .filter_map(|(plugin, command, label)| {
+                    ew::action_score(q, &label, &[], &[])
+                        .map(|s| (s, Row::PluginCommand(plugin, command, label)))
+                }),
+        );
         if !q.is_empty() {
             scored.extend(SETTINGS.iter().enumerate().filter_map(|(i, s)| {
                 ew::action_score(q, &(s.label)(), &[], &[])
@@ -890,29 +844,21 @@ impl SimpleEditApp {
             .collect()
     }
 
-    fn everywhere_git_rows(&self, query: &str, limit: usize) -> Vec<Row> {
+    fn everywhere_plugin_rows(&self, query: &str, limit: usize) -> Vec<Row> {
         let q = query.trim().to_lowercase();
-        let mut rows: Vec<Row> = self
-            .everywhere
-            .branches
+        self.plugins
+            .search_items
             .iter()
-            .filter(|b| q.is_empty() || crate::finder::score(&q, b).is_some())
-            .map(|b| Row::Branch(b.clone()))
-            .collect();
-        rows.extend(
-            self.everywhere
-                .commits
-                .iter()
-                .filter(|c| {
-                    q.is_empty()
-                        || c.hash.starts_with(&q)
-                        || c.subject.to_lowercase().contains(&q)
-                        || c.author.to_lowercase().contains(&q)
-                })
-                .map(|c| Row::Commit(c.clone())),
-        );
-        rows.truncate(limit);
-        rows
+            .flat_map(|(plugin, items)| items.iter().map(move |item| (plugin, item)))
+            .filter(|(_, item)| {
+                q.is_empty()
+                    || crate::finder::score(&q, &item.label).is_some()
+                    || item.label.to_lowercase().contains(&q)
+                    || item.detail.to_lowercase().contains(&q)
+            })
+            .take(limit)
+            .map(|(plugin, item)| Row::Found(plugin.clone(), item.clone()))
+            .collect()
     }
 
     /// Builds the lines of the tab for the query, and selects the first one
@@ -989,7 +935,7 @@ impl SimpleEditApp {
                     rows.push(Row::Note(e.clone()));
                 }
             }
-            Tab::Git => rows = self.everywhere_git_rows(&query, MOST),
+            Tab::Plugins => rows = self.everywhere_plugin_rows(&query, MOST),
         }
         let looks_up_names =
             matches!(tab, Tab::All | Tab::Classes | Tab::Symbols) && !query.is_empty();
@@ -1136,6 +1082,12 @@ impl SimpleEditApp {
                 self.overlay = ActiveOverlay::None;
                 self.handle(entry.command.message())
             }
+            Row::PluginCommand(plugin, command, _) => {
+                self.overlay = ActiveOverlay::None;
+                self.handle(Message::Plugin(crate::plugins::PluginMsg::Run(
+                    plugin, command,
+                )))
+            }
             // A setting is turned on or off where it is: the list stays.
             Row::Setting(i) => {
                 let setting = &SETTINGS[i];
@@ -1151,39 +1103,14 @@ impl SimpleEditApp {
                 self.show_preferences = true;
                 self.handle(Message::Preferences(PreferencesMessage::PageSelected(page)))
             }
-            Row::Branch(name) => {
+            Row::Found(plugin, item) => {
                 self.overlay = ActiveOverlay::None;
-                // A remote branch is followed by a local one of its name.
-                let local = name
-                    .split_once('/')
-                    .filter(|_| {
-                        !self
-                            .everywhere
-                            .branches
-                            .iter()
-                            .any(|b| *b == name && !b.contains('/'))
-                    })
-                    .map_or(name.clone(), |(remote, rest)| {
-                        if self.everywhere.branches.iter().any(|b| b == rest) || remote.is_empty() {
-                            rest.to_string()
-                        } else {
-                            name.clone()
-                        }
-                    });
-                self.git.switch_branch(local, false)
-            }
-            Row::Commit(commit) => {
-                self.overlay = ActiveOverlay::None;
-                use crate::git_panel::GitMsg;
-                let mut tasks = Vec::new();
-                if !self.git.open {
-                    tasks.push(self.handle(Message::ToggleGit));
-                }
-                tasks
-                    .push(self.handle(Message::Git(GitMsg::SelectTab(crate::git_panel::Tab::Log))));
-                tasks.push(self.handle(Message::Git(GitMsg::LogSearch(commit.hash.clone()))));
-                tasks.push(self.handle(Message::Git(GitMsg::LogSearchRun)));
-                Task::batch(tasks)
+                crate::plugins::host::notify(
+                    &plugin,
+                    simpleedit_plugin::protocol::methods::SEARCH_PICKED,
+                    simpleedit_plugin::protocol::SearchPickedParams { id: item.id },
+                );
+                Task::none()
             }
         }
     }
@@ -1282,7 +1209,7 @@ impl SimpleEditApp {
     /// Whether the results can go to the list of "find in files" (not the
     /// actions, nor Git).
     fn everywhere_exportable(&self) -> bool {
-        !matches!(self.everywhere_tab(), Tab::Actions | Tab::Git)
+        !matches!(self.everywhere_tab(), Tab::Actions | Tab::Plugins)
             && self
                 .everywhere
                 .rows
@@ -1513,6 +1440,13 @@ impl SimpleEditApp {
                 }
                 r.into()
             }
+            Row::PluginCommand(_, _, label) => row![
+                glyph('\u{eb2c}', (0x9a, 0xa0, 0xad)),
+                text(label.clone()).size(13).color(p.text)
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into(),
             Row::Setting(i) => {
                 let setting = &SETTINGS[*i];
                 let on = (setting.get)(&self.config);
@@ -1575,21 +1509,14 @@ impl SimpleEditApp {
                 .align_y(Alignment::Center)
                 .into()
             }
-            Row::Branch(branch) => {
-                row![glyph('\u{e725}', (0xf5, 0x4d, 0x27)), name(branch.clone())]
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .into()
-            }
-            Row::Commit(commit) => row![
-                glyph('\u{eafc}', (0x9a, 0xa0, 0xad)),
-                text(commit.hash.chars().take(8).collect::<String>())
-                    .size(12)
-                    .font(se_theme::MONO)
-                    .color(p.accent),
-                name(commit.subject.clone()),
+            Row::Found(_, item) => row![
+                glyph(
+                    item.icon.chars().next().unwrap_or('\u{f1e6}'),
+                    (0xf5, 0x4d, 0x27)
+                ),
+                name(item.label.clone()),
                 Space::new().width(Length::Fill),
-                muted(format!("{} · {}", commit.author, commit.when)),
+                muted(item.detail.clone()),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
@@ -1680,7 +1607,7 @@ impl SimpleEditApp {
             Tab::All | Tab::Files | Tab::Classes | Tab::Symbols | Tab::Text
         );
         let mut header = tabs.push(Space::new().width(Length::Fill));
-        if current != Tab::Actions && current != Tab::Git {
+        if current != Tab::Actions && current != Tab::Plugins {
             header = header.push(
                 iced::widget::checkbox(self.everywhere.non_project)
                     .label(t!("everywhere.non_project").to_string())
@@ -1877,7 +1804,7 @@ fn tab_label(tab: Tab) -> String {
         Tab::Symbols => t!("everywhere.tab_symbols"),
         Tab::Actions => t!("everywhere.tab_actions"),
         Tab::Text => t!("everywhere.tab_text"),
-        Tab::Git => t!("everywhere.tab_git"),
+        Tab::Plugins => t!("everywhere.tab_plugins"),
     }
     .to_string()
 }
@@ -1891,7 +1818,7 @@ fn placeholder_of(tab: Tab) -> String {
         Tab::Symbols => t!("everywhere.placeholder_symbols"),
         Tab::Actions => t!("everywhere.placeholder_actions"),
         Tab::Text => t!("everywhere.placeholder_text"),
-        Tab::Git => t!("everywhere.placeholder_git"),
+        Tab::Plugins => t!("everywhere.placeholder_plugins"),
     }
     .to_string()
 }
@@ -2019,7 +1946,6 @@ mod tests {
             ctrl,
             shift,
             alt,
-            captured: false,
         });
     }
 
@@ -2108,7 +2034,7 @@ mod tests {
         // The Git tab only when turned on.
         app.config.everywhere_git = true;
         key(&mut app, "Tab", false, false, false);
-        assert_eq!(app.everywhere.tab, Some(Tab::Git));
+        assert_eq!(app.everywhere.tab, Some(Tab::Plugins));
         let _ = app.update(Message::EscapePressed);
         assert_eq!(app.overlay, ActiveOverlay::None);
     }
@@ -2339,23 +2265,38 @@ mod tests {
     }
 
     #[test]
-    fn git_branches_and_commits_are_found() {
+    fn what_the_plugins_offer_is_found_and_picked() {
+        use simpleedit_plugin::protocol::SearchItem;
         let mut app = app_on(project().path());
         app.config.everywhere_git = true;
-        let _ = app.update(Message::OpenEverywhere(Tab::Git));
-        let _ = app.update(Message::EverywhereGit(
-            vec!["main".into(), "feature/search".into()],
-            vec![Commit {
-                hash: "abc123".into(),
-                subject: "Search everywhere".into(),
-                author: "me".into(),
-                when: "now".into(),
-            }],
-        ));
+        let _ = app.update(Message::OpenEverywhere(Tab::Plugins));
+        app.plugins.search_items.insert(
+            "simpleedit.git".into(),
+            vec![
+                SearchItem {
+                    id: "branch:feature/search".into(),
+                    label: "feature/search".into(),
+                    ..SearchItem::default()
+                },
+                SearchItem {
+                    id: "commit:abc123".into(),
+                    label: "Search everywhere".into(),
+                    detail: "abc123 · me".into(),
+                    ..SearchItem::default()
+                },
+                SearchItem {
+                    id: "branch:main".into(),
+                    label: "main".into(),
+                    ..SearchItem::default()
+                },
+            ],
+        );
         typed(&mut app, "search");
         let rows = &app.everywhere.rows;
-        assert!(matches!(&rows[0], Row::Branch(b) if b == "feature/search"));
-        assert!(matches!(&rows[1], Row::Commit(c) if c.hash == "abc123"));
+        assert!(
+            matches!(&rows[0], Row::Found(p, i) if p == "simpleedit.git" && i.label == "feature/search")
+        );
+        assert!(matches!(&rows[1], Row::Found(_, i) if i.id == "commit:abc123"));
         typed(&mut app, "abc");
         assert_eq!(app.everywhere.rows.len(), 1);
     }

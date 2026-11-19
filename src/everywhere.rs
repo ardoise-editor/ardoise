@@ -13,11 +13,11 @@ pub enum Tab {
     Symbols,
     Actions,
     Text,
-    Git,
+    Plugins,
 }
 
 impl Tab {
-    /// The tabs shown, in order (Git only when turned on).
+    /// The tabs shown, in order (Plugins only when turned on).
     pub fn shown(git: bool) -> Vec<Tab> {
         let mut tabs = vec![
             Tab::All,
@@ -28,7 +28,7 @@ impl Tab {
             Tab::Text,
         ];
         if git {
-            tabs.push(Tab::Git);
+            tabs.push(Tab::Plugins);
         }
         tabs
     }
@@ -307,7 +307,7 @@ mod tests {
     fn tabs_go_round_with_git_only_when_on() {
         assert_eq!(Tab::All.step(1, false), Tab::Classes);
         assert_eq!(Tab::All.step(-1, false), Tab::Text);
-        assert_eq!(Tab::All.step(-1, true), Tab::Git);
+        assert_eq!(Tab::All.step(-1, true), Tab::Plugins);
         assert_eq!(Tab::Text.step(1, false), Tab::All);
     }
 

@@ -559,19 +559,18 @@ pub struct Config {
     pub show_api_panel: bool,
     /// Width of the file list, in pixels (dragged by its right edge).
     pub sidebar_width: f32,
-    /// How `pull` and `merge` are made in the Git panel.
-    pub git_pull_mode: crate::git::PullMode,
-    pub git_merge_mode: crate::git::MergeMode,
-    /// Width of the actions of the Git panel's Branches tab, in pixels.
-    pub git_actions_width: f32,
-    /// Minutes between two fetches in the background (0: never).
+    /// How `pull` and `merge` were made (`rebase`, `no-fast-forward`…) and
+    /// the minutes between two fetches, before Git became the Git plugin:
+    /// carried over to its settings, no longer used.
+    pub git_pull_mode: String,
+    pub git_merge_mode: String,
     pub git_auto_fetch_minutes: u32,
     /// Whether problems are looked for in the files (linters and language servers).
     pub lint_enabled: bool,
     /// Whether they are underlined in the editor.
     pub lint_highlight: bool,
-    /// The languages (groups of `lint::tools`) the user turned the lint on
-    /// for: none to begin with.
+    /// The languages the user turned the lint on for, before the linters
+    /// became the Lint plugin: carried over to its settings, no longer used.
     pub lint_languages: std::collections::BTreeSet<String>,
     /// Which problems "fix them all" fixes: errors only to begin with.
     pub lint_fix_level: crate::lint::Level,
@@ -597,8 +596,17 @@ pub struct Config {
     /// Abbreviations of actions, by action (search everywhere).
     pub action_abbreviations: std::collections::BTreeMap<String, Vec<String>>,
     /// Searches and replacements made in files, latest first (Alt+↓).
-    /// Working days the local history goes back (0: it is off).
+    /// Working days the local history went back before it became the Local
+    /// History plugin (carried over to its settings, no longer used).
     pub local_history_days: u32,
+    /// The tools a user of a version before the plugins relied on were
+    /// worked out (a new install has nothing to carry over). Read as false
+    /// from a file written before the plugins.
+    #[serde(default)]
+    pub plugins_carried: bool,
+    /// The official plugins still to install for them (removed once installed;
+    /// tried again at the next start when the network was missing).
+    pub plugins_to_carry: Vec<String>,
     /// The color of each project, by its folder.
     pub project_colors: std::collections::BTreeMap<String, usize>,
     /// Find in files: the files Git ignores one by one too.
@@ -611,11 +619,11 @@ pub struct Config {
     pub lint_level: crate::lint::Level,
     /// Fixes are applied when a file is saved.
     pub lint_fix_on_save: bool,
-    /// The tools chosen by hand for a language (a group of `lint::tools`):
-    /// none listed means whatever is ready by itself.
+    /// The tools chosen by hand for a language, before the Lint plugin
+    /// (carried over to its settings, no longer used).
     pub lint_tools: std::collections::BTreeMap<String, Vec<String>>,
-    /// The path of a tool chosen by the user (by tool id): it wins over the
-    /// search in the project and the system.
+    /// The paths of tools chosen by the user, before the Lint plugin
+    /// (carried over to its settings, no longer used).
     pub lint_programs: std::collections::BTreeMap<String, String>,
     /// Size of the window when it was last closed or resized.
     pub window_width: f32,
@@ -642,9 +650,8 @@ pub struct Config {
     pub projects_exclude: Vec<String>,
     /// Where scratch files are kept; empty: the default folder.
     pub scratch_dir: String,
-    /// The API client: a file of certificate authorities (PEM) to trust
-    /// besides the system's, a client certificate with its key (PEM) for
-    /// mutual TLS, and a proxy address (empty: the system's).
+    /// What the API client trusted and went through before it became the
+    /// API plugin (carried over to its settings, no longer used).
     pub api_ca_file: String,
     pub api_client_cert: String,
     pub api_proxy: String,
@@ -685,9 +692,8 @@ impl Default for Config {
             show_database_panel: false,
             show_api_panel: false,
             sidebar_width: 208.0,
-            git_pull_mode: crate::git::PullMode::default(),
-            git_merge_mode: crate::git::MergeMode::default(),
-            git_actions_width: crate::git_panel::branches::ACTIONS_DEFAULT,
+            git_pull_mode: "merge".into(),
+            git_merge_mode: "default".into(),
             git_auto_fetch_minutes: 5,
             lint_enabled: true,
             lint_highlight: true,
@@ -703,6 +709,8 @@ impl Default for Config {
             everywhere_git: false,
             action_abbreviations: std::collections::BTreeMap::new(),
             local_history_days: 5,
+            plugins_carried: true,
+            plugins_to_carry: Vec::new(),
             project_colors: std::collections::BTreeMap::new(),
             find_ignored: true,
             find_history: Vec::new(),
@@ -881,7 +889,7 @@ impl Config {
     /// Reads a config, leaving out the settings that fail to parse (a value
     /// from a newer version) rather than all of them. The flag tells if any
     /// were left out.
-    fn parse(s: &str) -> Result<(Config, bool), serde_json::Error> {
+    pub(crate) fn parse(s: &str) -> Result<(Config, bool), serde_json::Error> {
         match serde_json::from_str::<Config>(s) {
             Ok(cfg) => Ok((cfg, false)),
             Err(e) => {

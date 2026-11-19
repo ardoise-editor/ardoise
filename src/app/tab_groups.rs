@@ -124,34 +124,28 @@ pub fn reorder(groups: &[Group], slots: &[Slot], from: usize, to: usize) -> Vec<
     together
 }
 
+/// What the tabs of a plugin are grouped under.
+fn plugin_root(id: &str) -> PathBuf {
+    PathBuf::from(format!("plugin-group://{id}"))
+}
+
+/// The plugin a group of tabs is of.
+fn plugin_of(root: &Path) -> Option<&str> {
+    root.to_str()?.strip_prefix("plugin-group://")
+}
+
 impl SimpleEditApp {
     pub(super) fn tab_groups(&self) -> Vec<Group> {
         groups_by(self.sidebar.files(), |path| self.tab_key(path))
     }
 
-    /// What a tab is grouped under: its project, or for the table of a
-    /// database, that database.
+    /// What a tab is grouped under: its project, or for a tab of a plugin,
+    /// that plugin.
     pub(super) fn tab_key(&self, path: &Path) -> Option<PathBuf> {
-        match self.db_tabs.get(path) {
-            Some(tab) => Some(crate::database::source_root(tab.conn)),
+        match self.plugins.tabs.get(path) {
+            Some(tab) => Some(plugin_root(&tab.plugin)),
             None => project_of(&self.projects.roots, path).cloned(),
         }
-    }
-
-    /// A data source takes a color no other group has, and keeps it.
-    pub(super) fn assign_db_color(&mut self, conn: u64) {
-        let key = crate::database::source_root(conn)
-            .to_string_lossy()
-            .into_owned();
-        if self.config.project_colors.contains_key(&key) {
-            return;
-        }
-        let taken: Vec<usize> = self.config.project_colors.values().copied().collect();
-        let free = (0..COLORS.len())
-            .find(|c| !taken.contains(c))
-            .unwrap_or(conn as usize % COLORS.len());
-        self.config.project_colors.insert(key, free);
-        self.config_dirty = true;
     }
 
     pub(super) fn tab_slots(&self) -> Vec<Slot> {
@@ -244,12 +238,12 @@ impl SimpleEditApp {
         let p = se_theme::palette(dark);
         let folded = self.folded_tabs.contains(&group.project);
         let name = match &group.project {
-            Some(root) => match crate::database::source_id(root) {
+            Some(root) => match plugin_of(root) {
                 Some(id) => self
-                    .db
-                    .connection(id)
-                    .map(crate::database::Connection::label)
-                    .unwrap_or_default(),
+                    .plugins
+                    .get(id)
+                    .map(|p| p.manifest.name.get(&rust_i18n::locale()).to_string())
+                    .unwrap_or_else(|| id.to_string()),
                 None => root
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -301,9 +295,7 @@ impl SimpleEditApp {
             .center_y(height);
         let project = group.project.clone();
         let close_label = match &project {
-            Some(root) if crate::database::source_id(root).is_some() => {
-                t!("db.close_group").to_string()
-            }
+            Some(root) if plugin_of(root).is_some() => t!("tabs.close_plugin").to_string(),
             Some(_) => t!("tabs.close_project").to_string(),
             None => t!("tabs.close_other_files").to_string(),
         };

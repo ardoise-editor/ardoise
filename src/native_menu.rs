@@ -14,7 +14,7 @@ use iced::futures::{SinkExt, Stream};
 use muda::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 use tokio::sync::mpsc;
 
-use crate::app::{HistoryMsg, Message};
+use crate::app::Message;
 use crate::config::Config;
 use crate::menu_bar::BookmarkState;
 use crate::preferences::PreferencesMessage;
@@ -168,16 +168,6 @@ fn file_menu(b: &mut Builder, state: &State) -> Submenu {
         &menu,
         t!("shortcuts.replace_in_files"),
         Message::OpenReplaceInFiles,
-    );
-    b.on(
-        &menu,
-        t!("history.show"),
-        Message::History(HistoryMsg::OpenCurrent),
-    );
-    b.on(
-        &menu,
-        t!("history.put_label"),
-        Message::History(HistoryMsg::AskLabel),
     );
     b.on(&menu, t!("shortcuts.reopen_tab"), Message::ReopenTab);
     separator(&menu);

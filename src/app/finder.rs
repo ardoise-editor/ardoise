@@ -1107,11 +1107,14 @@ impl SimpleEditApp {
             else {
                 continue;
             };
-            self.history_record(&path, &text);
             if !self.put_text(&path, &holder, &text, &new) {
                 continue;
             }
-            self.history_record(&path, &new);
+            self.plugins_file_event_with(
+                simpleedit_plugin::manifest::Event::FileSaved,
+                &path,
+                Some(text.clone()),
+            );
             replaced.count += count;
             replaced.files += 1;
             replaced.done.extend(done);
@@ -1128,8 +1131,11 @@ impl SimpleEditApp {
     /// bookmarks, and kept to be undone.
     fn replace_settle(&mut self, replaced: &mut Replaced, disk: Vec<DiskDone>) {
         for done in disk {
-            self.history_record(&done.path, &done.before);
-            self.history_record(&done.path, &done.after);
+            self.plugins_file_event_with(
+                simpleedit_plugin::manifest::Event::FileSaved,
+                &done.path,
+                Some(done.before.clone()),
+            );
             self.bookmarks.remap(&done.path, &done.before, &done.after);
             replaced.count += done.count;
             replaced.files += 1;

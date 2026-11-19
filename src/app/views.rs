@@ -175,32 +175,23 @@ impl SimpleEditApp {
             | ActiveOverlay::LanguagePicker
             | ActiveOverlay::TextOptions(_)
             | ActiveOverlay::Rename(_)
-            | ActiveOverlay::TaskPicker
             | ActiveOverlay::Compare(..)
             | ActiveOverlay::Spelling(_)
             | ActiveOverlay::SpellLanguages
-            | ActiveOverlay::Remote(_)
-            | ActiveOverlay::Diagram(_)
             | ActiveOverlay::References(_)
             | ActiveOverlay::Shortcuts
-            | ActiveOverlay::Conflicts
             | ActiveOverlay::Everywhere
-            | ActiveOverlay::LocalHistory(_)
-            | ActiveOverlay::HistoryLabel(_)
             | ActiveOverlay::ConfirmClose(_)
             | ActiveOverlay::ConfirmCloseMany(..)
             | ActiveOverlay::ConfirmQuit(_)
             | ActiveOverlay::ConfirmTrust(_)
             | ActiveOverlay::ConfirmScratchDelete(_)
-            | ActiveOverlay::ConfirmGitGet(..)
             | ActiveOverlay::ConfirmFileDelete(..)
             | ActiveOverlay::ProjectName(_)
             | ActiveOverlay::FindInFiles
             | ActiveOverlay::ConfirmFolderDelete(_)
             | ActiveOverlay::ConfirmMove(..)
-            | ActiveOverlay::BranchSwitch(_)
-            | ActiveOverlay::GitFile(_)
-            | ActiveOverlay::GitPick(_)
+            | ActiveOverlay::PluginConfirm(_)
             | ActiveOverlay::ConfirmOverwrite(_) => Space::new().height(0).into(),
         };
 
@@ -312,57 +303,6 @@ impl SimpleEditApp {
             t!("overwrite.confirm").to_string(),
             Message::ConfirmOverwrite,
         )
-    }
-
-    /// The tables of a schema and the foreign keys between them, drawn.
-    pub(super) fn view_diagram<'a>(
-        &self,
-        dark: bool,
-        view: &'a DiagramView,
-    ) -> Element<'a, Message> {
-        let p = se_theme::palette(dark);
-        let ghost = move |active: bool| (se_theme::GhostButton { dark, active }).style();
-        let header = row![
-            text(t!("db.diagram_title", schema = view.schema.as_str()).to_string())
-                .size(13)
-                .font(se_theme::UI_SEMIBOLD)
-                .color(p.text),
-            Space::new().width(Length::Fill),
-            button(text(t!("db.diagram_mermaid").to_string()).size(12.5))
-                .padding([4, 10])
-                .on_press(Message::Db(crate::database::DbMsg::CopyDiagram))
-                .style(ghost(false)),
-            button(text("×").size(17))
-                .padding([4, 8])
-                .on_press(Message::CloseOverlay)
-                .style(ghost(false)),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
-        let drawing = iced::widget::canvas(crate::database::diagram::Drawing {
-            diagram: &view.diagram,
-            dark,
-        })
-        .width(Length::Fixed(view.diagram.width))
-        .height(Length::Fixed(view.diagram.height));
-        container(
-            column![
-                container(header).padding([8, 14]),
-                scrollable(drawing)
-                    .direction(iced::widget::scrollable::Direction::Both {
-                        vertical: Default::default(),
-                        horizontal: Default::default(),
-                    })
-                    .style(se_theme::Scrollbar { dark }.style())
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            ]
-            .spacing(0),
-        )
-        .width(1100)
-        .height(660)
-        .style(se_theme::palette_card(dark))
-        .into()
     }
 
     /// The new name of the symbol under the cursor.
@@ -571,130 +511,6 @@ impl SimpleEditApp {
         ]
         .height(Length::Fixed(self.panel_height))
         .into()
-    }
-
-    /// The terminals: a row of tabs, then the active one.
-    pub(super) fn terminal_panel(&self, dark: bool) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
-        let mut header = row![text(t!("terminal.title").to_string())
-            .size(12)
-            .font(se_theme::UI_SEMIBOLD)
-            .color(p.text)]
-        .spacing(8)
-        .align_y(Alignment::Center);
-        for (index, tab) in self.terminal.tabs.iter().enumerate() {
-            let active = index == self.terminal.active;
-            header = header.push(
-                button(
-                    row![
-                        text(tab.title.as_str()).size(12),
-                        button(text("×").size(13))
-                            .padding([0, 4])
-                            .on_press(Message::CloseTerminal(index))
-                            .style(
-                                (se_theme::GhostButton {
-                                    dark,
-                                    active: false,
-                                })
-                                .style(),
-                            ),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center),
-                )
-                .padding([3, 8])
-                .on_press(Message::SelectTerminal(index))
-                .style((se_theme::GhostButton { dark, active }).style()),
-            );
-        }
-        header = header
-            .push(
-                button(text("+").size(14))
-                    .padding([1, 8])
-                    .on_press(Message::NewTerminal)
-                    .style(
-                        (se_theme::GhostButton {
-                            dark,
-                            active: false,
-                        })
-                        .style(),
-                    ),
-            )
-            .push(Space::new().width(Length::Fill))
-            .push(
-                button(text("—").size(12))
-                    .padding([1, 8])
-                    .on_press(Message::ToggleTerminal)
-                    .style(
-                        (se_theme::GhostButton {
-                            dark,
-                            active: false,
-                        })
-                        .style(),
-                    ),
-            );
-        let body: Element<Message> = match self.terminal.active_session() {
-            Some(session) => crate::terminal::view(
-                session,
-                dark,
-                self.terminal.focused,
-                self.terminal.search.as_deref().unwrap_or(""),
-            ),
-            None => Space::new().into(),
-        };
-        let mut panel = column![resize_edge(dark), container(header).padding([4, 12])];
-        if let Some(query) = &self.terminal.search {
-            panel = panel.push(
-                container(
-                    row![
-                        iced::widget::text_input(&t!("terminal.search"), query)
-                            .id(super::terminal_search_id())
-                            .on_input(Message::TerminalSearchInput)
-                            .on_submit(Message::TerminalSearchNext(true))
-                            .size(12.5)
-                            .padding([3, 8])
-                            .style(se_theme::Field::new(dark).style()),
-                        button(text("↑").size(13))
-                            .padding([1, 8])
-                            .on_press(Message::TerminalSearchNext(true))
-                            .style(
-                                (se_theme::GhostButton {
-                                    dark,
-                                    active: false
-                                })
-                                .style()
-                            ),
-                        button(text("↓").size(13))
-                            .padding([1, 8])
-                            .on_press(Message::TerminalSearchNext(false))
-                            .style(
-                                (se_theme::GhostButton {
-                                    dark,
-                                    active: false
-                                })
-                                .style()
-                            ),
-                        button(text("×").size(13))
-                            .padding([1, 8])
-                            .on_press(Message::TerminalSearchToggle)
-                            .style(
-                                (se_theme::GhostButton {
-                                    dark,
-                                    active: false
-                                })
-                                .style()
-                            ),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center),
-                )
-                .padding([2, 12]),
-            );
-        }
-        panel
-            .push(container(body).width(Length::Fill).height(Length::Fill))
-            .height(Length::Fixed(self.panel_height))
-            .into()
     }
 
     /// Where a name is used, as a compact list under the top edge: file and
@@ -1118,60 +934,27 @@ impl SimpleEditApp {
             })
             .collect();
 
-        // The requests changed and not kept, without their credentials.
-        let bare = |request: &crate::api::model::Request| {
-            let mut request = request.clone();
-            for value in [
-                &mut request.auth.token,
-                &mut request.auth.password,
-                &mut request.auth.key_value,
-            ] {
-                if !value.contains("{{") {
-                    value.clear();
-                }
-            }
-            request
-        };
-        let mut api_tabs: Vec<(&PathBuf, crate::session::ApiSession)> = self
-            .api_tabs
+        // The tabs of plugins, in the order of the tabs.
+        let plugin_tabs: Vec<String> = self
+            .sidebar
+            .files()
             .iter()
-            .filter(|(_, tab)| tab.changed())
-            .map(|(path, tab)| {
-                (
-                    path,
-                    crate::session::ApiSession {
-                        request: bare(&tab.request),
-                        kept: bare(&tab.kept),
-                        origin: tab.origin,
-                    },
-                )
-            })
+            .filter(|p| self.plugins.tabs.contains_key(*p))
+            .map(|p| p.to_string_lossy().into_owned())
             .collect();
-        api_tabs.sort_by(|a, b| a.0.cmp(b.0));
         Session {
             files,
-            api_tabs: api_tabs.into_iter().map(|(_, s)| s).collect(),
+            plugin_tabs,
+            // The requests of the API are the API plugin's.
+            api_tabs: Vec::new(),
             active_file: self
                 .current_file
                 .as_ref()
                 .filter(|p| !self.is_scratch(p) && !is_virtual(p))
                 .map(|p| p.to_string_lossy().into_owned()),
             untitled_counter: self.untitled_counter,
-            remote_files: {
-                let mut links: Vec<_> = self
-                    .remote_files
-                    .iter()
-                    .filter(|(local, _)| self.sidebar.files().contains(local))
-                    .map(|(local, (file, date))| crate::session::RemoteSession {
-                        local: local.to_string_lossy().into_owned(),
-                        host: file.host.clone(),
-                        path: file.path.clone(),
-                        date: *date,
-                    })
-                    .collect();
-                links.sort_by(|a, b| a.local.cmp(&b.local));
-                links
-            },
+            // The links of the copies of remote files are the plugin's now.
+            remote_files: Vec::new(),
         }
     }
 
@@ -1293,34 +1076,50 @@ impl SimpleEditApp {
             self.file_cache.insert(path, buffer);
         }
 
-        // A copy of a remote file keeps going back to its machine on save.
-        for link in session.remote_files {
-            self.remote_files.insert(
-                PathBuf::from(link.local),
-                (
-                    crate::remote::RemoteFile {
-                        host: link.host,
-                        path: link.path,
-                    },
-                    link.date,
-                ),
-            );
+        // The tabs of plugins come back; each asks its plugin when shown.
+        for path in &session.plugin_tabs {
+            let path = PathBuf::from(path);
+            if let Some((plugin, tab)) = crate::plugins::tab_of(&path) {
+                if self.plugins.get(&plugin).is_some() {
+                    self.plugins.tabs.insert(
+                        path.clone(),
+                        crate::plugins::PluginTab {
+                            plugin,
+                            tab,
+                            dirty: false,
+                            asked: false,
+                        },
+                    );
+                    self.sidebar.add_file(path);
+                }
+            }
+        }
+
+        // The copies of remote files of before the Remote Files plugin keep
+        // going back to their machine: the plugin is told of them.
+        if self.session_owner {
+            crate::plugins::migrate::carry_remote(&self.config.remote_hosts, &session.remote_files);
         }
 
         // The requests that were changed and not kept come back as tabs.
-        for saved in session.api_tabs {
-            self.api.counter += 1;
-            let title = saved.request.title();
-            let title = if title.is_empty() {
-                t!("api.untitled").to_string()
-            } else {
-                title
-            };
-            let path = PathBuf::from(format!("api://{}/{}", self.api.counter, title));
-            let mut tab = crate::api::ApiTab::new(saved.request, saved.origin);
-            tab.kept = saved.kept;
-            self.api_tabs.insert(path.clone(), tab);
-            self.sidebar.add_file(path);
+        // The API requests changed and not kept, of before the API plugin:
+        // they become its tabs.
+        if self.session_owner && !session.api_tabs.is_empty() {
+            for (tab, title) in crate::plugins::migrate::carry_api_tabs(&session.api_tabs) {
+                if self.plugins.get(crate::plugins::migrate::API).is_some() {
+                    let path = crate::plugins::tab_path(crate::plugins::migrate::API, &tab, &title);
+                    self.plugins.tabs.insert(
+                        path.clone(),
+                        crate::plugins::PluginTab {
+                            plugin: crate::plugins::migrate::API.to_string(),
+                            tab,
+                            dirty: true,
+                            asked: false,
+                        },
+                    );
+                    self.sidebar.add_file(path);
+                }
+            }
         }
 
         if self.sidebar.files().is_empty() {
@@ -1418,6 +1217,24 @@ impl SimpleEditApp {
             .into()
         };
         let shown = |on: bool| if on { p.accent } else { p.text };
+        // The panels of the plugins: their glyph (or letter) as the icon.
+        let plugin_tools = |location| {
+            self.plugin_tools(location)
+                .into_iter()
+                .map(|(icon, open, tip, msg)| {
+                    tool(
+                        text(icon)
+                            .font(iced_fonts::NERD_FONT)
+                            .size(15)
+                            .color(shown(open))
+                            .into(),
+                        open,
+                        tip,
+                        msg,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
         // The panels of the sidebar at the top, the tools that open under the
         // editor at the bottom.
         container(
@@ -1434,29 +1251,11 @@ impl SimpleEditApp {
                     t!("sidebar.projects").to_string(),
                     Message::TogglePanel(crate::sidebar::Panel::Projects),
                 ),
-                tool(
-                    crate::sidebar::icons::database(shown(self.panels.database)),
-                    self.panels.database,
-                    t!("sidebar.database").to_string(),
-                    Message::TogglePanel(crate::sidebar::Panel::Database),
-                ),
-                tool(
-                    crate::sidebar::icons::api(shown(self.panels.api)),
-                    self.panels.api,
-                    t!("sidebar.api").to_string(),
-                    Message::TogglePanel(crate::sidebar::Panel::Api),
-                ),
-                Space::new().height(Length::Fill),
-                tool(
-                    text(">_")
-                        .size(13)
-                        .font(se_theme::MONO)
-                        .color(shown(self.terminal.open))
-                        .into(),
-                    self.terminal.open,
-                    t!("terminal.title").to_string(),
-                    Message::ToggleTerminal,
-                ),
+            ]
+            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Sidebar))
+            .push(Space::new().height(Length::Fill))
+            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Bottom))
+            .extend([
                 tool(
                     crate::scratch::icon(shown(self.scratch.open)),
                     self.scratch.open,
@@ -1469,13 +1268,7 @@ impl SimpleEditApp {
                     t!("bookmarks.title").to_string(),
                     Message::ToggleBookmarkPanel,
                 ),
-                tool(
-                    crate::git_panel::icon::branch(shown(self.git.open)),
-                    self.git.open,
-                    t!("git.title").to_string(),
-                    Message::ToggleGit,
-                ),
-            ]
+            ])
             .extend((!self.results.tabs.is_empty()).then(|| {
                 let open = self.results.open;
                 tool(

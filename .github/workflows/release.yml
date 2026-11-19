@@ -68,13 +68,6 @@ jobs:
           cd target/aarch64-apple-darwin/release
           tar czf simpleedit-${TAG}-aarch64-apple-darwin.tar.gz ${{ env.BINARY_NAME }}
           mv simpleedit-*.tar.gz ${{ github.workspace }}/
-      # The PostgreSQL driver of the Database panel, downloaded by the app on
-      # demand (src/database): named after the tag and the system.
-      - name: Package the database drivers
-        run: |
-          for system in postgres sqlite mysql; do
-            cp target/aarch64-apple-darwin/release/simpleedit-db-$system simpleedit-db-$system-${TAG}-aarch64-apple-darwin
-          done
       - name: Build .app bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -133,7 +126,6 @@ jobs:
           path: |
             simpleedit-*.tar.gz
             simpleedit-*-macos-aarch64.zip
-            simpleedit-db-*
 
   build-linux:
     name: Build Linux (x86_64)
@@ -157,11 +149,6 @@ jobs:
           cd target/release
           tar czf simpleedit-${TAG}-x86_64-linux.tar.gz ${{ env.BINARY_NAME }}
           mv simpleedit-*.tar.gz ${{ github.workspace }}/
-      - name: Package the database drivers
-        run: |
-          for system in postgres sqlite mysql; do
-            cp target/release/simpleedit-db-$system simpleedit-db-$system-${TAG}-x86_64-linux
-          done
       - name: Build DEB
         run: |
           cargo install --locked --version 3.8.0 cargo-deb
@@ -185,7 +172,6 @@ jobs:
           name: simpleedit-linux
           path: |
             simpleedit-*.tar.gz
-            simpleedit-db-*
             *.deb
             *.AppImage
 
@@ -206,22 +192,29 @@ jobs:
           merge-multiple: true
       # The in-app updater and install.sh verify downloads against this file.
       - name: Generate checksums
-        run: sha256sum simpleedit-*.tar.gz simpleedit-*-macos-aarch64.zip simpleedit-db-* *.deb *.AppImage > SHA256SUMS
+        run: sha256sum simpleedit-*.tar.gz simpleedit-*-macos-aarch64.zip *.deb *.AppImage > SHA256SUMS
       # Ed25519 signature over SHA256SUMS; the app embeds the public key and
       # refuses an update whose checksums aren't signed by it.
+      # Two signatures while the key changes: SHA256SUMS.sig with the old key
+      # (UPDATE_SIGNING_KEY), which the versions installed before check, and
+      # SHA256SUMS.sig2 with the new one (UPDATE_SIGNING_KEY_V2), which the
+      # versions since check, and with which the official plugins are signed.
       - name: Sign checksums
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_SIGNING_KEY_V2: ${{ secrets.UPDATE_SIGNING_KEY_V2 }}
         run: |
           # install.sh and the in-app updater both refuse unsigned releases, so
           # publishing one would only break them.
-          if [ -z "$UPDATE_SIGNING_KEY" ]; then
-            echo "::error::UPDATE_SIGNING_KEY is not set — refusing to release without SHA256SUMS.sig."
+          if [ -z "$UPDATE_SIGNING_KEY" ] || [ -z "$UPDATE_SIGNING_KEY_V2" ]; then
+            echo "::error::UPDATE_SIGNING_KEY and UPDATE_SIGNING_KEY_V2 must both be set — refusing to release without SHA256SUMS.sig and SHA256SUMS.sig2."
             exit 1
           fi
           umask 077
           printf '%s\n' "$UPDATE_SIGNING_KEY" > update-key.pem
           openssl pkeyutl -sign -inkey update-key.pem -rawin -in SHA256SUMS -out SHA256SUMS.sig
+          printf '%s\n' "$UPDATE_SIGNING_KEY_V2" > update-key.pem
+          openssl pkeyutl -sign -inkey update-key.pem -rawin -in SHA256SUMS -out SHA256SUMS.sig2
           rm -f update-key.pem
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -229,11 +222,11 @@ jobs:
           files: |
             simpleedit-*.tar.gz
             simpleedit-*-macos-aarch64.zip
-            simpleedit-db-*
             *.deb
             *.AppImage
             SHA256SUMS
             SHA256SUMS.sig
+            SHA256SUMS.sig2
           generate_release_notes: true
           draft: false
 

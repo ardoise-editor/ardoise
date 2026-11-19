@@ -6,12 +6,18 @@ use sha2::{Digest, Sha256};
 const REPO: &str = "simple-edit-app/simpleedit";
 const RELEASES_API: &str =
     "https://api.github.com/repos/simple-edit-app/simpleedit/releases/latest";
-/// Public half of the release signing key (Ed25519). `SHA256SUMS` must carry
-/// a valid signature from it, so a tampered release can't vouch for itself.
+/// Public half of the signing key (Ed25519) of the releases and of the
+/// official plugins. `SHA256SUMS` must carry a valid signature from it, so a
+/// tampered release can't vouch for itself. The releases are signed with it
+/// in `SHA256SUMS.sig2` (`SHA256SUMS.sig` keeps the signature of the key it
+/// replaced, for the versions installed before).
 const SIGNING_PUBLIC_KEY: [u8; 32] = [
-    0x99, 0x9a, 0xef, 0x9a, 0x8e, 0x99, 0xcd, 0x86, 0xd9, 0x0f, 0x6e, 0x6e, 0xed, 0xd3, 0x2c, 0xc7,
-    0xa7, 0x66, 0xf4, 0x77, 0x32, 0xad, 0x6f, 0xe2, 0x8e, 0x0c, 0x15, 0x6f, 0x8b, 0xe3, 0x7a, 0x4b,
+    0x8f, 0x2e, 0xe9, 0x26, 0xd5, 0x2e, 0x4c, 0xbf, 0x76, 0x19, 0x08, 0x6c, 0xb0, 0x6a, 0x7d, 0xc1,
+    0xad, 0x69, 0x9c, 0xde, 0xda, 0x7c, 0xe8, 0xe4, 0x82, 0x34, 0x55, 0xe2, 0x7c, 0x52, 0x78, 0xaf,
 ];
+
+/// The signature of `SHA256SUMS` this key made, in a release of the app.
+pub(crate) const RELEASE_SIGNATURE: &str = "SHA256SUMS.sig2";
 /// Refuse absurdly large downloads.
 const MAX_DOWNLOAD: usize = 300 * 1024 * 1024;
 
@@ -37,7 +43,7 @@ fn is_newer(latest: &str, current: &str) -> bool {
     }
 }
 
-fn client(timeout: Duration) -> Result<reqwest::Client, String> {
+pub(crate) fn client(timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("simpleedit-updater")
         .timeout(timeout)
@@ -48,7 +54,11 @@ fn client(timeout: Duration) -> Result<reqwest::Client, String> {
 /// Fetches `url` and reads at most `max` bytes of the body: a declared length
 /// over the cap is refused up front, and an undeclared one is cut off as soon
 /// as it grows past it, rather than buffering whatever the server sends.
-async fn fetch_limited(client: &reqwest::Client, url: &str, max: usize) -> Result<Vec<u8>, String> {
+pub(crate) async fn fetch_limited(
+    client: &reqwest::Client,
+    url: &str,
+    max: usize,
+) -> Result<Vec<u8>, String> {
     let mut response = client
         .get(url)
         .send()
@@ -167,14 +177,14 @@ fn install_supported() -> Result<(), String> {
 
 /// The hash `SHA256SUMS` lists for `asset` (`<hash>  <name>` or
 /// `<hash> *<name>` lines, as `sha256sum` writes them).
-fn expected_hash(sums: &str, asset: &str) -> Option<String> {
+pub(crate) fn expected_hash(sums: &str, asset: &str) -> Option<String> {
     sums.lines().find_map(|line| {
         let (hash, name) = line.split_once(char::is_whitespace)?;
         (name.trim().trim_start_matches('*') == asset).then(|| hash.to_ascii_lowercase())
     })
 }
 
-fn verify_signature(message: &[u8], signature: &[u8]) -> bool {
+pub(crate) fn verify_signature(message: &[u8], signature: &[u8]) -> bool {
     use ed25519_dalek::{Signature, VerifyingKey};
     let (Ok(key), Ok(sig)) = (
         VerifyingKey::from_bytes(&SIGNING_PUBLIC_KEY),
@@ -185,7 +195,7 @@ fn verify_signature(message: &[u8], signature: &[u8]) -> bool {
     key.verify_strict(message, &sig).is_ok()
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -193,7 +203,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Largest `SHA256SUMS` or signature worth reading.
-const MAX_SUMS: usize = 64 * 1024;
+pub(crate) const MAX_SUMS: usize = 64 * 1024;
 
 /// Downloads `asset` of the release `version` and checks it against the
 /// release's `SHA256SUMS`, itself checked against the signing key.
@@ -210,7 +220,7 @@ pub async fn download_verified(
     let client = client(timeout)?;
 
     let sums = fetch_limited(&client, &format!("{base}/SHA256SUMS"), MAX_SUMS).await?;
-    let sig = fetch_limited(&client, &format!("{base}/SHA256SUMS.sig"), MAX_SUMS).await?;
+    let sig = fetch_limited(&client, &format!("{base}/{RELEASE_SIGNATURE}"), MAX_SUMS).await?;
     if !verify_signature(&sums, &sig) {
         return Err(t!("update.err_signature").to_string());
     }
@@ -446,7 +456,7 @@ mod tests {
     fn signature_verifies_only_for_the_signed_message() {
         let sig: Vec<u8> = (0..128)
             .step_by(2)
-            .map(|i| u8::from_str_radix(&"4263c802c9311a3da734c16666f6f474d81360c9bbe75cdcee330b4bfd58c694931d9933178d6e899f3e7c27d90e7e2a5ddf85dc2cdebcc1fea68c7426af9405"[i..i + 2], 16).unwrap())
+            .map(|i| u8::from_str_radix(&"2d0fbae60fb8760a5abc7276a9141f1f2649f936391cc30e26a50972f7c34587f550ea19e3a3a6e68224c5b6794120f235776e2c2214d0aa3e754e8c46ca0f04"[i..i + 2], 16).unwrap())
             .collect();
         assert!(verify_signature(b"simpleedit-test-message", &sig));
         assert!(!verify_signature(b"simpleedit-test-messagE", &sig));

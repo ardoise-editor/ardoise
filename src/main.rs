@@ -10,15 +10,15 @@ fn load_icon() -> Option<window::Icon> {
     window::icon::from_rgba(img.into_raw(), w, h).ok()
 }
 
-mod api;
 mod app;
 mod bookmarks;
 mod changelog;
 mod code_editor;
 mod completion;
 mod config;
-mod database;
 mod definition;
+mod diff;
+mod diff_view;
 mod editor;
 mod encoding;
 mod everywhere;
@@ -29,34 +29,28 @@ mod floating;
 mod folding;
 mod formatter;
 mod fsutil;
-mod git;
-mod git_panel;
 mod history;
 mod i18n;
 mod ipc;
 mod lint;
-mod local_history;
 mod lsp;
 mod lsp_install;
 mod menu_bar;
 #[cfg(all(target_os = "macos", not(test)))]
 mod native_menu;
 mod palette;
+mod places;
+mod plugins;
 mod pointer_area;
 mod preferences;
 mod preview;
 mod projects;
-mod remote;
 mod scratch;
 mod search;
 mod session;
 mod sidebar;
-mod spell;
-mod ssh_trust;
 mod tab_strip;
 mod tabs;
-mod tasks;
-mod terminal;
 mod text_ops;
 mod theme;
 mod trust;

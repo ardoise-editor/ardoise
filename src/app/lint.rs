@@ -2,7 +2,12 @@
 //! opens on a problem and the fixes.
 
 use super::*;
-use crate::lint::{self, run, tools, Diagnostic, Fix};
+use crate::lint::{self, Diagnostic, Fix};
+use simpleedit_plugin::lint::{FixParams, FixResult, LintParams, LintResult};
+use simpleedit_plugin::protocol::methods;
+
+/// How long a linter may take to answer.
+const LINT_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 use iced::widget::{column, mouse_area};
 
 /// What a run is for: the file, and the text it read (the content's id and
@@ -73,27 +78,29 @@ impl SimpleEditApp {
         ))
     }
 
-    /// Whether the user turned the lint on for the language of a file.
-    pub(super) fn lint_on_for(&self, path: &Path) -> bool {
-        tools::group_of(&ext_of(path)).is_some_and(|g| self.config.lint_languages.contains(g.id))
-    }
-
-    /// The group of the file in the editor, if the lint is off for it: what
-    /// the menu offers to turn on.
-    pub(super) fn lint_group_off(&self) -> Option<&'static tools::Group> {
-        let path = self.lint_key()?.0;
-        tools::group_of(&ext_of(&path)).filter(|g| !self.config.lint_languages.contains(g.id))
-    }
-
-    fn lint_plan(&self, path: &Path) -> (tools::Plan, String) {
+    /// The plugins whose linter looks at this file.
+    fn linters_for(&self, path: &Path) -> Vec<String> {
         let ext = ext_of(path);
-        let manual = tools::group_of(&ext)
-            .and_then(|g| self.config.lint_tools.get(g.id))
-            .map(Vec::as_slice);
-        (
-            tools::plan(path, &ext, manual, &self.config.lint_programs),
-            ext,
-        )
+        self.plugins
+            .installed
+            .iter()
+            .filter(|p| {
+                p.manifest
+                    .contributes
+                    .linter
+                    .as_ref()
+                    .is_some_and(|l| l.covers(&ext))
+            })
+            .map(|p| p.id().to_string())
+            .collect()
+    }
+
+    /// Whether anything can look at a file: a linter of a plugin, or a
+    /// language server.
+    pub(super) fn lint_on_for(&self, path: &Path) -> bool {
+        !self.linters_for(path).is_empty()
+            || lint::server_ready(&ext_of(path))
+            || self.plugins.published.contains_key(path)
     }
 
     fn clear_lint(&mut self) {
@@ -159,31 +166,48 @@ impl SimpleEditApp {
         self.lint.launched = Some(key.clone());
         self.lint.generation += 1;
         let generation = self.lint.generation;
-        let (plan, ext) = self.lint_plan(&key.0);
-        let text = crate::editor::buffer_text(&self.editor.content);
-        let dirty = self.is_dirty;
-        // The tools that read the disk say nothing of text not saved yet.
-        let (run_now, skipped): (Vec<_>, Vec<_>) = plan
-            .tools
-            .into_iter()
-            .partition(|(tool, _)| tool.stdin || !dirty);
-        let skipped: Vec<String> = skipped.iter().map(|(t, _)| t.name.to_string()).collect();
-        let lsp = plan.lsp;
-        let mut ran: Vec<String> = run_now.iter().map(|(t, _)| t.name.to_string()).collect();
-        if lsp {
-            ran.push(t!("lint.language_server").to_string());
+        let ext = ext_of(&key.0);
+        let mut linters: Vec<(String, String)> = Vec::new();
+        for id in self.linters_for(&key.0) {
+            if self.plugin_ensure(&id) {
+                let name = self.plugins.get(&id).map_or(id.clone(), |p| p.name());
+                linters.push((id, name));
+            }
         }
-        ran.extend(skipped.iter().cloned());
-        let path = key.0.clone();
+        let server = lint::server_ready(&ext);
+        let params = LintParams {
+            path: key.0.clone(),
+            text: crate::editor::buffer_text(&self.editor.content),
+            dirty: self.is_dirty,
+            trusted: crate::trust::is_trusted(&key.0),
+        };
         Task::perform(
             async move {
-                let job = run::Job {
-                    path: path.clone(),
-                    text: text.clone(),
-                };
-                let (mut found, mut failed) = run::all(run_now, job).await;
-                if lsp {
-                    match crate::lsp::diagnostics(&ext, &path, &text).await {
+                let (mut found, mut failed, mut skipped, mut ran) =
+                    (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+                // Without a linter for it, the language server alone.
+                let mut lsp = linters.is_empty();
+                for (id, name) in &linters {
+                    let answer =
+                        crate::plugins::host::request(id, methods::LINT_RUN, &params, LINT_WAIT)
+                            .await
+                            .and_then(|v| {
+                                serde_json::from_value::<LintResult>(v).map_err(|e| e.to_string())
+                            });
+                    match answer {
+                        Ok(r) => {
+                            found.extend(r.diagnostics.into_iter().map(Diagnostic::from));
+                            failed.extend(r.failed);
+                            skipped.extend(r.skipped);
+                            ran.extend(r.ran);
+                            lsp |= r.language_server;
+                        }
+                        Err(e) => failed.push(format!("{name}: {e}")),
+                    }
+                }
+                if lsp && server {
+                    ran.push(t!("lint.language_server").to_string());
+                    match crate::lsp::diagnostics(&ext, &params.path, &params.text).await {
                         Ok(mut list) => found.append(&mut list),
                         Err(e) => failed.push(format!("{ext}: {e}")),
                     }
@@ -215,10 +239,11 @@ impl SimpleEditApp {
                     d
                 }),
         );
-        // What the last task said about this file too, unless a tool already
-        // says it on that line.
+        // What the plugins said about this file too (the output of a task),
+        // unless a tool already says it on that line.
         if let Some(file) = &self.lint.file {
-            for p in self.tasks.problems.get(file).into_iter().flatten() {
+            let published = self.plugins.published_for(file);
+            for p in &published {
                 if !found
                     .iter()
                     .any(|d| d.line == p.line && d.severity == p.severity)
@@ -466,7 +491,9 @@ impl SimpleEditApp {
         self.start_fix(Some(source))
     }
 
-    /// Fixes the problems the settings say (the errors, to begin with).
+    /// Fixes the problems the settings say (the errors, to begin with): the
+    /// linters first, each on what the one before left, then the language
+    /// server.
     fn start_fix(&mut self, source: Option<String>) -> Task<Message> {
         self.lint.hover = None;
         let Some(key) = self
@@ -475,28 +502,51 @@ impl SimpleEditApp {
         else {
             return Task::none();
         };
-        let (mut plan, ext) = self.lint_plan(&key.0);
-        // The tools that read the disk know nothing of text not saved yet:
-        // their positions would land on the wrong text.
-        if self.is_dirty {
-            plan.tools.retain(|(tool, _)| tool.stdin);
-        }
-        let text = crate::editor::buffer_text(&self.editor.content);
-        let path = key.0.clone();
+        let ext = ext_of(&key.0);
+        let linters: Vec<String> = self
+            .linters_for(&key.0)
+            .into_iter()
+            .filter(|id| self.plugin_ensure(id))
+            .collect();
+        let server = lint::server_ready(&ext);
+        let mut params = FixParams {
+            path: key.0.clone(),
+            text: crate::editor::buffer_text(&self.editor.content),
+            dirty: self.is_dirty,
+            trusted: crate::trust::is_trusted(&key.0),
+            level: self.config.lint_fix_level.into(),
+            source,
+        };
         let level = self.config.lint_fix_level;
         self.set_status(t!("lint.fixing"), false);
         Task::perform(
             async move {
-                run::fix(
-                    plan.tools,
-                    plan.lsp,
-                    &ext,
-                    &path,
-                    &text,
-                    level,
-                    source.as_deref(),
-                )
-                .await
+                let mut lsp = linters.is_empty();
+                for id in &linters {
+                    let answer =
+                        crate::plugins::host::request(id, methods::LINT_FIX, &params, LINT_WAIT)
+                            .await
+                            .and_then(|v| {
+                                serde_json::from_value::<FixResult>(v).map_err(|e| e.to_string())
+                            });
+                    if let Ok(r) = answer {
+                        if let Some(text) = r.text {
+                            params.text = text;
+                        }
+                        lsp |= r.language_server;
+                    }
+                }
+                if lsp && server {
+                    params.text = lint::lsp_fix(
+                        &ext,
+                        &params.path,
+                        params.text,
+                        level,
+                        params.source.as_deref(),
+                    )
+                    .await;
+                }
+                params.text
             },
             move |fixed| Message::LintFixedAll(key.clone(), fixed),
         )
@@ -688,11 +738,25 @@ mod tests {
         path
     }
 
+    /// A plugin whose linter looks at JSON (it is not started: its answers
+    /// are given by hand).
+    pub fn with_json_linter(app: &mut SimpleEditApp) {
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "test.linter", "name": "Test", "version": "1.0.0", "api": 1,
+                "command": ["bin/none"], "contributes": {"linter": {"extensions": ["json"]}}}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+    }
+
     fn blank() -> SimpleEditApp {
-        let mut config = Config::default();
-        config.lint_languages.insert("json".to_string());
-        let mut app = SimpleEditApp::blank(config);
+        let mut app = SimpleEditApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
+        with_json_linter(&mut app);
         app
     }
 
@@ -751,16 +815,15 @@ mod tests {
     }
 
     #[test]
-    fn nothing_is_looked_at_until_the_language_is_turned_on() {
+    fn nothing_is_looked_at_without_a_linter_or_a_language_server() {
         let mut app = SimpleEditApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         open_json(&mut app, "{\"a\": }\n");
         assert!(app.lint.launched.is_none() && app.problem_counts().is_none());
-        // The menu offers to turn it on for this language.
-        assert_eq!(app.lint_group_off().map(|g| g.id), Some("json"));
-        let _ = app.update(Message::Lint(lint::Setting::Language("json", true)));
+        // A linter for it is installed: it is looked at.
+        with_json_linter(&mut app);
+        let _ = app.update(Message::LintNow);
         assert!(app.lint.launched.is_some(), "looked at at once");
-        assert!(app.lint_group_off().is_none());
         // A file of a language no linter knows is never looked at.
         let text = PathBuf::from("/s/notes.txt");
         let _ = app.update(Message::TabRead(Ok(Loaded {
@@ -873,15 +936,15 @@ mod tests {
             ),
         );
         assert!(!app.file_marks.has_errors(&path, false));
-        // What Git says comes in as well.
-        let _ = app.update(Message::FileStates(vec![(
+        // What the Git plugin says comes in as well.
+        app.file_marks.set_git(vec![(
             path.clone(),
-            crate::git::FileState::Modified,
+            crate::diff::FileState::Modified,
             false,
-        )]));
+        )]);
         assert_eq!(
             app.file_marks.git(&path, false),
-            Some(crate::git::FileState::Modified)
+            Some(crate::diff::FileState::Modified)
         );
     }
 
@@ -901,6 +964,7 @@ mod tests {
             text_editor::Edit::Insert('x'),
         )));
         let before = crate::editor::buffer_text(&app.editor.content);
+        app.status_is_error = false;
         let _ = app.update(Message::LintApply(0, 0));
         assert_eq!(crate::editor::buffer_text(&app.editor.content), before);
         assert!(app.status_is_error);
@@ -1070,6 +1134,7 @@ mod stale_fix_tests {
     fn the_fixes_of_a_kept_problem_do_not_survive_a_new_look() {
         let mut app = SimpleEditApp::blank(crate::config::Config::default());
         let _ = app.restore_session(crate::session::Session::default());
+        tests::with_json_linter(&mut app);
         let path = std::env::temp_dir().join("se-lint-stale.json");
         std::fs::write(&path, "{}\n").unwrap();
         let _ = app.update(Message::TabRead(Ok(Loaded {
