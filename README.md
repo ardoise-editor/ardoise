@@ -53,7 +53,7 @@ Detects your OS automatically, downloads the latest release, and installs it.
 curl -fsSL https://raw.githubusercontent.com/simple-edit-app/simpleedit/main/uninstall.sh | bash
 ```
 
-Detects how SimpleEdit was installed and removes it.
+Detects how SimpleEdit was installed and removes it, with everything it kept: settings, session (the text of unsaved files), plugins and their data, language servers, and the passwords the plugins saved in the system keychain. A scratch folder you chose yourself is left alone. Close SimpleEdit first. To keep your data for a reinstall, add `--keep-data` (`… | bash -s -- --keep-data`).
 
 ---
 

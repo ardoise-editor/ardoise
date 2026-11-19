@@ -703,6 +703,59 @@ mod tests {
     }
 
     #[test]
+    fn a_plugin_is_uninstalled_with_its_data_only_when_asked() {
+        use crate::app::ActiveOverlay;
+        let mut app = SimpleEditApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        let add = |app: &mut SimpleEditApp, id: &str| {
+            let manifest = simpleedit_plugin::manifest::Manifest::parse(&format!(
+                r#"{{"id": "{id}", "name": "Kept", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
+            ))
+            .unwrap();
+            app.plugins.installed.push(crate::plugins::Installed {
+                manifest,
+                dir: PathBuf::from("/nowhere"),
+                origin: Default::default(),
+            });
+            let data = crate::plugins::store::data_dir_of(id).unwrap();
+            std::fs::write(data.join("settings.json"), "{}").unwrap();
+            data
+        };
+        // The question comes first, the data unticked.
+        let data = add(&mut app, "test.keeps");
+        let _ = app.update(Message::Plugin(PluginMsg::AskUninstall(
+            "test.keeps".into(),
+        )));
+        assert_eq!(
+            app.overlay,
+            ActiveOverlay::ConfirmPluginUninstall("test.keeps".into(), false)
+        );
+        let _ = app.update(Message::Plugin(PluginMsg::Uninstall("test.keeps".into())));
+        assert!(app.plugins.get("test.keeps").is_none());
+        assert!(
+            data.join("settings.json").is_file(),
+            "kept for a later install"
+        );
+        // With its data: the folder goes too.
+        let data = add(&mut app, "test.forgets");
+        let _ = app.update(Message::Plugin(PluginMsg::AskUninstall(
+            "test.forgets".into(),
+        )));
+        let _ = app.update(Message::Plugin(PluginMsg::UninstallDataToggled(true)));
+        assert_eq!(
+            app.overlay,
+            ActiveOverlay::ConfirmPluginUninstall("test.forgets".into(), true)
+        );
+        // It cannot start here: nothing outside of its folder to forget.
+        let _ = app.update(Message::Plugin(PluginMsg::UninstallWithData(
+            "test.forgets".into(),
+        )));
+        assert!(app.plugins.get("test.forgets").is_none());
+        assert!(!data.exists(), "its data deleted");
+        assert!(!app.plugins.busy.contains("test.forgets"));
+    }
+
+    #[test]
     fn the_rows_scroll_to_a_cursor_moved_out_of_view() {
         let rows: Vec<_> = (0..50)
             .map(|i| serde_json::json!({"cells": [{"text": i.to_string()}]}))

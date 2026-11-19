@@ -1174,7 +1174,63 @@ impl SimpleEditApp {
                 }
                 Task::none()
             }
+            PluginMsg::AskUninstall(id) => {
+                self.overlay = ActiveOverlay::ConfirmPluginUninstall(id, false);
+                Task::none()
+            }
+            PluginMsg::UninstallDataToggled(on) => {
+                if let ActiveOverlay::ConfirmPluginUninstall(_, with_data) = &mut self.overlay {
+                    *with_data = on;
+                }
+                Task::none()
+            }
+            PluginMsg::UninstallWithData(id) => {
+                self.overlay = ActiveOverlay::None;
+                if !self.plugins.busy.insert(id.clone()) {
+                    return Task::none();
+                }
+                // Started if it is not: only it knows what it keeps outside
+                // of its folder.
+                if !self.plugin_ensure(&id) {
+                    return self.plugin_update(PluginMsg::DataForgotten(id, Ok(())));
+                }
+                let asked = id.clone();
+                Task::perform(
+                    async move {
+                        host::request(
+                            &asked,
+                            methods::FORGET_DATA,
+                            serde_json::Value::Null,
+                            std::time::Duration::from_secs(30),
+                        )
+                        .await
+                        .map(|_| ())
+                    },
+                    move |r| plugin_msg(PluginMsg::DataForgotten(id.clone(), r)),
+                )
+            }
+            PluginMsg::DataForgotten(id, result) => {
+                self.plugins.busy.remove(&id);
+                let task = self.plugin_update(PluginMsg::Uninstall(id.clone()));
+                if self.plugins.get(&id).is_some() {
+                    // The program could not be removed: its data stays too.
+                    return task;
+                }
+                match (store::remove_data(&id), result) {
+                    (Err(e), _) => {
+                        self.set_status(format!("{}: {e}", t!("status.error")), true);
+                    }
+                    // A plugin that does not know the request keeps nothing
+                    // outside of its folder.
+                    (Ok(()), Err(e)) if !e.contains("-32601") && !e.contains("not found") => {
+                        self.set_status(t!("plugins.data_forget_failed", error = e.as_str()), true);
+                    }
+                    (Ok(()), _) => self.set_status(t!("plugins.data_removed"), false),
+                }
+                task
+            }
             PluginMsg::Uninstall(id) => {
+                self.overlay = ActiveOverlay::None;
                 host::stop(&id);
                 match store::uninstall(&id) {
                     Ok(()) => {

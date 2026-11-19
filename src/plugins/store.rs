@@ -341,6 +341,18 @@ fn uninstall_in(root: &Path, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Deletes what a plugin kept (its settings, its history, its connections):
+/// it is removed with its data.
+pub fn remove_data(id: &str) -> Result<(), String> {
+    if !manifest::valid_id(id) {
+        return Err(t!("plugins.err_id_mismatch").to_string());
+    }
+    let Some(base) = crate::fsutil::data_dir() else {
+        return Ok(());
+    };
+    remove_any(&base.join("simpleedit").join("plugin-data").join(id)).map_err(|e| e.to_string())
+}
+
 /// Removes a file, a link (not what it points to) or a folder.
 fn remove_any(path: &Path) -> std::io::Result<()> {
     match path.symlink_metadata() {

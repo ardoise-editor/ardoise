@@ -146,7 +146,7 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
                         }
                         r.push(small_button(
                             t!("plugins.uninstall").to_string(),
-                            Some(msg(PluginMsg::Uninstall(listed.id.clone()))),
+                            Some(msg(PluginMsg::AskUninstall(listed.id.clone()))),
                             dark,
                             false,
                         ))
@@ -223,7 +223,7 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
                 }
                 control = control.push(small_button(
                     t!("plugins.uninstall").to_string(),
-                    Some(msg(PluginMsg::Uninstall(id.clone()))),
+                    Some(msg(PluginMsg::AskUninstall(id.clone()))),
                     dark,
                     false,
                 ));

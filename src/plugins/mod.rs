@@ -180,6 +180,14 @@ pub enum PluginMsg {
     /// The end of an install: what it was for (an id or a repository).
     Installed(String, Box<Result<Installed, String>>),
     Uninstall(String),
+    /// The question before a plugin is removed: whether its data goes too.
+    AskUninstall(String),
+    UninstallDataToggled(bool),
+    /// Removes the plugin and its data: it is asked first to take its
+    /// passwords out of the keychain.
+    UninstallWithData(String),
+    /// Its answer (an error: the keychain may still hold some).
+    DataForgotten(String, Result<(), String>),
     CheckUpdates,
     /// The newest version of each plugin that has a repository.
     UpdatesChecked(Vec<(String, Result<String, String>)>),

@@ -4364,7 +4364,7 @@ dependencies = [
 
 [[package]]
 name = "simpleedit"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "dirs",
  "ed25519-dalek",
@@ -4398,8 +4398,8 @@ dependencies = [
 
 [[package]]
 name = "simpleedit-plugin"
-version = "0.10.0"
-source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.10.0#a4401640aff448eb718834882b3597fbfc2dcc93"
+version = "0.11.0"
+source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.11.0#256cbf520bdb9209c822e038dabaf2589235c2dc"
 dependencies = [
  "serde",
  "serde_json",

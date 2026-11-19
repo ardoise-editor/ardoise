@@ -210,6 +210,8 @@ pub enum ActiveOverlay {
     ),
     /// A question of a plugin.
     PluginConfirm(Box<plugins::PluginQuestion>),
+    /// A plugin to uninstall, and whether its data goes too.
+    ConfirmPluginUninstall(String, bool),
 }
 
 #[derive(Debug, Clone)]
@@ -1986,6 +1988,36 @@ impl SimpleEditApp {
                     }
                     ActiveOverlay::ConfirmClose(path) => self.view_confirm_overlay(dark, path),
                     ActiveOverlay::PluginConfirm(q) => self.view_plugin_question(dark, q),
+                    ActiveOverlay::ConfirmPluginUninstall(id, with_data) => {
+                        let name = self
+                            .plugins
+                            .get(id)
+                            .map_or_else(|| id.clone(), |p| p.name());
+                        let with_data = *with_data;
+                        confirm_card_with(
+                            dark,
+                            t!("plugins.uninstall_title", name = name.as_str()).to_string(),
+                            t!("plugins.uninstall_message").to_string(),
+                            Some(
+                                iced::widget::checkbox(with_data)
+                                    .label(t!("plugins.uninstall_data").to_string())
+                                    .size(15)
+                                    .text_size(13)
+                                    .on_toggle(|on| {
+                                        Message::Plugin(
+                                            crate::plugins::PluginMsg::UninstallDataToggled(on),
+                                        )
+                                    })
+                                    .into(),
+                            ),
+                            t!("plugins.uninstall").to_string(),
+                            Message::Plugin(if with_data {
+                                crate::plugins::PluginMsg::UninstallWithData(id.clone())
+                            } else {
+                                crate::plugins::PluginMsg::Uninstall(id.clone())
+                            }),
+                        )
+                    }
                     ActiveOverlay::ConfirmFileDelete(path, options) => confirm_card_with(
                         dark,
                         t!("delete_file.title").to_string(),

@@ -1,5 +1,11 @@
 # Journal des modifications
 
+## [2.0.2] - 2026-11-19
+
+### Ajouté
+- Désinstaller un plugin demande d'abord, avec une case pour supprimer aussi ses données (réglages, historique, connexions, et ses mots de passe dans le trousseau du système) ; décochée, les données sont gardées pour une réinstallation.
+- Le script de désinstallation supprime tout ce que SimpleEdit a gardé : réglages, session, plugins et leurs données, serveurs de langage, et les mots de passe des plugins dans le trousseau du système (un dossier de notes que vous avez choisi reste). `--keep-data` les garde.
+
 ## [2.0.1] - 2026-11-19
 
 ### Modifié

@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.2] - 2026-11-19
+
+### Added
+- Uninstalling a plugin asks first, with a box to delete its data too (settings, history, connections, and its passwords in the system keychain); unticked, the data is kept for a reinstall.
+- The uninstall script removes everything SimpleEdit kept: settings, session, plugins and their data, language servers, and the passwords of the plugins in the system keychain (a scratch folder you chose stays). `--keep-data` keeps them.
+
 ## [2.0.1] - 2026-11-19
 
 ### Changed
