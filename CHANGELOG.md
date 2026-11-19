@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3] - 2026-11-19
+
+### Fixed
+- Git and the terminal are in the shortcuts, the View menu and Search Everywhere only once their plugin is installed.
+- A program installed through nvm, Volta or Bun (npm, to install the language server of JavaScript and TypeScript) is found when SimpleEdit is started from the desktop on Linux: the PATH of the shell is read, as on macOS, and kept for the next start (it no longer delays it on macOS).
+- The question before uninstalling a plugin shows its name (it showed "{name}").
+
 ## [2.0.2] - 2026-11-19
 
 ### Added

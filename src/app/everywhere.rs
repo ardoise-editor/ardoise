@@ -800,8 +800,12 @@ impl SimpleEditApp {
             .language
             .as_deref()
             .is_some_and(crate::formatter::can_format);
-        let entries =
-            crate::palette::entries(&self.config, has_formatter, self.language_picker_enabled());
+        let entries = crate::palette::entries(
+            &self.config,
+            has_formatter,
+            self.language_picker_enabled(),
+            self.plugins.tools(),
+        );
         let mut scored: Vec<(i64, Row)> = entries
             .into_iter()
             .filter_map(|e| {
@@ -1702,11 +1706,19 @@ impl SimpleEditApp {
                 .center_y(48),
         ];
         if let Some((command, abbreviation)) = &self.everywhere.abbreviating {
-            let label = crate::palette::entries(&self.config, true, true)
-                .into_iter()
-                .find(|e| e.command == *command)
-                .map(|e| e.label)
-                .unwrap_or_default();
+            let label = crate::palette::entries(
+                &self.config,
+                true,
+                true,
+                crate::plugins::Tools {
+                    git: true,
+                    terminal: true,
+                },
+            )
+            .into_iter()
+            .find(|e| e.command == *command)
+            .map(|e| e.label)
+            .unwrap_or_default();
             body = body.push(
                 container(
                     row![
@@ -2101,21 +2113,19 @@ mod tests {
         // Nothing typed: every action.
         assert!(app.everywhere.rows.len() > 20);
         // An abbreviation of one's own comes first.
-        let _ = app.update(Message::EverywhereAbbreviate(
-            PaletteCommand::ToggleTerminal,
-        ));
+        let _ = app.update(Message::EverywhereAbbreviate(PaletteCommand::ToggleSidebar));
         let _ = app.update(Message::EverywhereAbbreviationTyped("tt".into()));
         let _ = app.update(Message::EverywhereAbbreviationSubmit);
         assert_eq!(
-            app.config.action_abbreviations.get("ToggleTerminal"),
+            app.config.action_abbreviations.get("ToggleSidebar"),
             Some(&vec!["tt".to_string()])
         );
         typed(&mut app, "tt");
         assert!(
-            matches!(selected(&app), Row::Action(e) if e.command == PaletteCommand::ToggleTerminal)
+            matches!(selected(&app), Row::Action(e) if e.command == PaletteCommand::ToggleSidebar)
         );
         let _ = app.update(Message::EverywhereAbbreviationRemove(
-            PaletteCommand::ToggleTerminal,
+            PaletteCommand::ToggleSidebar,
             "tt".into(),
         ));
         assert!(app.config.action_abbreviations.is_empty());
@@ -2143,13 +2153,13 @@ mod tests {
         assert_eq!(app.config.word_wrap, !wrap);
         assert_eq!(app.overlay, ActiveOverlay::Everywhere);
         // Alt+Enter on an action: its shortcut is the next keys pressed.
-        let _ = app.update(Message::EverywhereAssign(PaletteCommand::ToggleTerminal));
+        let _ = app.update(Message::EverywhereAssign(PaletteCommand::ToggleSidebar));
         assert_eq!(
             app.capturing,
-            Some(crate::config::ShortcutTarget::ToggleTerminal)
+            Some(crate::config::ShortcutTarget::ToggleSidebar)
         );
         key(&mut app, "F7", false, false, true);
-        assert_eq!(app.config.shortcuts.toggle_terminal.key, "F7");
+        assert_eq!(app.config.shortcuts.toggle_sidebar.key, "F7");
     }
 
     fn symbol(name: &str, kind: u64, container: Option<&str>) -> SymbolHit {

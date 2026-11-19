@@ -1286,6 +1286,7 @@ impl SimpleEditApp {
             has_formatter,
             lang_picker_enabled: self.language_picker_enabled(),
             bookmarks: self.bookmark_state(),
+            tools: self.plugins.tools(),
         };
         let signature = state.signature();
         if signature != self.native_menu_state {
@@ -1809,6 +1810,7 @@ impl SimpleEditApp {
                 lang_override_enabled,
                 self.bookmark_state(),
                 self.recents_open,
+                self.plugins.tools(),
             );
             // Under the dropdown and below the menu bar (its titles stay
             // clickable), anywhere else closes the menu.

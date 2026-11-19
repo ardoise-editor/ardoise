@@ -149,9 +149,17 @@ pub fn dropdown_view(
     lang_picker_enabled: bool,
     bookmarks: BookmarkState,
     recents_open: bool,
+    tools: crate::plugins::Tools,
 ) -> Element<'static, Message> {
     let dark = config.dark_mode;
-    let items = menu_items(menu, config, has_formatter, lang_picker_enabled, bookmarks);
+    let items = menu_items(
+        menu,
+        config,
+        has_formatter,
+        lang_picker_enabled,
+        bookmarks,
+        tools,
+    );
     let card = container(column(items).spacing(1).padding(6).width(260)).style(theme::card(dark));
     if menu == TopMenu::File && recents_open && !config.recent_files.is_empty() {
         row![card, recents_submenu(config)].spacing(4).into()
@@ -260,6 +268,7 @@ fn menu_items(
     has_formatter: bool,
     lang_picker_enabled: bool,
     bookmarks: BookmarkState,
+    tools: crate::plugins::Tools,
 ) -> Vec<Element<'static, Message>> {
     let dark = config.dark_mode;
     let sh = &config.shortcuts;
@@ -565,7 +574,7 @@ fn menu_items(
             } else {
                 disabled_item(t!("menu.view_language").to_string(), dark)
             };
-            vec![
+            let mut items = vec![
                 item(
                     t!("menu.view_palette").to_string(),
                     sc(&sh.command_palette),
@@ -596,18 +605,25 @@ fn menu_items(
                     dark,
                     Message::CloseSplit,
                 ),
-                item(
+            ];
+            // Git and the terminal only once their plugin is installed.
+            if tools.git {
+                items.push(item(
                     t!("git.title").to_string(),
                     sc(&sh.toggle_git),
                     dark,
                     Message::ToggleGit,
-                ),
-                item(
+                ));
+            }
+            if tools.terminal {
+                items.push(item(
                     t!("terminal.title").to_string(),
                     sc(&sh.toggle_terminal),
                     dark,
                     Message::ToggleTerminal,
-                ),
+                ));
+            }
+            items.extend([
                 item(
                     if config.dark_mode {
                         t!("toolbar.light").to_string()
@@ -631,7 +647,8 @@ fn menu_items(
                     )),
                 ),
                 lang_item,
-            ]
+            ]);
+            items
         }
         TopMenu::Help => vec![
             item(
