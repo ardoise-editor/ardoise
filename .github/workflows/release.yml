@@ -195,19 +195,26 @@ jobs:
         run: sha256sum simpleedit-*.tar.gz simpleedit-*-macos-aarch64.zip *.deb *.AppImage > SHA256SUMS
       # Ed25519 signature over SHA256SUMS; the app embeds the public key and
       # refuses an update whose checksums aren't signed by it.
+      # Two signatures while the key changes: SHA256SUMS.sig with the old key
+      # (UPDATE_SIGNING_KEY), which the versions installed before check, and
+      # SHA256SUMS.sig2 with the new one (UPDATE_SIGNING_KEY_V2), which the
+      # versions since check, and with which the official plugins are signed.
       - name: Sign checksums
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_SIGNING_KEY_V2: ${{ secrets.UPDATE_SIGNING_KEY_V2 }}
         run: |
           # install.sh and the in-app updater both refuse unsigned releases, so
           # publishing one would only break them.
-          if [ -z "$UPDATE_SIGNING_KEY" ]; then
-            echo "::error::UPDATE_SIGNING_KEY is not set — refusing to release without SHA256SUMS.sig."
+          if [ -z "$UPDATE_SIGNING_KEY" ] || [ -z "$UPDATE_SIGNING_KEY_V2" ]; then
+            echo "::error::UPDATE_SIGNING_KEY and UPDATE_SIGNING_KEY_V2 must both be set — refusing to release without SHA256SUMS.sig and SHA256SUMS.sig2."
             exit 1
           fi
           umask 077
           printf '%s\n' "$UPDATE_SIGNING_KEY" > update-key.pem
           openssl pkeyutl -sign -inkey update-key.pem -rawin -in SHA256SUMS -out SHA256SUMS.sig
+          printf '%s\n' "$UPDATE_SIGNING_KEY_V2" > update-key.pem
+          openssl pkeyutl -sign -inkey update-key.pem -rawin -in SHA256SUMS -out SHA256SUMS.sig2
           rm -f update-key.pem
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -219,6 +226,7 @@ jobs:
             *.AppImage
             SHA256SUMS
             SHA256SUMS.sig
+            SHA256SUMS.sig2
           generate_release_notes: true
           draft: false
 
