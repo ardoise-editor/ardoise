@@ -1,4 +1,4 @@
-//! The plugins on disk: each in `<data dir>/simpleedit/plugins/<id>/` with
+//! The plugins on disk: each in `<data dir>/ardoise/plugins/<id>/` with
 //! its `plugin.json`, and `installs.json` beside them saying where each came
 //! from. What a plugin keeps for itself is in `plugin-data/<id>/`, which an
 //! uninstall leaves.
@@ -7,24 +7,24 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
+use ardoise_plugin::manifest::{self, Manifest};
 use serde::{Deserialize, Serialize};
-use simpleedit_plugin::manifest::{self, Manifest};
 
 /// The largest archive worth unpacking (the database plugin and its drivers
 /// are some tens of megabytes).
 const MAX_UNPACKED: u64 = 400 * 1024 * 1024;
 
 /// The ids kept for the official plugins.
-pub const OFFICIAL_PREFIX: &str = "simpleedit.";
+pub const OFFICIAL_PREFIX: &str = "ardoise.";
 
 pub fn root() -> Option<PathBuf> {
-    crate::fsutil::data_dir().map(|d| d.join("simpleedit").join("plugins"))
+    crate::fsutil::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("plugins"))
 }
 
 /// The folder of a plugin's own data, made if missing.
 pub fn data_dir_of(id: &str) -> Option<PathBuf> {
     let dir = crate::fsutil::data_dir()?
-        .join("simpleedit")
+        .join(crate::fsutil::APP_DIR)
         .join("plugin-data")
         .join(id);
     std::fs::create_dir_all(&dir).ok()?;
@@ -37,7 +37,7 @@ pub struct Origin {
     /// `owner/name` of the GitHub repository of its releases.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
-    /// Signed by SimpleEdit.
+    /// Signed by Ardoise.
     #[serde(default)]
     pub official: bool,
     /// A folder of the user's, linked for development.
@@ -350,7 +350,13 @@ pub fn remove_data(id: &str) -> Result<(), String> {
     let Some(base) = crate::fsutil::data_dir() else {
         return Ok(());
     };
-    remove_any(&base.join("simpleedit").join("plugin-data").join(id)).map_err(|e| e.to_string())
+    remove_any(
+        &base
+            .join(crate::fsutil::APP_DIR)
+            .join("plugin-data")
+            .join(id),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Removes a file, a link (not what it points to) or a folder.
@@ -572,32 +578,30 @@ pub(crate) mod tests {
         let root = root.path();
         // Only the official plugins have official ids.
         assert!(
-            install_archive_in(root, &plugin("simpleedit.git", "1.0.0"), from("x/y"), None)
-                .is_err()
+            install_archive_in(root, &plugin("ardoise.git", "1.0.0"), from("x/y"), None).is_err()
         );
         let official = Origin {
-            repository: Some("simple-edit-app/plugin-git".into()),
+            repository: Some("ardoise-editor/plugin-git".into()),
             official: true,
             linked: None,
         };
         install_archive_in(
             root,
-            &plugin("simpleedit.git", "1.0.0"),
+            &plugin("ardoise.git", "1.0.0"),
             official.clone(),
             None,
         )
         .unwrap();
         // Another repository cannot take its place.
         assert!(
-            install_archive_in(root, &plugin("simpleedit.git", "1.0.1"), from("x/y"), None)
-                .is_err()
+            install_archive_in(root, &plugin("ardoise.git", "1.0.1"), from("x/y"), None).is_err()
         );
         // The id must be the one the list says.
         assert!(install_archive_in(
             root,
-            &plugin("simpleedit.lint", "1.0.0"),
+            &plugin("ardoise.lint", "1.0.0"),
             official,
-            Some("simpleedit.git")
+            Some("ardoise.git")
         )
         .is_err());
         // Without the program it starts, it is no plugin.

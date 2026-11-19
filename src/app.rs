@@ -125,7 +125,7 @@ pub struct MarksState {
     pub marks: crate::diff::marks::ChangeMarks,
     /// The marks as the editor takes them, shared between frames.
     pub paint: [std::sync::Arc<Vec<usize>>; 3],
-    /// The buffer (see [`SimpleEditApp::buffer_stamp`]) the marks were computed for.
+    /// The buffer (see [`ArdoiseApp::buffer_stamp`]) the marks were computed for.
     pub rev: (u64, u64),
 }
 
@@ -206,7 +206,7 @@ pub enum ActiveOverlay {
     /// The file, and the boxes the plugins added: (plugin, box as ticked).
     ConfirmFileDelete(
         PathBuf,
-        Vec<(String, simpleedit_plugin::protocol::DeleteOption)>,
+        Vec<(String, ardoise_plugin::protocol::DeleteOption)>,
     ),
     /// A question of a plugin.
     PluginConfirm(Box<plugins::PluginQuestion>),
@@ -731,7 +731,7 @@ pub struct Flags {
     pub files: Vec<crate::ipc::Target>,
 }
 
-pub struct SimpleEditApp {
+pub struct ArdoiseApp {
     config: Config,
     /// Folders asked about trust in this run (once each).
     trust_asked: HashSet<PathBuf>,
@@ -1040,7 +1040,7 @@ enum PreviewDoc {
     JsonError(String),
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// An app with one empty untitled tab, reading nothing from disk.
     fn blank(config: Config) -> Self {
         crate::trust::set_all(&config.trusted_folders);
@@ -1190,7 +1190,7 @@ impl SimpleEditApp {
     }
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     pub fn new(flags: Flags) -> (Self, Task<Message>) {
         // The first window owns the session; others start empty and leave it
         // alone, so closing them can't overwrite it.
@@ -1258,7 +1258,7 @@ impl SimpleEditApp {
             .map(file_label)
             .unwrap_or_else(|| t!("app.untitled").to_string());
         let dirty = if self.is_dirty { " •" } else { "" };
-        format!("SimpleEdit — {}{}", name, dirty)
+        format!("Ardoise — {}{}", name, dirty)
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -2189,7 +2189,7 @@ impl Message {
     }
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     fn handle(&mut self, message: Message) -> Task<Message> {
         // Passive/background messages must not close an open dropdown: X11
         // fires a spurious ModifiersChanged right after the very click that
@@ -2365,7 +2365,7 @@ impl SimpleEditApp {
                     Ok(loaded) => {
                         // Changed on the disk: the plugins that follow it hear of it.
                         self.plugins_file_event(
-                            simpleedit_plugin::manifest::Event::FileSaved,
+                            ardoise_plugin::manifest::Event::FileSaved,
                             &loaded.path,
                         );
                         self.apply_reload(loaded);
@@ -2387,8 +2387,8 @@ impl SimpleEditApp {
                 {
                     crate::plugins::host::notify(
                         &tab.plugin,
-                        simpleedit_plugin::protocol::methods::TAB_SAVE,
-                        simpleedit_plugin::protocol::PanelParams {
+                        ardoise_plugin::protocol::methods::TAB_SAVE,
+                        ardoise_plugin::protocol::PanelParams {
                             panel: tab.tab.clone(),
                         },
                     );
@@ -2497,10 +2497,7 @@ impl SimpleEditApp {
             Message::FileSaved(origin, result) => {
                 match result {
                     Ok((path, saved)) => {
-                        self.plugins_file_event(
-                            simpleedit_plugin::manifest::Event::FileSaved,
-                            &path,
-                        );
+                        self.plugins_file_event(ardoise_plugin::manifest::Event::FileSaved, &path);
                         self.size_for = None;
                         // The tab the save started from may no longer be the
                         // active one (the dialog is asynchronous).
@@ -6734,7 +6731,7 @@ impl SimpleEditApp {
 
     /// The arrows of the diff tab in front.
     fn diff_nav(&mut self, nav: DiffNav) -> Task<Message> {
-        use simpleedit_plugin::protocol::DiffAction;
+        use ardoise_plugin::protocol::DiffAction;
         let Some(path) = self.current_file.clone() else {
             return Task::none();
         };
@@ -6818,8 +6815,8 @@ impl SimpleEditApp {
         };
         crate::plugins::host::notify(
             &plugin,
-            simpleedit_plugin::protocol::methods::DIFF_ACTION,
-            simpleedit_plugin::protocol::DiffActionParams {
+            ardoise_plugin::protocol::methods::DIFF_ACTION,
+            ardoise_plugin::protocol::DiffActionParams {
                 tab: tab_id,
                 file,
                 action,
@@ -6911,15 +6908,15 @@ impl SimpleEditApp {
         if let Some((plugin, tab)) = owner {
             crate::plugins::host::notify(
                 &plugin,
-                simpleedit_plugin::protocol::methods::TAB_CLOSED,
-                simpleedit_plugin::protocol::PanelParams { panel: tab },
+                ardoise_plugin::protocol::methods::TAB_CLOSED,
+                ardoise_plugin::protocol::PanelParams { panel: tab },
             );
         }
         if let Some(tab) = self.plugins.tabs.remove(&path) {
             crate::plugins::host::notify(
                 &tab.plugin,
-                simpleedit_plugin::protocol::methods::TAB_CLOSED,
-                simpleedit_plugin::protocol::PanelParams {
+                ardoise_plugin::protocol::methods::TAB_CLOSED,
+                ardoise_plugin::protocol::PanelParams {
                     panel: tab.tab.clone(),
                 },
             );
@@ -6960,7 +6957,7 @@ impl SimpleEditApp {
         // here: closing many tabs would otherwise write it once per tab.
         self.session_rev = self.rev.wrapping_sub(1);
         if index.is_some() {
-            self.plugins_file_event(simpleedit_plugin::manifest::Event::FileClosed, &path);
+            self.plugins_file_event(ardoise_plugin::manifest::Event::FileClosed, &path);
         }
         if index.is_some() && !is_untitled(&path) && !is_virtual(&path) {
             // The language servers that had it open let go of it.
@@ -7338,7 +7335,7 @@ impl SimpleEditApp {
 
     fn open_loaded(&mut self, loaded: Loaded) {
         let path = loaded.path.clone();
-        self.plugins_file_event(simpleedit_plugin::manifest::Event::FileOpened, &path);
+        self.plugins_file_event(ardoise_plugin::manifest::Event::FileOpened, &path);
         self.pending_open = None;
         if self.current_file.as_ref() == Some(&path) {
             // Opening the file being edited again: bring it up to date, but
@@ -7982,7 +7979,7 @@ fn remap_span(old: &str, new: &str, span: Span, line_shift: isize) -> Span {
 
 // ─── Editor pane ────────────────────────────────────────────────────────────
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The editor pane: the text editor alone, the preview, or both side by
     /// side (the mode switch lives in the panel's toolbar).
     fn editor_pane(
@@ -8300,7 +8297,7 @@ impl SimpleEditApp {
             ));
             let ours: Vec<_> = plugin_menus
                 .iter()
-                .filter(|m| m.menu == simpleedit_plugin::manifest::Menu::Editor)
+                .filter(|m| m.menu == ardoise_plugin::manifest::Menu::Editor)
                 .collect();
             if !ours.is_empty() {
                 ctx_items.push(separator(dark));

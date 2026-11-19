@@ -22,7 +22,7 @@ pub(super) fn scroll_references_to(selected: usize) -> Task<Message> {
     )
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// Whether the language can be set by hand. Always: a recognized file
     /// may still deserve another language (a `.h` header as C++).
     pub(super) fn language_picker_enabled(&self) -> bool {
@@ -34,7 +34,7 @@ impl SimpleEditApp {
         let version = env!("CARGO_PKG_VERSION");
         container(
             column![
-                text("SimpleEdit").size(24).color(p.accent),
+                text("Ardoise").size(24).color(p.accent),
                 text(format!("v{}", version)).size(15).color(p.text),
                 text(t!("about.tagline").to_string())
                     .size(12)
@@ -1187,7 +1187,7 @@ pub(crate) fn resize_edge<'a>(dark: bool) -> Element<'a, Message> {
     .into()
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The narrow bar at the left: a button for each panel of the sidebar.
     pub(super) fn activity_bar(&self, dark: bool) -> Element<'_, Message> {
         let p = se_theme::palette(dark);
@@ -1254,9 +1254,9 @@ impl SimpleEditApp {
                     Message::TogglePanel(crate::sidebar::Panel::Projects),
                 ),
             ]
-            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Sidebar))
+            .extend(plugin_tools(ardoise_plugin::manifest::Location::Sidebar))
             .push(Space::new().height(Length::Fill))
-            .extend(plugin_tools(simpleedit_plugin::manifest::Location::Bottom))
+            .extend(plugin_tools(ardoise_plugin::manifest::Location::Bottom))
             .extend([
                 tool(
                     crate::scratch::icon(shown(self.scratch.open)),
@@ -1476,7 +1476,7 @@ impl SimpleEditApp {
     }
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The list of every open tab, under its button.
     pub(super) fn tab_list_view(&self, dark: bool) -> Element<'_, Message> {
         let p = se_theme::palette(dark);

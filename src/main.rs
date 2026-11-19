@@ -84,7 +84,7 @@ fn wants_new_window(args: impl Iterator<Item = std::ffi::OsString>) -> bool {
 /// Started from the Finder, the app gets launchd's minimal `PATH`: the usual
 /// tool folders are added to it, so that what it starts (language servers
 /// and their `#!/usr/bin/env node`, formatters, `npm`) finds its programs.
-const PATH_MARK: &str = "__SIMPLEEDIT_PATH__";
+const PATH_MARK: &str = "__ARDOISE_PATH__";
 
 /// The `PATH` a login shell printed between two markers, so that what the
 /// shell's startup files echo around it is ignored.
@@ -162,7 +162,7 @@ fn node_manager_dirs(home: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 /// Where the `PATH` of the shell is kept from one start to the next.
 fn shell_path_cache() -> Option<std::path::PathBuf> {
-    dirs::data_dir().map(|d| d.join("simpleedit").join("shell-path"))
+    dirs::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("shell-path"))
 }
 
 /// The `PATH` of the shell: the one kept from the last start (asking the
@@ -232,6 +232,8 @@ fn complete_path() {
 }
 
 fn main() -> iced::Result {
+    // The app was called Ardoise: what it kept under that name moves first.
+    fsutil::migrate_legacy_dirs();
     complete_path();
     // The saved preference wins; Config::load() falls back to the system locale
     // only when no config file exists yet.
@@ -251,12 +253,12 @@ fn main() -> iced::Result {
         std::env::var_os("XDG_ACTIVATION_TOKEN").or_else(|| std::env::var_os("DESKTOP_STARTUP_ID"))
     {
         // Single-threaded at this point.
-        std::env::set_var("SIMPLEEDIT_ACTIVATION_TOKEN", token);
+        std::env::set_var("ARDOISE_ACTIVATION_TOKEN", token);
     }
 
     #[cfg(target_os = "linux")]
     let platform_specific = window::settings::PlatformSpecific {
-        application_id: "simpleedit".to_string(),
+        application_id: "ardoise".to_string(),
         ..Default::default()
     };
 
@@ -274,14 +276,14 @@ fn main() -> iced::Result {
                 .ok()
                 .and_then(|mut f| f.take())
                 .expect("the application boots once");
-            app::SimpleEditApp::new(flags)
+            app::ArdoiseApp::new(flags)
         },
-        app::SimpleEditApp::update,
-        app::SimpleEditApp::view,
+        app::ArdoiseApp::update,
+        app::ArdoiseApp::view,
     )
-    .title(app::SimpleEditApp::title)
-    .subscription(app::SimpleEditApp::subscription)
-    .theme(app::SimpleEditApp::theme)
+    .title(app::ArdoiseApp::title)
+    .subscription(app::ArdoiseApp::subscription)
+    .theme(app::ArdoiseApp::theme)
     .default_font(theme::UI)
     .window(window::Settings {
         // Closing the window goes through the app (Message::Quit) so the

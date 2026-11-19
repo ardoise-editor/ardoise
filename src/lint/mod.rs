@@ -2,7 +2,7 @@
 //! shown in the editor with a fix for those that have one.
 //!
 //! The linters (eslint, ruff, shellcheck, …) are plugins that declare
-//! `contributes.linter` (the official one is `simpleedit.lint`); they answer
+//! `contributes.linter` (the official one is `ardoise.lint`); they answer
 //! `lint/run` with [`Diagnostic`]s. Language servers give theirs through
 //! `crate::lsp`.
 
@@ -346,7 +346,7 @@ pub fn fixes_at(diagnostics: &[Diagnostic], level: Level) -> Vec<&Fix> {
 
 // ─── What the linters of the plugins say ─────────────────────────────────
 
-use simpleedit_plugin::lint as from;
+use ardoise_plugin::lint as from;
 
 impl From<from::Severity> for Severity {
     fn from(s: from::Severity) -> Self {

@@ -142,7 +142,7 @@ pub fn window_attributes(
         // winit clears it: activating the window with it ends the launcher's
         // "loading" cursor.
         #[cfg(any(feature = "x11", feature = "wayland"))]
-        if let Ok(token) = std::env::var("SIMPLEEDIT_ACTIVATION_TOKEN") {
+        if let Ok(token) = std::env::var("ARDOISE_ACTIVATION_TOKEN") {
             use winit::platform::startup_notify::WindowAttributesExtStartupNotify;
             use winit::window::ActivationToken;
 

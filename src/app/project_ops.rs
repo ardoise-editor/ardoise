@@ -127,7 +127,7 @@ fn valid_name(name: &str) -> bool {
         && name.trim() == name
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The tabs that are inside `path` (or are it).
     fn tabs_inside(&self, path: &Path) -> Vec<PathBuf> {
         self.sidebar
@@ -471,17 +471,17 @@ mod tests {
         assert_eq!(std::fs::read_to_string(to.join("a.txt")).unwrap(), "a");
     }
 
-    fn app_with_project() -> (SimpleEditApp, tempfile::TempDir) {
+    fn app_with_project() -> (ArdoiseApp, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
         std::fs::write(dir.path().join("src/main.rs"), "fn main() {}\n").unwrap();
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::ProjectPicked(Some(dir.path().to_path_buf())));
         (app, dir)
     }
 
-    fn type_name(app: &mut SimpleEditApp, name: &str) {
+    fn type_name(app: &mut ArdoiseApp, name: &str) {
         let _ = app.update(Message::ProjectNameChanged(name.into()));
         let _ = app.update(Message::ProjectNameSubmit);
     }
@@ -718,7 +718,7 @@ mod tests {
     fn the_arrows_and_enter_work_in_the_tree_once_it_was_clicked() {
         let (mut app, dir) = app_with_project();
         let src = dir.path().join("src");
-        let key = |app: &mut SimpleEditApp, key: &str| {
+        let key = |app: &mut ArdoiseApp, key: &str| {
             let _ = app.update(Message::KeyPressed {
                 key: key.into(),
                 ctrl: false,

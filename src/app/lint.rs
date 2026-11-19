@@ -3,8 +3,8 @@
 
 use super::*;
 use crate::lint::{self, Diagnostic, Fix};
-use simpleedit_plugin::lint::{FixParams, FixResult, LintParams, LintResult};
-use simpleedit_plugin::protocol::methods;
+use ardoise_plugin::lint::{FixParams, FixResult, LintParams, LintResult};
+use ardoise_plugin::protocol::methods;
 
 /// How long a linter may take to answer.
 const LINT_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
@@ -64,7 +64,7 @@ fn ext_of(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The text the problems are about: a real file, as it is now.
     fn lint_key(&self) -> Option<Key> {
         let path = self
@@ -727,7 +727,7 @@ mod tests {
         }
     }
 
-    fn open_json(app: &mut SimpleEditApp, text: &str) -> PathBuf {
+    fn open_json(app: &mut ArdoiseApp, text: &str) -> PathBuf {
         let path = PathBuf::from("/s/data.json");
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),
@@ -740,8 +740,8 @@ mod tests {
 
     /// A plugin whose linter looks at JSON (it is not started: its answers
     /// are given by hand).
-    pub fn with_json_linter(app: &mut SimpleEditApp) {
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+    pub fn with_json_linter(app: &mut ArdoiseApp) {
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
             r#"{"id": "test.linter", "name": "Test", "version": "1.0.0", "api": 1,
                 "command": ["bin/none"], "contributes": {"linter": {"extensions": ["json"]}}}"#,
         )
@@ -753,8 +753,8 @@ mod tests {
         });
     }
 
-    fn blank() -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn blank() -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         with_json_linter(&mut app);
         app
@@ -816,7 +816,7 @@ mod tests {
 
     #[test]
     fn nothing_is_looked_at_without_a_linter_or_a_language_server() {
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         open_json(&mut app, "{\"a\": }\n");
         assert!(app.lint.launched.is_none() && app.problem_counts().is_none());
@@ -1132,7 +1132,7 @@ mod stale_fix_tests {
 
     #[test]
     fn the_fixes_of_a_kept_problem_do_not_survive_a_new_look() {
-        let mut app = SimpleEditApp::blank(crate::config::Config::default());
+        let mut app = ArdoiseApp::blank(crate::config::Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         tests::with_json_linter(&mut app);
         let path = std::env::temp_dir().join("se-lint-stale.json");

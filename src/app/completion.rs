@@ -200,7 +200,7 @@ fn clip(text: &str, most: usize) -> String {
     cut
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     // ── Which file, which server ──
 
     /// The file completion is for, and its extension: a real file whose
@@ -1538,11 +1538,11 @@ mod tests {
 
     /// An app with `text` open in `name` (a file of a temporary folder),
     /// its language served.
-    fn app_with(text: &str, name: &str) -> (SimpleEditApp, PathBuf, tempfile::TempDir) {
+    fn app_with(text: &str, name: &str) -> (ArdoiseApp, PathBuf, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(name);
         std::fs::write(&path, text).unwrap();
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),
@@ -1555,13 +1555,13 @@ mod tests {
         (app, path, dir)
     }
 
-    fn type_text(app: &mut SimpleEditApp, text: &str) {
+    fn type_text(app: &mut ArdoiseApp, text: &str) {
         for c in text.chars() {
             let _ = app.update(Message::EditorAction(Action::Edit(Edit::Insert(c))));
         }
     }
 
-    fn key(app: &mut SimpleEditApp, key: &str) {
+    fn key(app: &mut ArdoiseApp, key: &str) {
         let _ = app.update(Message::KeyPressed {
             key: key.to_string(),
             ctrl: false,
@@ -1570,7 +1570,7 @@ mod tests {
         });
     }
 
-    fn text_of(app: &SimpleEditApp) -> String {
+    fn text_of(app: &ArdoiseApp) -> String {
         crate::editor::buffer_text(&app.editor.content)
     }
 
@@ -1582,7 +1582,7 @@ mod tests {
     /// The server's answer to the last request, about the text it was asked
     /// about (`asked`, the cursor at `origin`).
     fn answer(
-        app: &mut SimpleEditApp,
+        app: &mut ArdoiseApp,
         asked: &str,
         origin: (usize, usize),
         items: Vec<Item>,
@@ -1607,7 +1607,7 @@ mod tests {
         ));
     }
 
-    fn shown(app: &SimpleEditApp) -> Vec<String> {
+    fn shown(app: &ArdoiseApp) -> Vec<String> {
         let session = app.completion.session.as_ref().unwrap();
         session
             .ranked
@@ -1961,12 +1961,12 @@ mod tests {
         assert_eq!(shown(&app), vec!["vec", "Vec"]);
     }
 
-    fn hint_answer_with(app: &mut SimpleEditApp, value: serde_json::Value) {
+    fn hint_answer_with(app: &mut ArdoiseApp, value: serde_json::Value) {
         let generation = app.completion.hint_generation;
         let _ = app.update(Message::HintAnswer(generation, Ok(Some(value))));
     }
 
-    fn served_with_hints(app: &mut SimpleEditApp, path: &Path) {
+    fn served_with_hints(app: &mut ArdoiseApp, path: &Path) {
         app.completion.info.insert(
             server_key(path, "rs"),
             lsp::CompletionInfo {
@@ -2021,7 +2021,7 @@ mod tests {
             "activeSignature": 1 });
         hint_answer_with(&mut app, help.clone());
         assert_eq!(app.completion.hint.as_ref().unwrap().shown, 1);
-        let alt = |app: &mut SimpleEditApp, key: &str| {
+        let alt = |app: &mut ArdoiseApp, key: &str| {
             let _ = app.update(Message::KeyPressed {
                 key: key.into(),
                 ctrl: false,

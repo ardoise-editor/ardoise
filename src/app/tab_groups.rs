@@ -134,7 +134,7 @@ fn plugin_of(root: &Path) -> Option<&str> {
     root.to_str()?.strip_prefix("plugin-group://")
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     pub(super) fn tab_groups(&self) -> Vec<Group> {
         groups_by(self.sidebar.files(), |path| self.tab_key(path))
     }
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn colors_are_kept_and_chosen() {
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         app.projects.roots = roots();
         app.assign_project_colors();
         assert_eq!(app.config.project_colors["/p/a"], 0);
@@ -466,7 +466,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.rs");
         std::fs::write(&path, "").unwrap();
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let root = Some(dir.path().to_path_buf());
         let _ = app.update(Message::TabGroupToggle(root.clone()));
@@ -482,9 +482,9 @@ mod tests {
     }
 
     /// An app with `main.rs` open in two projects, `b`'s last and in front.
-    fn two_projects() -> (tempfile::TempDir, tempfile::TempDir, SimpleEditApp) {
+    fn two_projects() -> (tempfile::TempDir, tempfile::TempDir, ArdoiseApp) {
         let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         for dir in [a.path(), b.path()] {
             let _ = app.update(Message::ProjectPicked(Some(dir.to_path_buf())));
@@ -530,7 +530,7 @@ mod tests {
 
     #[test]
     fn the_bar_tells_tabs_from_labels() {
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         app.projects.roots = roots();
         app.sidebar = crate::sidebar::SidebarState::new();
         for f in ["/p/a/1", "/p/b/1"] {
@@ -551,7 +551,7 @@ mod tests {
             return;
         };
         let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         for dir in [a.path(), b.path()] {
             let _ = app.update(Message::ProjectPicked(Some(dir.to_path_buf())));

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="simple-edit-app/simpleedit"
+REPO="ardoise-editor/ardoise"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 info()  { echo "  $*"; }
@@ -26,8 +26,8 @@ MCowBQYDK2VwAyEAmZrvmo6ZzYbZD25u7dMsx6dm9HcyrW/ijgwVb4vjeks=
 # Verification is mandatory: the checksum list must be signed with the release
 # key, and the file must match the list. A release that lacks either, or a
 # machine that can't check the signature, makes the install fail. `--insecure`
-# (or SIMPLEEDIT_INSECURE=1) installs anyway, with a warning, for old releases.
-INSECURE="${SIMPLEEDIT_INSECURE:-0}"
+# (or ARDOISE_INSECURE=1) installs anyway, with a warning, for old releases.
+INSECURE="${ARDOISE_INSECURE:-0}"
 for arg in "$@"; do
     case "$arg" in
         --insecure) INSECURE=1 ;;
@@ -124,7 +124,7 @@ case "$OS" in
             [ -n "$DEB" ] || err "Could not find .deb asset in latest release."
 
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${DEB}"
-            TMP=$(mktemp /tmp/simpleedit-XXXXXX.deb)
+            TMP=$(mktemp /tmp/ardoise-XXXXXX.deb)
             info "Downloading ${DEB}…"
             curl -fsSL --progress-bar "$URL" -o "$TMP"
             verify "$TMP" "$DEB"
@@ -141,7 +141,7 @@ case "$OS" in
             sudo update-desktop-database /usr/share/applications 2>/dev/null || true
         else
             # Generic Linux: extract binary to /usr/local/bin
-            TARBALL="simpleedit-${VERSION}-x86_64-linux.tar.gz"
+            TARBALL="ardoise-${VERSION}-x86_64-linux.tar.gz"
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
             TMP=$(mktemp -d)
             info "Downloading ${TARBALL}…"
@@ -151,7 +151,7 @@ case "$OS" in
             info "Installing binary to /usr/local/bin (requires sudo)…"
             # install(1), not mv: the binary must end up owned by root, not by
             # the user who unpacked it.
-            sudo install -m 0755 -o root -g 0 "$TMP/simpleedit" /usr/local/bin/simpleedit
+            sudo install -m 0755 -o root -g 0 "$TMP/ardoise" /usr/local/bin/ardoise
             rm -rf "$TMP"
         fi
         ;;
@@ -168,10 +168,10 @@ case "$OS" in
             # auto-trusts this one cask non-interactively (tapping first,
             # then installing by short name, hits the interactive tap-trust
             # prompt added in Homebrew 6.0 and fails under `curl | bash`).
-            brew install --cask simple-edit-app/tap/simpleedit
+            brew install --cask ardoise-editor/tap/ardoise
         else
             # Manual install: extract binary to /usr/local/bin
-            TARBALL="simpleedit-${VERSION}-aarch64-apple-darwin.tar.gz"
+            TARBALL="ardoise-${VERSION}-aarch64-apple-darwin.tar.gz"
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
             TMP=$(mktemp -d)
             info "Downloading ${TARBALL}…"
@@ -181,7 +181,7 @@ case "$OS" in
             info "Installing binary to /usr/local/bin (requires sudo)…"
             # install(1), not mv: the binary must end up owned by root, not by
             # the user who unpacked it.
-            sudo install -m 0755 -o root -g 0 "$TMP/simpleedit" /usr/local/bin/simpleedit
+            sudo install -m 0755 -o root -g 0 "$TMP/ardoise" /usr/local/bin/ardoise
             rm -rf "$TMP"
         fi
         ;;
@@ -192,9 +192,9 @@ case "$OS" in
 esac
 
 # ── done ─────────────────────────────────────────────────────────────────────
-ok "SimpleEdit ${VERSION} installed successfully."
+ok "Ardoise ${VERSION} installed successfully."
 echo ""
-echo "  Run:        simpleedit"
-echo "  Open file:  simpleedit path/to/file"
+echo "  Run:        ardoise"
+echo "  Open file:  ardoise path/to/file"
 echo ""
 echo "  Uninstall:  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/uninstall.sh | bash"

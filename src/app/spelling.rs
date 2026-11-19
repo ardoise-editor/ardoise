@@ -1,13 +1,13 @@
 //! Spelling in the editor: misspelled words underlined, a window of
 //! suggestions for the one under the cursor, a personal dictionary. The
 //! dictionaries are a plugin's (`contributes.speller`, the official one is
-//! `simpleedit.spell`): it is asked `spell/check`, `spell/suggest`,
+//! `ardoise.spell`): it is asked `spell/check`, `spell/suggest`,
 //! `spell/learn` and `spell/languages`.
 
 use super::*;
+use ardoise_plugin::protocol::methods;
+use ardoise_plugin::spell::{CheckParams, CheckResult, Language, LearnParams, SuggestParams};
 use iced::widget::column;
-use simpleedit_plugin::protocol::methods;
-use simpleedit_plugin::spell::{CheckParams, CheckResult, Language, LearnParams, SuggestParams};
 use std::sync::Arc;
 
 /// Files with more lines than this are not checked as they are typed.
@@ -71,7 +71,7 @@ pub struct SpellState {
     pub choices: Vec<String>,
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// The plugin that checks the spelling, started.
     fn speller(&mut self) -> Option<String> {
         let id = self
@@ -494,8 +494,8 @@ mod tests {
 
     /// A plugin that says it checks the spelling (not started: its answers
     /// are given by hand).
-    fn with_speller(app: &mut SimpleEditApp) {
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+    fn with_speller(app: &mut ArdoiseApp) {
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
             r#"{"id": "test.speller", "name": "Test", "version": "1.0.0", "api": 1,
                 "command": ["bin/none"], "contributes": {"speller": {}}}"#,
         )
@@ -507,8 +507,8 @@ mod tests {
         });
     }
 
-    fn app_with(text: &str, speller: bool) -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app_with(text: &str, speller: bool) -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         if speller {
             with_speller(&mut app);
@@ -525,7 +525,7 @@ mod tests {
     }
 
     /// What the speller would answer for the text of now.
-    fn answer(app: &mut SimpleEditApp, ranges: &[(usize, usize)]) {
+    fn answer(app: &mut ArdoiseApp, ranges: &[(usize, usize)]) {
         let key = app.spell.key.clone().expect("a check was asked");
         let text = crate::editor::buffer_text(&app.editor.content);
         let marks = line_marks(&text, ranges);

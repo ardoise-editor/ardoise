@@ -11,7 +11,7 @@ the macOS quit protection and break the build of code folding.
 
 ## `iced_winit`
 
-- `src/lib.rs` (~l. 81, marker `SimpleEdit patch`): `with_default_menu(false)`,
+- `src/lib.rs` (~l. 81, marker `Ardoise patch`): `with_default_menu(false)`,
   so winit's default macOS menu, whose Cmd+Q quits without saving the session,
   is not installed.
 - `src/conversion.rs` (~l. 145): activation token forwarded to the window.

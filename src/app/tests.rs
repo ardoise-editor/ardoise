@@ -26,8 +26,8 @@ mod behavior_tests {
     use super::*;
     use text_editor::{Action, Edit};
 
-    fn app() -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app() -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         app
     }
@@ -109,13 +109,13 @@ mod behavior_tests {
         assert!(!app.recents_open);
     }
 
-    fn type_text(app: &mut SimpleEditApp, text: &str) {
+    fn type_text(app: &mut ArdoiseApp, text: &str) {
         for c in text.chars() {
             let _ = app.handle(Message::EditorAction(Action::Edit(Edit::Insert(c))));
         }
     }
 
-    fn text(app: &SimpleEditApp) -> String {
+    fn text(app: &ArdoiseApp) -> String {
         crate::editor::buffer_text(&app.editor.content)
     }
 
@@ -161,7 +161,7 @@ mod behavior_tests {
         assert!(!app.panel_resizing && app.panel_drag.is_none());
     }
 
-    fn open_text(app: &mut SimpleEditApp, path: &Path, text: &str) {
+    fn open_text(app: &mut ArdoiseApp, path: &Path, text: &str) {
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.to_path_buf(),
             text: text.into(),
@@ -170,7 +170,7 @@ mod behavior_tests {
         })));
     }
 
-    fn pane_files(app: &SimpleEditApp) -> Vec<PathBuf> {
+    fn pane_files(app: &ArdoiseApp) -> Vec<PathBuf> {
         let split = app.split.as_ref().expect("split");
         split
             .layout_ids()
@@ -321,7 +321,7 @@ mod behavior_tests {
         let _ = app.update(Message::RefreshProjects);
         assert!(app.projects.rows().iter().any(|r| r.entry.name == "lib.rs"));
         // The next run starts with the same projects, folders open as they were.
-        let again = SimpleEditApp::blank(app.config.clone());
+        let again = ArdoiseApp::blank(app.config.clone());
         assert_eq!(again.projects.roots, app.projects.roots);
         assert!(again
             .projects
@@ -353,7 +353,7 @@ mod behavior_tests {
         let _ = app.update(Message::TogglePanel(Panel::Projects));
         assert!(app.show_sidebar && app.panels.projects && app.config.show_sidebar);
         // The next run starts as it was left.
-        let again = SimpleEditApp::blank(app.config.clone());
+        let again = ArdoiseApp::blank(app.config.clone());
         assert!(!again.panels.files && again.panels.projects);
         // An old setting with both open keeps the projects, once there are some.
         let mut old = Config {
@@ -361,10 +361,10 @@ mod behavior_tests {
             show_projects_panel: true,
             ..Config::default()
         };
-        let none = SimpleEditApp::blank(old.clone());
+        let none = ArdoiseApp::blank(old.clone());
         assert!(none.panels.files && !none.panels.projects);
         old.projects = vec![PathBuf::from("/tmp")];
-        let some = SimpleEditApp::blank(old);
+        let some = ArdoiseApp::blank(old);
         assert!(!some.panels.files && some.panels.projects);
     }
 
@@ -379,7 +379,7 @@ mod behavior_tests {
                 stamp: None,
             })));
         }
-        let order = |app: &SimpleEditApp| -> Vec<String> {
+        let order = |app: &ArdoiseApp| -> Vec<String> {
             app.sidebar
                 .files()
                 .iter()
@@ -406,7 +406,7 @@ mod behavior_tests {
         assert_eq!(saved, ["/s/b.txt", "/s/c.txt", "/s/d.txt", "/s/a.txt"]);
     }
 
-    fn open_named(app: &mut SimpleEditApp, path: &Path) {
+    fn open_named(app: &mut ArdoiseApp, path: &Path) {
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.to_path_buf(),
             text: String::new(),
@@ -504,7 +504,7 @@ mod behavior_tests {
         let _ = app.update(Message::Sidebar(crate::sidebar::SidebarMessage::OpenFile(
             tab("b"),
         )));
-        let ctrl_tab = |app: &mut SimpleEditApp, shift: bool| {
+        let ctrl_tab = |app: &mut ArdoiseApp, shift: bool| {
             let _ = app.update(Message::KeyPressed {
                 key: "Tab".into(),
                 ctrl: true,
@@ -568,9 +568,9 @@ mod behavior_tests {
     }
 
     /// The Git plugin, installed (its process is not running).
-    fn with_git_plugin(app: &mut SimpleEditApp) {
-        let manifest = simpleedit_plugin::manifest::Manifest::parse(
-            r#"{"id": "simpleedit.git", "name": "Git", "version": "1.0.0", "api": 1,
+    fn with_git_plugin(app: &mut ArdoiseApp) {
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
+            r#"{"id": "ardoise.git", "name": "Git", "version": "1.0.0", "api": 1,
                 "command": ["bin/none"],
                 "contributes": {"panels": [{"id": "git", "title": "Git", "location": "bottom"}]}}"#,
         )
@@ -583,23 +583,23 @@ mod behavior_tests {
     }
 
     /// A message of the Git plugin to the editor.
-    fn from_git(app: &mut SimpleEditApp, message: simpleedit_plugin::protocol::Message) {
+    fn from_git(app: &mut ArdoiseApp, message: ardoise_plugin::protocol::Message) {
         let _ = app.update(Message::Plugin(crate::plugins::PluginMsg::Incoming(
-            crate::plugins::host::Incoming::Rpc("simpleedit.git".into(), message),
+            crate::plugins::host::Incoming::Rpc("ardoise.git".into(), message),
         )));
     }
 
     /// A diff tab of the Git plugin, of files on the disk.
-    fn git_diff_tab(app: &mut SimpleEditApp, tab: &str, title: &str, files: &[&Path]) -> PathBuf {
+    fn git_diff_tab(app: &mut ArdoiseApp, tab: &str, title: &str, files: &[&Path]) -> PathBuf {
         let files: Vec<_> = files
             .iter()
             .map(|f| serde_json::json!({"path": f.file_name().unwrap().to_string_lossy(), "patch": "", "mode": "unstaged", "file": f}))
             .collect();
         from_git(
             app,
-            simpleedit_plugin::protocol::Message::request(
+            ardoise_plugin::protocol::Message::request(
                 1,
-                simpleedit_plugin::protocol::methods::OPEN_DIFF_TAB,
+                ardoise_plugin::protocol::methods::OPEN_DIFF_TAB,
                 serde_json::json!({"tab": tab, "title": title, "files": files}),
             ),
         );
@@ -627,7 +627,7 @@ mod behavior_tests {
     #[test]
     fn the_boxes_a_plugin_adds_to_the_deletion_are_shown_and_ticked() {
         use crate::plugins::PluginMsg;
-        use simpleedit_plugin::protocol::DeleteOption;
+        use ardoise_plugin::protocol::DeleteOption;
         let mut app = app();
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("tracked.txt");
@@ -639,11 +639,11 @@ mod behavior_tests {
         };
         let _ = app.handle(Message::Plugin(PluginMsg::DeleteOptions(
             file.clone(),
-            vec![("simpleedit.git".into(), option.clone())],
+            vec![("ardoise.git".into(), option.clone())],
         )));
         assert_eq!(
             app.overlay,
-            ActiveOverlay::ConfirmFileDelete(file.clone(), vec![("simpleedit.git".into(), option)])
+            ActiveOverlay::ConfirmFileDelete(file.clone(), vec![("ardoise.git".into(), option)])
         );
         let _ = app.handle(Message::Plugin(PluginMsg::DeleteOptionToggled(0, false)));
         let ActiveOverlay::ConfirmFileDelete(_, options) = &app.overlay else {
@@ -754,7 +754,7 @@ mod behavior_tests {
         // Installed: its panel is a panel of a plugin, at the bottom; the
         // shortcut closes it when it is open.
         with_git_plugin(&mut app);
-        let git = ("simpleedit.git".to_string(), "git".to_string());
+        let git = ("ardoise.git".to_string(), "git".to_string());
         let _ = app.handle(Message::Plugin(crate::plugins::PluginMsg::TogglePanel(
             git.0.clone(),
             git.1.clone(),
@@ -771,12 +771,12 @@ mod behavior_tests {
     fn a_conflict_of_the_git_plugin_opens_in_a_tab_that_is_not_a_file_and_is_not_remembered() {
         let mut app = app();
         with_git_plugin(&mut app);
-        let open = |app: &mut SimpleEditApp| {
+        let open = |app: &mut ArdoiseApp| {
             from_git(
                 app,
-                simpleedit_plugin::protocol::Message::request(
+                ardoise_plugin::protocol::Message::request(
                     2,
-                    simpleedit_plugin::protocol::methods::OPEN_MERGE,
+                    ardoise_plugin::protocol::methods::OPEN_MERGE,
                     serde_json::json!({"tab": "merge:dir/f.txt", "path": "/tmp/no-such-repo/dir/f.txt",
                         "text": "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> t\nb\n"}),
                 ),
@@ -943,7 +943,7 @@ mod behavior_tests {
         type_text(&mut app, "abc");
         let session = app.build_session();
 
-        let mut again = SimpleEditApp::blank(Config::default());
+        let mut again = ArdoiseApp::blank(Config::default());
         let _ = again.restore_session(session);
         assert_eq!(text(&again), "abc\n");
         assert!(again.is_dirty);
@@ -1001,7 +1001,7 @@ mod behavior_tests {
 
     /// An app whose scratch folder is a temporary one, with a scratch file
     /// open in the editor.
-    fn app_on_scratch() -> (SimpleEditApp, tempfile::TempDir, PathBuf) {
+    fn app_on_scratch() -> (ArdoiseApp, tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let mut app = app();
         app.scratch.dir = dir.path().join("scratches");
@@ -1654,7 +1654,7 @@ mod behavior_tests {
     }
 
     /// A modified file with a place on disk, edited a while ago.
-    fn dirty_real_file(app: &mut SimpleEditApp, dir: &Path) -> PathBuf {
+    fn dirty_real_file(app: &mut ArdoiseApp, dir: &Path) -> PathBuf {
         let path = dir.join("a.txt");
         std::fs::write(&path, "one\n").unwrap();
         app.current_file = Some(path.clone());
@@ -1664,12 +1664,12 @@ mod behavior_tests {
         path
     }
 
-    fn app_with_autosave_off() -> SimpleEditApp {
+    fn app_with_autosave_off() -> ArdoiseApp {
         let config = Config {
             auto_save: false,
             ..Config::default()
         };
-        let mut app = SimpleEditApp::blank(config);
+        let mut app = ArdoiseApp::blank(config);
         let _ = app.restore_session(crate::session::Session::default());
         app
     }
@@ -1749,7 +1749,7 @@ mod behavior_tests {
         assert!(app.change_paint().is_none());
     }
 
-    fn app_with_a_changed_line() -> SimpleEditApp {
+    fn app_with_a_changed_line() -> ArdoiseApp {
         let mut app = app();
         type_text(&mut app, "one\nTWO\nthree");
         let path = app.current_file.clone().unwrap();
@@ -1823,7 +1823,7 @@ mod behavior_tests {
     }
 
     /// Why the usages popup has nothing to list.
-    fn empty_reason(app: &SimpleEditApp) -> String {
+    fn empty_reason(app: &ArdoiseApp) -> String {
         match &app.overlay {
             ActiveOverlay::References(RefList {
                 state: RefState::Empty(why),
@@ -1873,7 +1873,7 @@ mod behavior_tests {
         assert!(app.session_write_job().is_none());
     }
 
-    fn press(app: &mut SimpleEditApp, key: &str, ctrl: bool, shift: bool, alt: bool) {
+    fn press(app: &mut ArdoiseApp, key: &str, ctrl: bool, shift: bool, alt: bool) {
         let _ = app.handle(Message::KeyPressed {
             key: key.into(),
             ctrl,
@@ -1921,7 +1921,7 @@ mod look_tests {
             dark_mode: std::env::var("LIGHT").is_err(),
             ..Config::default()
         };
-        let mut app = SimpleEditApp::blank(config);
+        let mut app = ArdoiseApp::blank(config);
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::ProjectPicked(Some(root.clone())));
         let _ = app.update(Message::ToggleProjectFolder(root.join("src")));
@@ -1957,8 +1957,8 @@ mod text_command_tests {
     use crate::tabs::{Encoding, LineEnding};
     use text_editor::{Action, Edit};
 
-    fn app_with(text: &str) -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app_with(text: &str) -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: PathBuf::from("/tmp/text-command-tests/a.txt"),
@@ -1969,11 +1969,11 @@ mod text_command_tests {
         app
     }
 
-    fn buffer(app: &SimpleEditApp) -> String {
+    fn buffer(app: &ArdoiseApp) -> String {
         crate::editor::buffer_text(&app.editor.content)
     }
 
-    fn edit(app: &mut SimpleEditApp, edit: Edit) {
+    fn edit(app: &mut ArdoiseApp, edit: Edit) {
         let _ = app.update(Message::EditorAction(Action::Edit(edit)));
     }
 
@@ -2148,7 +2148,7 @@ mod text_command_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.txt");
         std::fs::write(&path, [b'c', b'a', b'f', 0xe9, b'\n']).unwrap();
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let (raw, encoding) = file_io::read_decoded(&path).unwrap();
         assert_eq!((raw.as_str(), encoding), ("café\n", Encoding::Windows1252));
@@ -2294,7 +2294,7 @@ mod large_file_tests {
     #[test]
     fn a_large_tab_cannot_be_edited_or_saved() {
         let (_dir, path) = file_of(10);
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),
@@ -2327,7 +2327,7 @@ mod large_file_tests {
     #[test]
     fn a_large_file_that_changed_keeps_its_part_and_is_forgotten_when_closed() {
         let (_dir, path) = file_of(10);
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),
@@ -2358,7 +2358,7 @@ mod large_file_tests {
     #[test]
     fn a_large_tab_is_not_reloaded_whole_with_another_encoding() {
         let (_dir, path) = file_of(10);
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),
@@ -2385,8 +2385,8 @@ mod large_file_tests {
 mod language_server_tests {
     use super::*;
 
-    fn app_with(path: &Path, text: &str) -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app_with(path: &Path, text: &str) -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.to_path_buf(),
@@ -2549,7 +2549,7 @@ mod command_line_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.txt");
         std::fs::write(&path, "one\ntwo é three\nfour\n").unwrap();
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let loaded = Loaded {
             path: path.clone(),
@@ -2587,7 +2587,7 @@ mod command_line_tests {
 mod keyboard_list_tests {
     use super::*;
 
-    fn key(app: &mut SimpleEditApp, name: &str) {
+    fn key(app: &mut ArdoiseApp, name: &str) {
         let _ = app.update(Message::KeyPressed {
             key: name.to_string(),
             ctrl: false,
@@ -2596,8 +2596,8 @@ mod keyboard_list_tests {
         });
     }
 
-    fn app() -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app() -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         app
     }
@@ -2655,7 +2655,7 @@ mod large_file_write_guards {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("big.log");
         std::fs::write(&path, "line\n").unwrap();
-        let mut app = SimpleEditApp::blank(Config::default());
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),

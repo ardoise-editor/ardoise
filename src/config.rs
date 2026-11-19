@@ -833,7 +833,7 @@ fn detect_system_locale() -> String {
 
 impl Config {
     pub fn config_path() -> Option<PathBuf> {
-        crate::fsutil::config_dir().map(|d| d.join("simpleedit").join("config.json"))
+        crate::fsutil::config_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("config.json"))
     }
 
     pub fn load() -> Self {

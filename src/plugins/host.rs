@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use ardoise_plugin::protocol::{self, methods, InitializeParams, Message as Rpc, RpcError};
 use serde_json::Value;
-use simpleedit_plugin::protocol::{self, methods, InitializeParams, Message as Rpc, RpcError};
 
 use super::store::Installed;
 
@@ -117,7 +117,7 @@ pub fn start(plugin: &Installed, init: InitializeParams) -> Result<(), String> {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(log)
-        .env("SIMPLEEDIT_PLUGIN_DATA", &init.data_dir);
+        .env("ARDOISE_PLUGIN_DATA", &init.data_dir);
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;

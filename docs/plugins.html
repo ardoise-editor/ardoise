@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Write a plugin — SimpleEdit</title>
-  <meta name="description" content="How to write, try and publish a plugin for the SimpleEdit text editor." />
+  <title>Write a plugin — Ardoise Editor</title>
+  <meta name="description" content="How to write, try and publish a plugin for the Ardoise Editor text editor." />
   <meta name="color-scheme" content="dark light" />
   <style>
     /* Fonts are served from this site (no request to Google's servers). */
@@ -15,7 +15,7 @@
     @font-face { font-family: 'JetBrains Mono'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Regular.ttf') format('truetype'); }
     @font-face { font-family: 'JetBrains Mono'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Medium.ttf') format('truetype'); }
 
-    /* SimpleEdit — "Nocturne" design tokens (see design/tokens/tokens.css) */
+    /* Ardoise Editor — "Nocturne" design tokens (see design/tokens/tokens.css) */
     :root {
       --font-ui: 'Instrument Sans', system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -168,11 +168,11 @@
 <body>
 
 <header class="nav">
-  <a class="brand" href="index.html"><span class="brand-mark">S</span>SimpleEdit</a>
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>Ardoise Editor</a>
   <div class="nav-spacer"></div>
   <a class="link" href="index.html"><span data-lang="en">Home</span><span data-lang="fr">Accueil</span></a>
-  <a class="link" href="https://github.com/simple-edit-app/plugin-template">Template</a>
-  <a class="link" href="https://github.com/simple-edit-app/plugin-sdk">SDK</a>
+  <a class="link" href="https://github.com/ardoise-editor/plugin-template">Template</a>
+  <a class="link" href="https://github.com/ardoise-editor/plugin-sdk">SDK</a>
   <div class="lang-switch" role="group" aria-label="Language">
     <button class="lang-btn" data-set-lang="en" onclick="setLang('en')">EN</button>
     <button class="lang-btn" data-set-lang="fr" onclick="setLang('fr')">FR</button>
@@ -195,8 +195,8 @@
 <article>
 <h1><span data-lang="en">Write a plugin</span><span data-lang="fr">Créer un plugin</span></h1>
 <p class="lead">
-  <span data-lang="en">SimpleEdit is a plain editor; plugins add the rest. Anyone can write one, in any language, and anyone can install it from <b>Preferences › Plugins</b>.</span>
-  <span data-lang="fr">SimpleEdit est un éditeur simple ; les plugins ajoutent le reste. Tout le monde peut en écrire un, dans n'importe quel langage, et tout le monde peut l'installer depuis <b>Préférences › Plugins</b>.</span>
+  <span data-lang="en">Ardoise Editor is a plain editor; plugins add the rest. Anyone can write one, in any language, and anyone can install it from <b>Preferences › Plugins</b>.</span>
+  <span data-lang="fr">Ardoise Editor est un éditeur simple ; les plugins ajoutent le reste. Tout le monde peut en écrire un, dans n'importe quel langage, et tout le monde peut l'installer depuis <b>Préférences › Plugins</b>.</span>
 </p>
 
 <h2 id="what"><span data-lang="en">What a plugin is</span><span data-lang="fr">Ce qu'est un plugin</span></h2>
@@ -218,11 +218,11 @@
 <p data-lang="fr">Un panneau est décrit, pas dessiné : le plugin envoie un arbre de nœuds (colonnes, textes, boutons, champs, listes, arbres…) et l'éditeur le dessine avec ses propres widgets, dans son thème. Ce que l'utilisateur y fait revient au plugin sous forme d'événements.</p>
 
 <h2 id="start"><span data-lang="en">Start from the template</span><span data-lang="fr">Partir du modèle</span></h2>
-<p data-lang="en"><a href="https://github.com/simple-edit-app/plugin-template">plugin-template</a> is a plugin written in Rust with the <a href="https://github.com/simple-edit-app/plugin-sdk">SDK</a>: a command and a panel, its tests, and the workflow that publishes its releases. Click <b>Use this template</b> on GitHub, then set <code>id</code>, <code>name</code> and <code>repository</code> in <code>plugin.json</code>.</p>
-<p data-lang="fr"><a href="https://github.com/simple-edit-app/plugin-template">plugin-template</a> est un plugin écrit en Rust avec le <a href="https://github.com/simple-edit-app/plugin-sdk">SDK</a> : une commande et un panneau, ses tests, et le workflow qui publie ses releases. Cliquez sur <b>Use this template</b> sur GitHub, puis renseignez <code>id</code>, <code>name</code> et <code>repository</code> dans <code>plugin.json</code>.</p>
-<pre><code>use simpleedit_plugin::protocol::{Context, UiEvent};
-use simpleedit_plugin::ui::*;
-use simpleedit_plugin::{run, Host, Plugin};
+<p data-lang="en"><a href="https://github.com/ardoise-editor/plugin-template">plugin-template</a> is a plugin written in Rust with the <a href="https://github.com/ardoise-editor/plugin-sdk">SDK</a>: a command and a panel, its tests, and the workflow that publishes its releases. Click <b>Use this template</b> on GitHub, then set <code>id</code>, <code>name</code> and <code>repository</code> in <code>plugin.json</code>.</p>
+<p data-lang="fr"><a href="https://github.com/ardoise-editor/plugin-template">plugin-template</a> est un plugin écrit en Rust avec le <a href="https://github.com/ardoise-editor/plugin-sdk">SDK</a> : une commande et un panneau, ses tests, et le workflow qui publie ses releases. Cliquez sur <b>Use this template</b> sur GitHub, puis renseignez <code>id</code>, <code>name</code> et <code>repository</code> dans <code>plugin.json</code>.</p>
+<pre><code>use ardoise_plugin::protocol::{Context, UiEvent};
+use ardoise_plugin::ui::*;
+use ardoise_plugin::{run, Host, Plugin};
 
 #[derive(Default)]
 struct Hello { name: String }
@@ -276,7 +276,7 @@ fn main() -&gt; std::io::Result&lt;()&gt; {
 }</code></pre>
 <div class="table-wrap"><table>
   <tr><th><span data-lang="en">Field</span><span data-lang="fr">Champ</span></th><th><span data-lang="en">What it is</span><span data-lang="fr">Ce que c'est</span></th></tr>
-  <tr><td><code>id</code></td><td><span data-lang="en">Unique: lowercase words, dot-separated, the first being the author (<code>acme.hello</code>). <code>simpleedit.*</code> is kept for the official plugins.</span><span data-lang="fr">Unique : des mots en minuscules séparés par des points, le premier étant l'auteur (<code>acme.hello</code>). <code>simpleedit.*</code> est réservé aux plugins officiels.</span></td></tr>
+  <tr><td><code>id</code></td><td><span data-lang="en">Unique: lowercase words, dot-separated, the first being the author (<code>acme.hello</code>). <code>ardoise.*</code> is kept for the official plugins.</span><span data-lang="fr">Unique : des mots en minuscules séparés par des points, le premier étant l'auteur (<code>acme.hello</code>). <code>ardoise.*</code> est réservé aux plugins officiels.</span></td></tr>
   <tr><td><code>name</code>, <code>description</code></td><td><span data-lang="en">A text, or a text per language: <code>{"en": "…", "fr": "…"}</code>. The editor shows the one of its language, else English.</span><span data-lang="fr">Un texte, ou un texte par langue : <code>{"en": "…", "fr": "…"}</code>. L'éditeur montre celui de sa langue, sinon l'anglais.</span></td></tr>
   <tr><td><code>version</code></td><td><code>MAJOR.MINOR.PATCH</code>; <span data-lang="en">the tag of its release is <code>vMAJOR.MINOR.PATCH</code>.</span><span data-lang="fr">le tag de sa release est <code>vMAJEUR.MINEUR.CORRECTIF</code>.</span></td></tr>
   <tr><td><code>api</code></td><td><span data-lang="en">The version of the protocol: <code>1</code>.</span><span data-lang="fr">La version du protocole : <code>1</code>.</span></td></tr>
@@ -424,16 +424,16 @@ while (message := read()) is not None:
 <h2 id="try"><span data-lang="en">Try it</span><span data-lang="fr">L'essayer</span></h2>
 <ol data-lang="en">
   <li>Build it, with the program where <code>command</code> says (<code>bin/hello</code>).</li>
-  <li>In SimpleEdit, <b>Preferences › Plugins › Link a folder…</b>, and pick the folder of <code>plugin.json</code>. The plugin runs from there.</li>
+  <li>In Ardoise Editor, <b>Preferences › Plugins › Link a folder…</b>, and pick the folder of <code>plugin.json</code>. The plugin runs from there.</li>
   <li>After a new build: <b>Uninstall</b> and link it again, or restart the editor.</li>
 </ol>
 <ol data-lang="fr">
   <li>Compilez-le, avec le programme là où <code>command</code> l'indique (<code>bin/hello</code>).</li>
-  <li>Dans SimpleEdit, <b>Préférences › Plugins › Lier un dossier…</b>, puis choisissez le dossier de <code>plugin.json</code>. Le plugin tourne depuis cet endroit.</li>
+  <li>Dans Ardoise Editor, <b>Préférences › Plugins › Lier un dossier…</b>, puis choisissez le dossier de <code>plugin.json</code>. Le plugin tourne depuis cet endroit.</li>
   <li>Après une nouvelle compilation : <b>Désinstaller</b> puis le lier à nouveau, ou redémarrer l'éditeur.</li>
 </ol>
-<p data-lang="en">What the plugin writes to its standard error is in <code>plugin.log</code>, in its data folder (also given as <code>data_dir</code> and in <code>SIMPLEEDIT_PLUGIN_DATA</code>): <code>~/.local/share/simpleedit/plugin-data/&lt;id&gt;/</code> on Linux, <code>~/Library/Application Support/simpleedit/plugin-data/&lt;id&gt;/</code> on macOS. That folder stays when the plugin is uninstalled.</p>
-<p data-lang="fr">Ce que le plugin écrit sur sa sortie d'erreur est dans <code>plugin.log</code>, dans son dossier de données (aussi donné par <code>data_dir</code> et <code>SIMPLEEDIT_PLUGIN_DATA</code>) : <code>~/.local/share/simpleedit/plugin-data/&lt;id&gt;/</code> sous Linux, <code>~/Library/Application Support/simpleedit/plugin-data/&lt;id&gt;/</code> sous macOS. Ce dossier reste quand le plugin est désinstallé.</p>
+<p data-lang="en">What the plugin writes to its standard error is in <code>plugin.log</code>, in its data folder (also given as <code>data_dir</code> and in <code>ARDOISE_PLUGIN_DATA</code>): <code>~/.local/share/ardoise/plugin-data/&lt;id&gt;/</code> on Linux, <code>~/Library/Application Support/ardoise/plugin-data/&lt;id&gt;/</code> on macOS. That folder stays when the plugin is uninstalled.</p>
+<p data-lang="fr">Ce que le plugin écrit sur sa sortie d'erreur est dans <code>plugin.log</code>, dans son dossier de données (aussi donné par <code>data_dir</code> et <code>ARDOISE_PLUGIN_DATA</code>) : <code>~/.local/share/ardoise/plugin-data/&lt;id&gt;/</code> sous Linux, <code>~/Library/Application Support/ardoise/plugin-data/&lt;id&gt;/</code> sous macOS. Ce dossier reste quand le plugin est désinstallé.</p>
 
 <h2 id="publish"><span data-lang="en">Publish it</span><span data-lang="fr">Le publier</span></h2>
 <p data-lang="en">The editor installs the latest release of a GitHub repository. It must hold:</p>
@@ -454,18 +454,18 @@ while (message := read()) is not None:
 </div>
 
 <h2 id="official"><span data-lang="en">Official plugins</span><span data-lang="fr">Plugins officiels</span></h2>
-<p data-lang="en">The official plugins are listed in <a href="https://github.com/simple-edit-app/plugins">simple-edit-app/plugins</a>. Their ids start with <code>simpleedit.</code>, their repositories are in the <code>simple-edit-app</code> organization, and their <code>SHA256SUMS</code> is signed (<code>SHA256SUMS.sig</code>) with the key of SimpleEdit's own releases: the editor refuses an official plugin whose signature is wrong.</p>
-<p data-lang="fr">Les plugins officiels sont listés dans <a href="https://github.com/simple-edit-app/plugins">simple-edit-app/plugins</a>. Leurs identifiants commencent par <code>simpleedit.</code>, leurs dépôts sont dans l'organisation <code>simple-edit-app</code>, et leur <code>SHA256SUMS</code> est signé (<code>SHA256SUMS.sig</code>) avec la clé des releases de SimpleEdit : l'éditeur refuse un plugin officiel dont la signature est fausse.</p>
+<p data-lang="en">The official plugins are listed in <a href="https://github.com/ardoise-editor/plugins">ardoise-editor/plugins</a>. Their ids start with <code>ardoise.</code>, their repositories are in the <code>ardoise-editor</code> organization, and their <code>SHA256SUMS</code> is signed (<code>SHA256SUMS.sig</code>) with the key of Ardoise Editor's own releases: the editor refuses an official plugin whose signature is wrong.</p>
+<p data-lang="fr">Les plugins officiels sont listés dans <a href="https://github.com/ardoise-editor/plugins">ardoise-editor/plugins</a>. Leurs identifiants commencent par <code>ardoise.</code>, leurs dépôts sont dans l'organisation <code>ardoise-editor</code>, et leur <code>SHA256SUMS</code> est signé (<code>SHA256SUMS.sig</code>) avec la clé des releases de Ardoise Editor : l'éditeur refuse un plugin officiel dont la signature est fausse.</p>
 </article>
 </div>
 
 <footer>
-  <span class="grow">© SimpleEdit · <span data-lang="en">MIT License</span><span data-lang="fr">Licence MIT</span></span>
+  <span class="grow">© Ardoise Editor · <span data-lang="en">MIT License</span><span data-lang="fr">Licence MIT</span></span>
   <span>
-    <a href="https://github.com/simple-edit-app/simpleedit">GitHub</a> ·
-    <a href="https://github.com/simple-edit-app/plugin-sdk">SDK</a> ·
-    <a href="https://github.com/simple-edit-app/plugin-template">Template</a> ·
-    <a href="https://github.com/simple-edit-app/plugins">Registry</a>
+    <a href="https://github.com/ardoise-editor/ardoise">GitHub</a> ·
+    <a href="https://github.com/ardoise-editor/plugin-sdk">SDK</a> ·
+    <a href="https://github.com/ardoise-editor/plugin-template">Template</a> ·
+    <a href="https://github.com/ardoise-editor/plugins">Registry</a>
   </span>
 </footer>
 

@@ -120,6 +120,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "ardoise"
+version = "2.1.0"
+dependencies = [
+ "ardoise-plugin",
+ "dirs",
+ "ed25519-dalek",
+ "flate2",
+ "iced",
+ "iced_aw",
+ "iced_fonts",
+ "iced_test",
+ "image",
+ "libc",
+ "muda",
+ "notify",
+ "regex",
+ "reqwest",
+ "rfd",
+ "rust-i18n",
+ "serde",
+ "serde_json",
+ "sha2",
+ "similar",
+ "syntect",
+ "tar",
+ "tempfile",
+ "tokio",
+ "trash",
+ "ttf-parser",
+ "two-face",
+ "unicode-width",
+]
+
+[[package]]
+name = "ardoise-plugin"
+version = "0.12.0"
+source = "git+https://github.com/ardoise-editor/plugin-sdk?tag=v0.12.0#32da0398b3a29b97421af71d4a3defd6da14edd8"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4360,49 +4403,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a9c6883ca9c3c7c90e888de77b7a5c849c779d25d74a1269b0218b14e8b136c"
 dependencies = [
  "log",
-]
-
-[[package]]
-name = "simpleedit"
-version = "2.0.3"
-dependencies = [
- "dirs",
- "ed25519-dalek",
- "flate2",
- "iced",
- "iced_aw",
- "iced_fonts",
- "iced_test",
- "image",
- "libc",
- "muda",
- "notify",
- "regex",
- "reqwest",
- "rfd",
- "rust-i18n",
- "serde",
- "serde_json",
- "sha2",
- "similar",
- "simpleedit-plugin",
- "syntect",
- "tar",
- "tempfile",
- "tokio",
- "trash",
- "ttf-parser",
- "two-face",
- "unicode-width",
-]
-
-[[package]]
-name = "simpleedit-plugin"
-version = "0.11.0"
-source = "git+https://github.com/simple-edit-app/plugin-sdk?tag=v0.11.0#256cbf520bdb9209c822e038dabaf2589235c2dc"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

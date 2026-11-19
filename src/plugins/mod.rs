@@ -16,11 +16,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub use ardoise_plugin::manifest::Menu;
+use ardoise_plugin::manifest::{Location, Manifest};
+use ardoise_plugin::protocol::{Settings, StatusParams};
+use ardoise_plugin::ui::Node;
 use serde_json::Value;
-pub use simpleedit_plugin::manifest::Menu;
-use simpleedit_plugin::manifest::{Location, Manifest};
-use simpleedit_plugin::protocol::{Settings, StatusParams};
-use simpleedit_plugin::ui::Node;
 
 pub use host::Incoming;
 pub use remote::Listed;
@@ -33,7 +33,7 @@ pub type PanelKey = (String, String);
 #[derive(Debug, Clone)]
 pub struct NodeCompletion {
     pub editor: grid::GridKey,
-    pub items: Vec<simpleedit_plugin::protocol::CompletionItem>,
+    pub items: Vec<ardoise_plugin::protocol::CompletionItem>,
     /// Where the replaced word starts, in characters.
     pub from: usize,
     /// The cursor when it was asked, in characters.
@@ -85,7 +85,7 @@ pub fn tab_of(path: &std::path::Path) -> Option<(String, String)> {
 /// A command of a plugin in a context menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MenuItem {
-    pub menu: simpleedit_plugin::manifest::Menu,
+    pub menu: ardoise_plugin::manifest::Menu,
     pub plugin: String,
     pub command: String,
     pub label: String,
@@ -111,7 +111,7 @@ pub enum PluginMsg {
     /// (plugin, box).
     DeleteOptions(
         PathBuf,
-        Vec<(String, simpleedit_plugin::protocol::DeleteOption)>,
+        Vec<(String, ardoise_plugin::protocol::DeleteOption)>,
     ),
     /// A box of that question ticked or not.
     DeleteOptionToggled(usize, bool),
@@ -137,7 +137,7 @@ pub enum PluginMsg {
     Respond(
         String,
         i64,
-        Result<Value, simpleedit_plugin::protocol::RpcError>,
+        Result<Value, ardoise_plugin::protocol::RpcError>,
     ),
     /// Starts a plugin that stopped, and opens again its panels.
     Restart(String),
@@ -167,7 +167,7 @@ pub enum PluginMsg {
     Completed(
         grid::GridKey,
         usize,
-        Result<simpleedit_plugin::protocol::Completions, String>,
+        Result<ardoise_plugin::protocol::Completions, String>,
     ),
 
     // ── The Plugins page ───────────────────────────────────────────────
@@ -272,7 +272,7 @@ pub struct Plugins {
     pub editor_focus: Option<grid::GridKey>,
     pub completion: Option<NodeCompletion>,
     /// How files stand, as each plugin said it.
-    pub decorations: BTreeMap<String, Vec<simpleedit_plugin::protocol::FileDecoration>>,
+    pub decorations: BTreeMap<String, Vec<ardoise_plugin::protocol::FileDecoration>>,
     /// The texts files are compared with to mark their changed lines: the
     /// text (none: new), or no marks at all.
     pub bases: HashMap<PathBuf, Base>,
@@ -283,9 +283,9 @@ pub struct Plugins {
     /// the keyboard goes elsewhere.
     pub panel_focus: Option<PanelKey>,
     /// The selection each editor of a panel was last given by its plugin.
-    editor_selections: HashMap<(PanelKey, String), simpleedit_plugin::ui::EditorSelection>,
+    editor_selections: HashMap<(PanelKey, String), ardoise_plugin::ui::EditorSelection>,
     /// What each plugin offers in Search Everywhere.
-    pub search_items: BTreeMap<String, Vec<simpleedit_plugin::protocol::SearchItem>>,
+    pub search_items: BTreeMap<String, Vec<ardoise_plugin::protocol::SearchItem>>,
     /// A line pointed at in the gutter (right click): the next answer to
     /// `editor/activeFile` gives it as the lines of the cursor.
     pub pointed_line: Option<usize>,
@@ -332,7 +332,7 @@ impl Plugins {
     pub fn panels(
         &self,
         location: Location,
-    ) -> Vec<(&Installed, &simpleedit_plugin::manifest::Panel)> {
+    ) -> Vec<(&Installed, &ardoise_plugin::manifest::Panel)> {
         self.installed
             .iter()
             .flat_map(|p| {
@@ -457,7 +457,7 @@ impl Plugins {
     }
 
     /// The panel of a plugin's settings, if it has one.
-    pub fn settings_panel(&self, id: &str) -> Option<&simpleedit_plugin::manifest::Panel> {
+    pub fn settings_panel(&self, id: &str) -> Option<&ardoise_plugin::manifest::Panel> {
         self.get(id)?
             .manifest
             .contributes
@@ -471,11 +471,11 @@ impl Plugins {
 /// editor counts bytes).
 fn editor_cursor(
     text: &str,
-    selection: simpleedit_plugin::ui::EditorSelection,
+    selection: ardoise_plugin::ui::EditorSelection,
 ) -> iced::widget::text_editor::Cursor {
     use iced::widget::text_editor::Position;
     let lines: Vec<&str> = text.split('\n').collect();
-    let at = |p: simpleedit_plugin::ui::EditorPos| {
+    let at = |p: ardoise_plugin::ui::EditorPos| {
         let line = p.line.min(lines.len().saturating_sub(1));
         let s = lines.get(line).copied().unwrap_or_default();
         let column = s.char_indices().nth(p.column).map_or(s.len(), |(i, _)| i);
@@ -524,11 +524,7 @@ pub fn key_matches(spec: &str, key: &str, ctrl: bool, alt: bool, shift: bool) ->
 
 fn collect_editors(
     node: &Node,
-    out: &mut Vec<(
-        String,
-        String,
-        Option<simpleedit_plugin::ui::EditorSelection>,
-    )>,
+    out: &mut Vec<(String, String, Option<ardoise_plugin::ui::EditorSelection>)>,
 ) {
     match node {
         Node::Editor {
@@ -565,7 +561,7 @@ fn collect_inputs(node: &Node, out: &mut HashMap<String, String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simpleedit_plugin::ui::{column, input};
+    use ardoise_plugin::ui::{column, input};
 
     #[test]
     fn typed_text_stays_until_the_plugin_changes_the_field() {
@@ -588,7 +584,7 @@ mod tests {
 
     #[test]
     fn a_selection_sent_by_the_plugin_moves_the_cursor_once() {
-        use simpleedit_plugin::ui::{editor, EditorPos, EditorSelection};
+        use ardoise_plugin::ui::{editor, EditorPos, EditorSelection};
         let mut plugins = Plugins::default();
         let key: PanelKey = ("acme.a".into(), "p".into());
         let found = EditorSelection {
@@ -624,7 +620,7 @@ mod tests {
 
     #[test]
     fn a_key_presses_the_button_that_names_it() {
-        use simpleedit_plugin::ui::button;
+        use ardoise_plugin::ui::button;
         let root = column([
             button("Copy", "copy").key("Ctrl+C"),
             button("Off", "off").key("F4").enabled(false),

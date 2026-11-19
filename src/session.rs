@@ -68,7 +68,7 @@ impl InstanceLock {
     /// `None` when another running instance already holds the lock. A system
     /// that can't lock at all counts as free: the app must still start.
     pub fn acquire() -> Option<InstanceLock> {
-        let dir = crate::fsutil::data_dir()?.join("simpleedit");
+        let dir = crate::fsutil::data_dir()?.join(crate::fsutil::APP_DIR);
         std::fs::create_dir_all(&dir).ok()?;
         let file = std::fs::OpenOptions::new()
             .create(true)
@@ -129,7 +129,7 @@ pub struct Loaded {
 
 impl Session {
     fn path() -> Option<PathBuf> {
-        crate::fsutil::data_dir().map(|d| d.join("simpleedit").join("session.json"))
+        crate::fsutil::data_dir().map(|d| d.join(crate::fsutil::APP_DIR).join("session.json"))
     }
 
     /// A missing file is a fresh start; a corrupted one is moved aside so the

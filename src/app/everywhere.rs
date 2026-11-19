@@ -124,7 +124,7 @@ pub enum Row {
     Page(PrefsPage),
     Text(TextHit),
     /// Something a plugin offers (a branch, a commit…): the plugin, the item.
-    Found(String, simpleedit_plugin::protocol::SearchItem),
+    Found(String, ardoise_plugin::protocol::SearchItem),
     /// A line that says something (loading, nothing found).
     Note(String),
 }
@@ -251,7 +251,7 @@ fn symbol_icon(kind: u64) -> (char, (u8, u8, u8)) {
     as_item.icon()
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     // ── Opening ──
 
     /// Opens the search on `tab`; asked again for the same tab (Shift twice
@@ -428,7 +428,7 @@ impl SimpleEditApp {
     /// The Plugins tab opened: the plugins may give their items again.
     fn everywhere_load_plugins(&mut self) -> Task<Message> {
         if self.everywhere_tab() == Tab::Plugins {
-            crate::plugins::host::notify_all(simpleedit_plugin::protocol::methods::SEARCH_OPENED);
+            crate::plugins::host::notify_all(ardoise_plugin::protocol::methods::SEARCH_OPENED);
         }
         Task::none()
     }
@@ -1112,8 +1112,8 @@ impl SimpleEditApp {
                 self.overlay = ActiveOverlay::None;
                 crate::plugins::host::notify(
                     &plugin,
-                    simpleedit_plugin::protocol::methods::SEARCH_PICKED,
-                    simpleedit_plugin::protocol::SearchPickedParams { id: item.id },
+                    ardoise_plugin::protocol::methods::SEARCH_PICKED,
+                    ardoise_plugin::protocol::SearchPickedParams { id: item.id },
                 );
                 Task::none()
             }
@@ -1928,15 +1928,15 @@ mod tests {
         dir
     }
 
-    fn app_on(dir: &Path) -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app_on(dir: &Path) -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::ProjectPicked(Some(dir.to_path_buf())));
         app
     }
 
     /// Opens the search on `tab` with the files of `dir` listed.
-    fn open(app: &mut SimpleEditApp, dir: &Path, tab: Tab) {
+    fn open(app: &mut ArdoiseApp, dir: &Path, tab: Tab) {
         let _ = app.update(Message::OpenEverywhere(tab));
         let files = crate::finder::list_files(dir, &[], true)
             .into_iter()
@@ -1949,11 +1949,11 @@ mod tests {
         let _ = app.update(Message::EverywhereFiles(generation, files));
     }
 
-    fn typed(app: &mut SimpleEditApp, query: &str) {
+    fn typed(app: &mut ArdoiseApp, query: &str) {
         let _ = app.update(Message::EverywhereQuery(query.into()));
     }
 
-    fn key(app: &mut SimpleEditApp, key: &str, ctrl: bool, shift: bool, alt: bool) {
+    fn key(app: &mut ArdoiseApp, key: &str, ctrl: bool, shift: bool, alt: bool) {
         let _ = app.update(Message::KeyPressed {
             key: key.into(),
             ctrl,
@@ -1962,7 +1962,7 @@ mod tests {
         });
     }
 
-    fn selected(app: &SimpleEditApp) -> &Row {
+    fn selected(app: &ArdoiseApp) -> &Row {
         &app.everywhere.rows[app.everywhere.selected]
     }
 
@@ -1971,7 +1971,7 @@ mod tests {
         let dir = project();
         let mut app = app_on(dir.path());
         open(&mut app, dir.path(), Tab::Files);
-        let names = |app: &SimpleEditApp| -> Vec<String> {
+        let names = |app: &ArdoiseApp| -> Vec<String> {
             app.everywhere
                 .rows
                 .iter()
@@ -2192,7 +2192,7 @@ mod tests {
         let _ = app.update(Message::EverywhereSymbols(generation - 1, found.clone()));
         assert!(app.everywhere.symbols.is_empty());
         let _ = app.update(Message::EverywhereSymbols(generation, found));
-        let names = |app: &SimpleEditApp| -> Vec<String> {
+        let names = |app: &ArdoiseApp| -> Vec<String> {
             app.everywhere
                 .rows
                 .iter()
@@ -2283,12 +2283,12 @@ mod tests {
 
     #[test]
     fn what_the_plugins_offer_is_found_and_picked() {
-        use simpleedit_plugin::protocol::SearchItem;
+        use ardoise_plugin::protocol::SearchItem;
         let mut app = app_on(project().path());
         app.config.everywhere_git = true;
         let _ = app.update(Message::OpenEverywhere(Tab::Plugins));
         app.plugins.search_items.insert(
-            "simpleedit.git".into(),
+            "ardoise.git".into(),
             vec![
                 SearchItem {
                     id: "branch:feature/search".into(),
@@ -2311,7 +2311,7 @@ mod tests {
         typed(&mut app, "search");
         let rows = &app.everywhere.rows;
         assert!(
-            matches!(&rows[0], Row::Found(p, i) if p == "simpleedit.git" && i.label == "feature/search")
+            matches!(&rows[0], Row::Found(p, i) if p == "ardoise.git" && i.label == "feature/search")
         );
         assert!(matches!(&rows[1], Row::Found(_, i) if i.id == "commit:abc123"));
         typed(&mut app, "abc");

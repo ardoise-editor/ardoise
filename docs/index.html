@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SimpleEdit — A fast, clean, cross-platform text editor</title>
-  <meta name="description" content="SimpleEdit is a fast, clean text editor written in Rust for macOS and Linux." />
+  <title>Ardoise Editor — A fast, clean, cross-platform text editor</title>
+  <meta name="description" content="Ardoise Editor is a fast, clean text editor written in Rust for macOS and Linux." />
   <meta name="color-scheme" content="dark light" />
   <style>
     /* Fonts are served from this site (no request to Google's servers). */
@@ -15,7 +15,7 @@
     @font-face { font-family: 'JetBrains Mono'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Regular.ttf') format('truetype'); }
     @font-face { font-family: 'JetBrains Mono'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Medium.ttf') format('truetype'); }
 
-    /* SimpleEdit — "Nocturne" design tokens (see design/tokens/tokens.css) */
+    /* Ardoise Editor — "Nocturne" design tokens (see design/tokens/tokens.css) */
     :root {
       --font-ui: 'Instrument Sans', system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -407,12 +407,12 @@
 <body>
 
 <header class="nav">
-  <a class="brand" href="#top"><span class="brand-mark">S</span>SimpleEdit</a>
+  <a class="brand" href="#top"><span class="brand-mark">A</span>Ardoise Editor</a>
   <div class="nav-spacer"></div>
   <a class="link" href="#features"><span data-lang="en">Features</span><span data-lang="fr">Fonctionnalités</span></a>
   <a class="link" href="#install">Installation</a>
   <a class="link" href="plugins.html">Plugins</a>
-  <a class="link" href="https://github.com/simple-edit-app/simpleedit">GitHub</a>
+  <a class="link" href="https://github.com/ardoise-editor/ardoise">GitHub</a>
   <div class="lang-switch" role="group" aria-label="Language">
     <button class="lang-btn" data-set-lang="en" onclick="setLang('en')">EN</button>
     <button class="lang-btn" data-set-lang="fr" onclick="setLang('fr')">FR</button>
@@ -524,7 +524,7 @@
       </p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>curl -fsSL https://raw.githubusercontent.com/simple-edit-app/simpleedit/main/install.sh | bash</code>
+        <code>curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
     </div>
@@ -533,7 +533,7 @@
       <p class="install-label"><span data-lang="en">macOS — Homebrew:</span><span data-lang="fr">macOS — Homebrew :</span></p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>brew install --cask simple-edit-app/tap/simpleedit</code>
+        <code>brew install --cask ardoise-editor/tap/ardoise</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
     </div>
@@ -542,7 +542,7 @@
       <p class="install-label"><span data-lang="en">Linux — .deb (install):</span><span data-lang="fr">Linux — .deb (installer) :</span></p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>curl -fsSL https://api.github.com/repos/simple-edit-app/simpleedit/releases/latest | sed -n 's/.*"browser_download_url": *"\([^"]*\.deb\)".*/\1/p' | xargs curl -fsSLO &amp;&amp; sudo apt install ./simpleedit_*.deb</code>
+        <code>curl -fsSL https://api.github.com/repos/ardoise-editor/ardoise/releases/latest | sed -n 's/.*"browser_download_url": *"\([^"]*\/ardoise_[^"]*\.deb\)".*/\1/p' | xargs curl -fsSLO &amp;&amp; sudo apt install ./ardoise_*.deb</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
     </div>
@@ -551,7 +551,7 @@
       <p class="install-label"><span data-lang="en">Linux — AppImage (install):</span><span data-lang="fr">Linux — AppImage (installer) :</span></p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>curl -fsSL https://api.github.com/repos/simple-edit-app/simpleedit/releases/latest | sed -n 's/.*"browser_download_url": *"\([^"]*\.AppImage\)".*/\1/p' | xargs curl -fsSLO &amp;&amp; chmod +x simpleedit-*.AppImage &amp;&amp; ./simpleedit-*.AppImage</code>
+        <code>curl -fsSL https://api.github.com/repos/ardoise-editor/ardoise/releases/latest | sed -n 's/.*"browser_download_url": *"\([^"]*\.AppImage\)".*/\1/p' | xargs curl -fsSLO &amp;&amp; chmod +x ardoise-*.AppImage &amp;&amp; ./ardoise-*.AppImage</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
       <p class="install-note">
@@ -564,12 +564,12 @@
       <p class="install-label"><span data-lang="en">Uninstall (macOS &amp; Linux):</span><span data-lang="fr">Désinstaller (macOS &amp; Linux) :</span></p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>curl -fsSL https://raw.githubusercontent.com/simple-edit-app/simpleedit/main/uninstall.sh | bash</code>
+        <code>curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/uninstall.sh | bash</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
       <p class="install-note">
-        <span data-lang="en">Detects how SimpleEdit was installed — Homebrew cask, <code>.deb</code> package or plain binary — and removes it, with everything it kept: settings, session (the text of unsaved files), plugins and their data, language servers, and the passwords the plugins saved in the system keychain. A scratch folder you chose yourself is left alone. Close SimpleEdit first. To keep your data for a reinstall: <code>… | bash -s -- --keep-data</code>.</span>
-        <span data-lang="fr">Détecte le mode d’installation — cask Homebrew, paquet <code>.deb</code> ou binaire simple — et le supprime, avec tout ce qu’il a gardé : réglages, session (le texte des fichiers non enregistrés), plugins et leurs données, serveurs de langage, et les mots de passe que les plugins ont enregistrés dans le trousseau du système. Un dossier de notes que vous avez choisi vous-même n’est pas touché. Fermez SimpleEdit avant. Pour garder vos données en vue d’une réinstallation : <code>… | bash -s -- --keep-data</code>.</span>
+        <span data-lang="en">Detects how Ardoise Editor was installed — Homebrew cask, <code>.deb</code> package or plain binary — and removes it, with everything it kept: settings, session (the text of unsaved files), plugins and their data, language servers, and the passwords the plugins saved in the system keychain. A scratch folder you chose yourself is left alone. Close Ardoise Editor first. To keep your data for a reinstall: <code>… | bash -s -- --keep-data</code>.</span>
+        <span data-lang="fr">Détecte le mode d’installation — cask Homebrew, paquet <code>.deb</code> ou binaire simple — et le supprime, avec tout ce qu’il a gardé : réglages, session (le texte des fichiers non enregistrés), plugins et leurs données, serveurs de langage, et les mots de passe que les plugins ont enregistrés dans le trousseau du système. Un dossier de notes que vous avez choisi vous-même n’est pas touché. Fermez Ardoise Editor avant. Pour garder vos données en vue d’une réinstallation : <code>… | bash -s -- --keep-data</code>.</span>
       </p>
     </div>
 
@@ -577,12 +577,12 @@
       <p class="install-label"><span data-lang="en">macOS — Homebrew (uninstall):</span><span data-lang="fr">macOS — Homebrew (désinstaller) :</span></p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>brew uninstall --cask simpleedit</code>
+        <code>brew uninstall --cask ardoise</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
       <p class="install-note">
-        <span data-lang="en">Also drop your settings: <code>brew uninstall --zap --cask simpleedit</code></span>
-        <span data-lang="fr">Pour aussi supprimer vos réglages : <code>brew uninstall --zap --cask simpleedit</code></span>
+        <span data-lang="en">Also drop your settings: <code>brew uninstall --zap --cask ardoise</code></span>
+        <span data-lang="fr">Pour aussi supprimer vos réglages : <code>brew uninstall --zap --cask ardoise</code></span>
       </p>
     </div>
 
@@ -590,12 +590,12 @@
       <p class="install-label"><span data-lang="en">Linux — .deb (uninstall):</span><span data-lang="fr">Linux — .deb (désinstaller) :</span></p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>sudo apt remove simpleedit</code>
+        <code>sudo apt remove ardoise</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
       <p class="install-note">
-        <span data-lang="en">No apt? Use <code>sudo dpkg -r simpleedit</code> instead.</span>
-        <span data-lang="fr">Pas d’apt ? Utilisez <code>sudo dpkg -r simpleedit</code> à la place.</span>
+        <span data-lang="en">No apt? Use <code>sudo dpkg -r ardoise</code> instead.</span>
+        <span data-lang="fr">Pas d’apt ? Utilisez <code>sudo dpkg -r ardoise</code> à la place.</span>
       </p>
     </div>
 
@@ -603,7 +603,7 @@
       <p class="install-label"><span data-lang="en">Linux — AppImage (uninstall):</span><span data-lang="fr">Linux — AppImage (désinstaller) :</span></p>
       <div class="cmd">
         <span class="prompt">$</span>
-        <code>rm -f simpleedit.AppImage ~/.local/bin/simpleedit.AppImage ~/.local/share/applications/simpleedit.desktop</code>
+        <code>rm -f ardoise.AppImage ~/.local/bin/ardoise.AppImage ~/.local/share/applications/ardoise.desktop</code>
         <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
       </div>
       <p class="install-note">
@@ -615,19 +615,19 @@
   </div>
 
   <div class="downloads">
-    <a class="btn btn-outline" href="https://github.com/simple-edit-app/simpleedit/releases/latest"><span data-lang="en">Download .tar.gz (macOS)</span><span data-lang="fr">Télécharger .tar.gz (macOS)</span></a>
-    <a class="btn btn-outline" href="https://github.com/simple-edit-app/simpleedit/releases/latest"><span data-lang="en">Download .deb (Linux)</span><span data-lang="fr">Télécharger .deb (Linux)</span></a>
-    <a class="btn btn-outline" href="https://github.com/simple-edit-app/simpleedit/releases/latest"><span data-lang="en">Download .AppImage (Linux)</span><span data-lang="fr">Télécharger .AppImage (Linux)</span></a>
+    <a class="btn btn-outline" href="https://github.com/ardoise-editor/ardoise/releases/latest"><span data-lang="en">Download .tar.gz (macOS)</span><span data-lang="fr">Télécharger .tar.gz (macOS)</span></a>
+    <a class="btn btn-outline" href="https://github.com/ardoise-editor/ardoise/releases/latest"><span data-lang="en">Download .deb (Linux)</span><span data-lang="fr">Télécharger .deb (Linux)</span></a>
+    <a class="btn btn-outline" href="https://github.com/ardoise-editor/ardoise/releases/latest"><span data-lang="en">Download .AppImage (Linux)</span><span data-lang="fr">Télécharger .AppImage (Linux)</span></a>
   </div>
 </section>
 
 <footer>
-  <span class="grow">© SimpleEdit · <span data-lang="en">MIT License</span><span data-lang="fr">Licence MIT</span></span>
+  <span class="grow">© Ardoise Editor · <span data-lang="en">MIT License</span><span data-lang="fr">Licence MIT</span></span>
   <span>
-    <a href="https://github.com/simple-edit-app/simpleedit">GitHub</a> ·
-    <a href="https://github.com/simple-edit-app/simpleedit/releases">Releases</a> ·
-    <a href="https://github.com/simple-edit-app/simpleedit/issues">Issues</a> ·
-    <a href="https://github.com/simple-edit-app/homebrew-tap">Homebrew</a> ·
+    <a href="https://github.com/ardoise-editor/ardoise">GitHub</a> ·
+    <a href="https://github.com/ardoise-editor/ardoise/releases">Releases</a> ·
+    <a href="https://github.com/ardoise-editor/ardoise/issues">Issues</a> ·
+    <a href="https://github.com/ardoise-editor/homebrew-tap">Homebrew</a> ·
     <a href="plugins.html"><span data-lang="en">Write a plugin</span><span data-lang="fr">Créer un plugin</span></a>
   </span>
 </footer>

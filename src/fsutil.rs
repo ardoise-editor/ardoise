@@ -28,9 +28,78 @@ pub fn config_dir() -> Option<PathBuf> {
     }
 }
 
+/// The folder of the app in the data and the config directories.
+pub const APP_DIR: &str = "ardoise";
+
+/// What that folder was called before the app was renamed (it was Ardoise).
+pub const LEGACY_APP_DIR: &str = "simpleedit";
+
+/// Moves what the app kept under its old name to the new one, once: settings,
+/// session, plugins and their data, language servers. Nothing is touched when
+/// the new folder exists already, nor when there is no old one. Run before
+/// anything reads or writes there.
+pub fn migrate_legacy_dirs() {
+    let mut bases = vec![data_dir(), config_dir()];
+    bases.dedup();
+    for base in bases.into_iter().flatten() {
+        let _ = move_legacy_dir(&base);
+        migrate_legacy_plugins(&base.join(APP_DIR));
+    }
+}
+
+/// The official plugins were called `simpleedit.<name>`, they are
+/// `ardoise.<name>`: what a plugin kept goes to its new name, and the old
+/// programs go (they are installed again from Preferences › Plugins).
+fn migrate_legacy_plugins(app: &Path) {
+    const OLD: &str = "simpleedit.";
+    let renamed = |name: &str| name.strip_prefix(OLD).map(|rest| format!("ardoise.{rest}"));
+    if let Ok(entries) = std::fs::read_dir(app.join("plugin-data")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(new) = renamed(&name) {
+                let target = entry.path().with_file_name(new);
+                if !target.exists() {
+                    let _ = std::fs::rename(entry.path(), target);
+                }
+            }
+        }
+    }
+    let plugins = app.join("plugins");
+    if let Ok(entries) = std::fs::read_dir(&plugins) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with(OLD) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+    let installs = plugins.join("installs.json");
+    if let Some(mut list) = std::fs::read_to_string(&installs)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&t).ok())
+    {
+        let before = list.len();
+        list.retain(|id, _| !id.starts_with(OLD));
+        if list.len() != before {
+            if let Ok(json) = serde_json::to_string_pretty(&list) {
+                let _ = write_atomic(&installs, json.as_bytes(), false);
+            }
+        }
+    }
+}
+
+/// `<base>/simpleedit` becomes `<base>/ardoise`; whether it moved.
+fn move_legacy_dir(base: &Path) -> std::io::Result<bool> {
+    let (old, new) = (base.join(LEGACY_APP_DIR), base.join(APP_DIR));
+    if !old.is_dir() || new.exists() {
+        return Ok(false);
+    }
+    std::fs::rename(&old, &new)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 fn test_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("simpleedit-test-{}", std::process::id()))
+    std::env::temp_dir().join(format!("ardoise-test-{}", std::process::id()))
 }
 
 /// Writes `data` to `path` through a temporary sibling file and a `rename`,
@@ -258,5 +327,71 @@ mod tests {
         let aside = set_aside(&path).unwrap();
         assert!(!path.exists());
         assert_eq!(std::fs::read_to_string(aside).unwrap(), "{ broken");
+    }
+
+    #[test]
+    fn what_the_app_kept_under_its_old_name_moves_once() {
+        let base = tempfile::tempdir().unwrap();
+        let old = base.path().join(LEGACY_APP_DIR);
+        std::fs::create_dir_all(old.join("plugins/ardoise.git")).unwrap();
+        std::fs::write(old.join("session.json"), "{}").unwrap();
+        // Moved, with everything in it.
+        assert!(move_legacy_dir(base.path()).unwrap());
+        let new = base.path().join(APP_DIR);
+        assert!(!old.exists());
+        assert!(new.join("session.json").is_file());
+        assert!(new.join("plugins/ardoise.git").is_dir());
+        // Nothing left to move.
+        assert!(!move_legacy_dir(base.path()).unwrap());
+        // A new folder that exists wins: the old one is left alone.
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("session.json"), "old").unwrap();
+        std::fs::write(new.join("session.json"), "new").unwrap();
+        assert!(!move_legacy_dir(base.path()).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(new.join("session.json")).unwrap(),
+            "new"
+        );
+        assert_eq!(
+            std::fs::read_to_string(old.join("session.json")).unwrap(),
+            "old"
+        );
+        // A file with the old name is not a folder to move.
+        let other = tempfile::tempdir().unwrap();
+        std::fs::write(other.path().join(LEGACY_APP_DIR), "x").unwrap();
+        assert!(!move_legacy_dir(other.path()).unwrap());
+    }
+
+    #[test]
+    fn the_plugins_of_the_old_name_give_their_data_to_the_new_one_and_go() {
+        let app = tempfile::tempdir().unwrap();
+        let plugins = app.path().join("plugins");
+        std::fs::create_dir_all(plugins.join("simpleedit.git")).unwrap();
+        std::fs::create_dir_all(plugins.join("acme.hello")).unwrap();
+        std::fs::write(
+            plugins.join("installs.json"),
+            r#"{"simpleedit.git": {"official": true}, "acme.hello": {"official": false}}"#,
+        )
+        .unwrap();
+        let data = app.path().join("plugin-data");
+        std::fs::create_dir_all(data.join("simpleedit.git")).unwrap();
+        std::fs::write(data.join("simpleedit.git/settings.json"), "mine").unwrap();
+        std::fs::create_dir_all(data.join("simpleedit.api")).unwrap();
+        std::fs::create_dir_all(data.join("ardoise.api")).unwrap();
+        std::fs::write(data.join("ardoise.api/kept"), "already there").unwrap();
+        migrate_legacy_plugins(app.path());
+        assert_eq!(
+            std::fs::read_to_string(data.join("ardoise.git/settings.json")).unwrap(),
+            "mine"
+        );
+        assert!(!data.join("simpleedit.git").exists());
+        // A new folder that is there already is left as it is.
+        assert!(data.join("ardoise.api/kept").exists() && data.join("simpleedit.api").exists());
+        assert!(!plugins.join("simpleedit.git").exists() && plugins.join("acme.hello").exists());
+        let installs = std::fs::read_to_string(plugins.join("installs.json")).unwrap();
+        assert!(installs.contains("acme.hello") && !installs.contains("simpleedit.git"));
+        // Nothing to do the second time.
+        migrate_legacy_plugins(app.path());
+        migrate_legacy_plugins(&app.path().join("nowhere"));
     }
 }

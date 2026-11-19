@@ -10,18 +10,18 @@
 
 use std::time::Duration;
 
+use ardoise_plugin::manifest::{parse_version, Localized};
 use serde::{Deserialize, Serialize};
-use simpleedit_plugin::manifest::{parse_version, Localized};
 
 /// The list of the official plugins.
 pub const REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/simple-edit-app/plugins/main/registry.json";
+    "https://raw.githubusercontent.com/ardoise-editor/plugins/main/registry.json";
 
 /// The organization of the official plugins.
-pub const OFFICIAL_OWNER: &str = "simple-edit-app";
+pub const OFFICIAL_OWNER: &str = "ardoise-editor";
 
 /// The guide to writing a plugin.
-pub const GUIDE_URL: &str = "https://simple-edit-app.github.io/simpleedit/plugins.html";
+pub const GUIDE_URL: &str = "https://ardoise-editor.github.io/ardoise/plugins.html";
 
 /// The largest archive downloaded.
 const MAX_ARCHIVE: usize = 200 * 1024 * 1024;
@@ -62,7 +62,7 @@ pub fn parse_registry(json: &str) -> Result<Vec<Listed>, String> {
         .into_iter()
         .filter(|p| {
             p.id.starts_with(super::store::OFFICIAL_PREFIX)
-                && simpleedit_plugin::manifest::valid_id(&p.id)
+                && ardoise_plugin::manifest::valid_id(&p.id)
                 && parse_repo(&p.repository)
                     .is_some_and(|r| r.split('/').next() == Some(OFFICIAL_OWNER))
         })
@@ -267,9 +267,9 @@ mod tests {
     #[test]
     fn the_registry_keeps_only_official_plugins() {
         let json = r#"{"version": 1, "plugins": [
-            {"id": "simpleedit.git", "name": {"en": "Git"}, "repository": "simple-edit-app/plugin-git"},
-            {"id": "simpleedit.evil", "name": "Evil", "repository": "evil/plugin"},
-            {"id": "acme.hello", "name": "Hello", "repository": "simple-edit-app/hello"}
+            {"id": "ardoise.git", "name": {"en": "Git"}, "repository": "ardoise-editor/plugin-git"},
+            {"id": "ardoise.evil", "name": "Evil", "repository": "evil/plugin"},
+            {"id": "acme.hello", "name": "Hello", "repository": "ardoise-editor/hello"}
         ]}"#;
         let listed = parse_registry(json).unwrap();
         assert_eq!(listed.len(), 1);

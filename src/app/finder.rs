@@ -304,7 +304,7 @@ fn remember(list: &mut Vec<String>, value: &str) {
     list.truncate(HISTORY);
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// Where to look: the projects, or the project of the file in the editor.
     pub(super) fn finder_roots(&self) -> Vec<PathBuf> {
         if !self.projects.roots.is_empty() {
@@ -1111,7 +1111,7 @@ impl SimpleEditApp {
                 continue;
             }
             self.plugins_file_event_with(
-                simpleedit_plugin::manifest::Event::FileSaved,
+                ardoise_plugin::manifest::Event::FileSaved,
                 &path,
                 Some(text.clone()),
             );
@@ -1132,7 +1132,7 @@ impl SimpleEditApp {
     fn replace_settle(&mut self, replaced: &mut Replaced, disk: Vec<DiskDone>) {
         for done in disk {
             self.plugins_file_event_with(
-                simpleedit_plugin::manifest::Event::FileSaved,
+                ardoise_plugin::manifest::Event::FileSaved,
                 &done.path,
                 Some(done.before.clone()),
             );
@@ -1877,8 +1877,8 @@ impl SimpleEditApp {
 mod tests {
     use super::*;
 
-    fn app_on(dir: &Path) -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app_on(dir: &Path) -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::ProjectPicked(Some(dir.to_path_buf())));
         app
@@ -1896,7 +1896,7 @@ mod tests {
         dir
     }
 
-    fn listed(app: &mut SimpleEditApp, dir: &Path) {
+    fn listed(app: &mut ArdoiseApp, dir: &Path) {
         let files = crate::finder::list_files(dir, &[], true)
             .into_iter()
             .map(|f| {
@@ -1908,7 +1908,7 @@ mod tests {
     }
 
     /// Runs the search set in the window at once, as the background would.
-    fn searched(app: &mut SimpleEditApp) {
+    fn searched(app: &mut ArdoiseApp) {
         let search = app.finder_search();
         app.finder.searched = Some(search.clone());
         let files = app.files_of(&search);

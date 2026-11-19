@@ -1,17 +1,17 @@
 [package]
-name = "simpleedit"
-version = "2.0.3"
+name = "ardoise"
+version = "2.1.0"
 edition = "2021"
 rust-version = "1.90"
 description = "A fast, stable, cross-platform text editor"
 license = "MIT"
-repository = "https://github.com/simple-edit-app/simpleedit"
+repository = "https://github.com/ardoise-editor/ardoise"
 readme = "README.md"
 keywords = ["text-editor", "editor", "syntax-highlighting"]
 categories = ["text-editors"]
 
 [[bin]]
-name = "simpleedit"
+name = "ardoise"
 path = "src/main.rs"
 
 [dependencies]
@@ -37,7 +37,7 @@ unicode-width = "0.2"
 trash = "5.3.0"
 notify = "8"
 # The protocol and manifest of the plugins (the editor needs only the types).
-simpleedit-plugin = { git = "https://github.com/simple-edit-app/plugin-sdk", tag = "v0.11.0", default-features = false }
+ardoise-plugin = { git = "https://github.com/ardoise-editor/plugin-sdk", tag = "v0.12.0", default-features = false }
 # The archives the plugins are published as.
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
@@ -70,6 +70,9 @@ strip = true
 
 [package.metadata.deb]
 maintainer-scripts = "debian/"
+# The package was called "simpleedit": installing this one replaces it.
+conflicts = "simpleedit"
+replaces = "simpleedit"
 maintainer = "sindus"
 copyright = "2024, sindus"
 license-file = ["LICENSE", "0"]
@@ -79,10 +82,10 @@ recommends = "policykit-1 | pkexec"
 section = "editors"
 priority = "optional"
 assets = [
-    ["target/release/simpleedit", "usr/bin/", "755"],
-    ["assets/simpleedit.desktop", "usr/share/applications/", "644"],
-    ["assets/simpleedit.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
-    ["assets/simpleedit.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["target/release/ardoise", "usr/bin/", "755"],
+    ["assets/ardoise.desktop", "usr/share/applications/", "644"],
+    ["assets/ardoise.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["assets/ardoise.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
 ]
 
 # Patched copies of iced 0.14.1 crates; see vendor/PATCHES.md (a test fails

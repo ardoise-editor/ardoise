@@ -100,7 +100,7 @@ fn glyph<'a>(code: u32, color: iced::Color) -> Element<'a, Message> {
         .into()
 }
 
-impl SimpleEditApp {
+impl ArdoiseApp {
     /// Shows matches in the panel: in the current tab, or a new one when
     /// asked so or when the current one is pinned.
     pub(super) fn results_add(
@@ -775,8 +775,8 @@ mod tests {
         }
     }
 
-    fn app() -> SimpleEditApp {
-        let mut app = SimpleEditApp::blank(Config::default());
+    fn app() -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
         let _ = app.restore_session(crate::session::Session::default());
         app
     }
@@ -827,7 +827,7 @@ mod tests {
                 occurrence("/x/b.rs", 1),
             ],
         );
-        let key = |app: &mut SimpleEditApp, k: &str, ctrl: bool, alt: bool| {
+        let key = |app: &mut ArdoiseApp, k: &str, ctrl: bool, alt: bool| {
             let _ = app.update(Message::KeyPressed {
                 key: k.into(),
                 ctrl,
@@ -940,7 +940,7 @@ mod tests {
         });
         let generation = app.finder_generation();
         let _ = app.update(Message::FindResults(generation, found));
-        let shoot = |app: &SimpleEditApp, name: &str| {
+        let shoot = |app: &ArdoiseApp, name: &str| {
             let settings = iced::Settings {
                 default_font: se_theme::UI,
                 fonts: se_theme::font_files(),
