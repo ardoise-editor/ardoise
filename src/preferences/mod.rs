@@ -16,6 +16,17 @@ use crate::{
     theme,
 };
 
+/// What the pointer took hold of on the Preferences window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrefsGrab {
+    /// The title bar: the window moves.
+    Move,
+    /// The right edge, the bottom edge, the corner: the window is resized.
+    Right,
+    Bottom,
+    Corner,
+}
+
 #[derive(Debug, Clone)]
 pub enum PreferencesMessage {
     PageSelected(PrefsPage),
@@ -310,6 +321,10 @@ impl PreferencesState {
         .padding([0, 16])
         .height(46)
         .align_y(Alignment::Center);
+        // The window is moved by its title bar.
+        let title_row = iced::widget::mouse_area(title_row)
+            .on_press(Message::PrefsDragStart(PrefsGrab::Move))
+            .interaction(iced::mouse::Interaction::Grab);
 
         // The plugins that have settings have a page each; a page that is
         // no longer there (its plugin removed) is the editor's.

@@ -76,6 +76,33 @@ pub fn modal<'a, Message: Clone + 'a>(
     stack![underlay.into(), opaque(backdrop)].into()
 }
 
+/// `content` over `underlay` on a dimmed backdrop, at `(x, y)` from the
+/// top left of the window; a click on the backdrop outside of it sends
+/// `on_blur`. Only the content takes the clicks it covers.
+pub fn modal_at<'a, Message: Clone + 'a>(
+    underlay: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    at: (f32, f32),
+    on_blur: Message,
+    dark: bool,
+) -> Element<'a, Message> {
+    let placed = container(opaque(content.into()))
+        .padding(iced::Padding {
+            top: at.1.max(0.0),
+            left: at.0.max(0.0),
+            right: 0.0,
+            bottom: 0.0,
+        })
+        .width(Length::Fill)
+        .height(Length::Fill);
+    let backdrop = container(placed)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(crate::theme::scrim(dark));
+    let backdrop = mouse_area(backdrop).on_press(on_blur);
+    stack![underlay.into(), opaque(backdrop)].into()
+}
+
 /// Reports where a right click landed (relative to the content, ignoring a
 /// strip of `exclude_right` px on its right edge), then lets the content —
 /// a context menu — handle the click as usual.

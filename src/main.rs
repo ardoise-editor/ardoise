@@ -36,6 +36,7 @@ mod lint;
 mod lsp;
 mod lsp_install;
 mod menu_bar;
+mod menus;
 #[cfg(all(target_os = "macos", not(test)))]
 mod native_menu;
 mod palette;

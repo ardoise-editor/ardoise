@@ -179,7 +179,6 @@ impl ArdoiseApp {
             | ActiveOverlay::Spelling(_)
             | ActiveOverlay::SpellLanguages
             | ActiveOverlay::References(_)
-            | ActiveOverlay::Shortcuts
             | ActiveOverlay::Everywhere
             | ActiveOverlay::ConfirmClose(_)
             | ActiveOverlay::ConfirmCloseMany(..)
@@ -838,47 +837,6 @@ impl ArdoiseApp {
             .padding(16),
         )
         .width(260)
-        .style(se_theme::card(dark))
-        .into()
-    }
-
-    /// Help > Configure shortcuts: the same list as the Preferences page.
-    pub(super) fn view_shortcuts_overlay(&self, dark: bool) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
-
-        container(
-            column![
-                row![
-                    text(t!("shortcuts.title").to_string())
-                        .size(14)
-                        .font(se_theme::UI_SEMIBOLD)
-                        .color(p.text),
-                    Space::new().width(Length::Fill),
-                    button(text("×").size(17))
-                        .padding([4, 8])
-                        .on_press(Message::CloseOverlay)
-                        .style(
-                            (se_theme::GhostButton {
-                                dark,
-                                active: false,
-                            })
-                            .style()
-                        ),
-                ]
-                .align_y(Alignment::Center),
-                scrollable(crate::preferences::shortcuts_list(
-                    dark,
-                    &self.config,
-                    self.capturing,
-                    self.plugins.tools(),
-                ))
-                .style(se_theme::Scrollbar { dark }.style())
-                .height(Length::Fixed(420.0)),
-            ]
-            .spacing(12)
-            .padding(20),
-        )
-        .width(460)
         .style(se_theme::card(dark))
         .into()
     }

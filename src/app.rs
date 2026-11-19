@@ -174,7 +174,6 @@ pub enum ActiveOverlay {
     LanguagePicker,
     /// Where a name is used: the list to jump from.
     References(RefList),
-    Shortcuts,
     UpdateChecking,
     UpdateUpToDate,
     /// The new version, and what it changes.
@@ -504,6 +503,11 @@ pub enum Message {
     /// A Git shortcut: the Git plugin does it.
     GitShortcut(GitShortcut),
     /// The API panel and its requests.
+    /// The Preferences window is taken hold of (moved, resized), followed
+    /// to where the pointer goes, and let go.
+    PrefsDragStart(crate::preferences::PrefsGrab),
+    PrefsDragMove(iced::Point),
+    PrefsDragEnd,
     SidebarResizeStart,
     SidebarResize(f32),
     SidebarResizeEnd,
@@ -690,7 +694,8 @@ pub enum Message {
     DedentLine,
     // Recent files
     OpenRecentFile(PathBuf),
-    SetRecents(bool),
+    /// The submenu that is open beside the menu (none: none).
+    SetSubmenu(Option<crate::menus::SubMenu>),
     ClearRecents,
     /// Whether a search field had focus when an editor shortcut was pressed.
     ShortcutChecked(Box<Message>, bool),
@@ -729,6 +734,24 @@ pub struct Flags {
     pub config: Config,
     /// Files named on the command line.
     pub files: Vec<crate::ipc::Target>,
+}
+
+/// The Preferences window: its size at first, the least it can be made, and
+/// the width of the edges and the corner that resize it.
+const PREFS_SIZE: (f32, f32) = (900.0, 640.0);
+const PREFS_MIN: (f32, f32) = (520.0, 360.0);
+const PREFS_EDGE: f32 = 6.0;
+const PREFS_CORNER: f32 = 16.0;
+/// What is left around it in the window at the first size.
+const PREFS_MARGIN: f32 = 40.0;
+
+/// The grip of the Preferences window being dragged: what it took hold of,
+/// where the pointer was at the first move, and the window as it was.
+#[derive(Debug, Clone, Copy)]
+struct PrefsDrag {
+    grab: crate::preferences::PrefsGrab,
+    from: Option<iced::Point>,
+    rect: (f32, f32, f32, f32),
 }
 
 pub struct ArdoiseApp {
@@ -791,6 +814,11 @@ pub struct ArdoiseApp {
     panel_resizing: bool,
     panel_drag: Option<(f32, f32)>,
     show_preferences: bool,
+    /// Where the Preferences window was put (its top left) and how big it was
+    /// made; none: the middle, at its first size. And the grip being dragged.
+    prefs_pos: Option<(f32, f32)>,
+    prefs_size: Option<(f32, f32)>,
+    prefs_drag: Option<PrefsDrag>,
     /// The shortcut being rebound, while waiting for its new key.
     capturing: Option<ShortcutTarget>,
     everywhere: everywhere::Everywhere,
@@ -800,8 +828,8 @@ pub struct ArdoiseApp {
     /// The groups of tabs that are folded.
     folded_tabs: BTreeSet<Option<PathBuf>>,
     open_menu: Option<TopMenu>,
-    /// The recent files submenu of the File menu is showing.
-    recents_open: bool,
+    /// The submenu showing beside the open menu (the recent files, a line…).
+    open_submenu: Option<crate::menus::SubMenu>,
     /// What the macOS menu bar was last built from.
     #[cfg(all(target_os = "macos", not(test)))]
     native_menu_state: String,
@@ -1092,13 +1120,16 @@ impl ArdoiseApp {
             panel_resizing: false,
             panel_drag: None,
             show_preferences: false,
+            prefs_pos: None,
+            prefs_size: None,
+            prefs_drag: None,
             capturing: None,
             everywhere: everywhere::Everywhere::default(),
             results: results::Results::default(),
             history_diff: Default::default(),
             folded_tabs: BTreeSet::new(),
             open_menu: None,
-            recents_open: false,
+            open_submenu: None,
             #[cfg(all(target_os = "macos", not(test)))]
             native_menu_state: String::new(),
             menu_bounds: HashMap::new(),
@@ -1305,7 +1336,7 @@ impl ArdoiseApp {
                     | Message::MenuBounds(..)
                     | Message::ToggleMenu(_)
                     | Message::HoverMenu(_)
-                    | Message::SetRecents(_)
+                    | Message::SetSubmenu(_)
                     | Message::SessionWritten(_)
                     | Message::PreviewTick
                     | Message::WindowResized(..)
@@ -1509,6 +1540,19 @@ impl ArdoiseApp {
         if self.ipc_listening {
             subscriptions.push(crate::ipc::arrivals().map(|()| Message::IpcPoll));
         }
+        if self.prefs_drag.is_some() {
+            subscriptions.push(iced::event::listen_with(
+                |event, _status, _window| match event {
+                    iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                        Some(Message::PrefsDragMove(position))
+                    }
+                    iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                        iced::mouse::Button::Left,
+                    )) => Some(Message::PrefsDragEnd),
+                    _ => None,
+                },
+            ));
+        }
         if self.sidebar_resizing {
             subscriptions.push(iced::event::listen_with(
                 |event, _status, _window| match event {
@@ -1568,6 +1612,21 @@ impl ArdoiseApp {
         #[cfg(all(target_os = "macos", not(test)))]
         subscriptions.push(crate::native_menu::subscription());
         iced::Subscription::batch(subscriptions)
+    }
+
+    /// The Preferences window as it is shown: `(x, y, width, height)`. It
+    /// stays inside the window of the app, whatever that became since.
+    fn prefs_rect(&self) -> (f32, f32, f32, f32) {
+        let (ww, wh) = (self.config.window_width, self.config.window_height);
+        let (w, h) = self.prefs_size.unwrap_or((
+            PREFS_SIZE.0.min(ww - 2.0 * PREFS_MARGIN),
+            PREFS_SIZE.1.min(wh - 2.0 * PREFS_MARGIN),
+        ));
+        let (w, h) = (w.max(PREFS_MIN.0).min(ww), h.max(PREFS_MIN.1).min(wh));
+        let (x, y) = self.prefs_pos.unwrap_or(((ww - w) / 2.0, (wh - h) / 2.0));
+        let x = x.min(ww - w).max(0.0);
+        let y = y.min(wh - h).max(0.0);
+        (x, y, w, h)
     }
 
     pub fn view(&self) -> Element<'_, Message> {
@@ -1805,12 +1864,14 @@ impl ArdoiseApp {
             let lang_override_enabled = self.language_picker_enabled();
             let dropdown = crate::menu_bar::dropdown_view(
                 menu,
-                &self.config,
-                has_fmt,
-                lang_override_enabled,
-                self.bookmark_state(),
-                self.recents_open,
-                self.plugins.tools(),
+                &crate::menus::MenuState {
+                    config: &self.config,
+                    has_formatter: has_fmt,
+                    lang_picker_enabled: lang_override_enabled,
+                    bookmarks: self.bookmark_state(),
+                    tools: self.plugins.tools(),
+                },
+                self.open_submenu,
             );
             // Under the dropdown and below the menu bar (its titles stay
             // clickable), anywhere else closes the menu.
@@ -1910,22 +1971,57 @@ impl ArdoiseApp {
 
         // The Preferences window floats over everything but the dialogs.
         let with_prefs: Element<Message> = if self.show_preferences {
+            let (x, y, w, h) = self.prefs_rect();
             let window = container(self.preferences.view(
                 &self.config,
                 self.capturing,
                 &self.servers,
                 &self.plugins,
             ))
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h));
+            // The edges and the corner take hold of it to resize it.
+            let grip = |grab, interaction, width, height| {
+                iced::widget::mouse_area(Space::new().width(width).height(height))
+                    .on_press(Message::PrefsDragStart(grab))
+                    .interaction(interaction)
+            };
+            use crate::preferences::PrefsGrab;
+            use iced::mouse::Interaction;
+            let right = container(grip(
+                PrefsGrab::Right,
+                Interaction::ResizingHorizontally,
+                Length::Fixed(PREFS_EDGE),
+                Length::Fill,
+            ))
             .width(Length::Fill)
             .height(Length::Fill)
-            .max_width(900)
-            .max_height(640);
-            crate::floating::modal(
+            .align_x(iced::alignment::Horizontal::Right);
+            let bottom = container(grip(
+                PrefsGrab::Bottom,
+                Interaction::ResizingVertically,
+                Length::Fill,
+                Length::Fixed(PREFS_EDGE),
+            ))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(iced::alignment::Vertical::Bottom);
+            let corner = container(grip(
+                PrefsGrab::Corner,
+                Interaction::ResizingDiagonallyDown,
+                Length::Fixed(PREFS_CORNER),
+                Length::Fixed(PREFS_CORNER),
+            ))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Bottom);
+            crate::floating::modal_at(
                 with_dropdown,
-                container(window).padding(40),
-                Some(Message::TogglePreferences),
+                iced::widget::stack![window, right, bottom, corner],
+                (x, y),
+                Message::TogglePreferences,
                 dark,
-                false,
             )
         } else {
             with_dropdown
@@ -1984,7 +2080,6 @@ impl ArdoiseApp {
                     ActiveOverlay::Compare(left, right) => self.view_compare(dark, left, right),
                     ActiveOverlay::Spelling(found) => self.view_spelling(dark, found),
                     ActiveOverlay::SpellLanguages => self.view_spell_languages(dark),
-                    ActiveOverlay::Shortcuts => self.view_shortcuts_overlay(dark),
                     ActiveOverlay::ConfirmOverwrite(path) => {
                         self.view_overwrite_overlay(dark, path)
                     }
@@ -2200,7 +2295,7 @@ impl ArdoiseApp {
                 &message,
                 Message::ToggleMenu(_)
                     | Message::HoverMenu(_)
-                    | Message::SetRecents(_)
+                    | Message::SetSubmenu(_)
                     | Message::MenuBounds(..)
                     | Message::ModifiersChanged { .. }
                     | Message::AutoSave
@@ -2210,7 +2305,7 @@ impl ArdoiseApp {
                     | Message::WindowFocus(_)
             );
         if closes_menu || matches!(message, Message::ToggleMenu(_) | Message::HoverMenu(_)) {
-            self.recents_open = false;
+            self.open_submenu = None;
         }
         if closes_menu {
             // Escape on an open menu closes only that menu.
@@ -2279,8 +2374,8 @@ impl ArdoiseApp {
                 ));
                 Task::none()
             }
-            Message::SetRecents(open) => {
-                self.recents_open = open;
+            Message::SetSubmenu(open) => {
+                self.open_submenu = open;
                 Task::none()
             }
             Message::ClearRecents => {
@@ -3701,6 +3796,40 @@ impl ArdoiseApp {
                 GitShortcut::Pull => "git.pull",
             }),
             Message::OpenBranchSwitcher => self.git_command("git.branches"),
+            Message::PrefsDragStart(grab) => {
+                // From where it is: a window in the middle stays put while it
+                // grows.
+                let (x, y, w, h) = self.prefs_rect();
+                self.prefs_pos = Some((x, y));
+                self.prefs_size = Some((w, h));
+                self.prefs_drag = Some(PrefsDrag {
+                    grab,
+                    from: None,
+                    rect: (x, y, w, h),
+                });
+                Task::none()
+            }
+            Message::PrefsDragMove(point) => {
+                if let Some(drag) = &mut self.prefs_drag {
+                    // How far the pointer went from where it was at the first
+                    // move.
+                    let from = *drag.from.get_or_insert(point);
+                    let (dx, dy) = (point.x - from.x, point.y - from.y);
+                    let (x, y, w, h) = drag.rect;
+                    use crate::preferences::PrefsGrab;
+                    match drag.grab {
+                        PrefsGrab::Move => self.prefs_pos = Some((x + dx, y + dy)),
+                        PrefsGrab::Right => self.prefs_size = Some((w + dx, h)),
+                        PrefsGrab::Bottom => self.prefs_size = Some((w, h + dy)),
+                        PrefsGrab::Corner => self.prefs_size = Some((w + dx, h + dy)),
+                    }
+                }
+                Task::none()
+            }
+            Message::PrefsDragEnd => {
+                self.prefs_drag = None;
+                Task::none()
+            }
             Message::SidebarResizeStart => {
                 self.sidebar_resizing = true;
                 Task::none()
@@ -4314,10 +4443,14 @@ impl ArdoiseApp {
                 self.overlay = ActiveOverlay::None;
                 Task::none()
             }
+            // The shortcuts are set in the Preferences, on their page.
             Message::OpenShortcuts => {
                 self.capturing = None;
-                self.overlay = ActiveOverlay::Shortcuts;
-                Task::none()
+                self.overlay = ActiveOverlay::None;
+                self.show_preferences = true;
+                self.handle(Message::Preferences(PreferencesMessage::PageSelected(
+                    crate::preferences::PrefsPage::Shortcuts,
+                )))
             }
             Message::StartCaptureShortcut(target) => {
                 self.capturing = Some(target);

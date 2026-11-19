@@ -1,13 +1,11 @@
-use std::path::PathBuf;
-
 use iced::{
     widget::{button, column, container, mouse_area, row, text, Space},
     Alignment, Element, Length,
 };
 
 use crate::app::{Message, TopMenu};
-use crate::config::{Config, ShortcutConfig};
-use crate::preferences::PreferencesMessage;
+use crate::config::Config;
+use crate::menus::{self, Entry, MenuState, SubMenu};
 use crate::theme;
 
 /// The title bar: the menus on the left and the Dark/Light switch on the
@@ -141,51 +139,89 @@ pub fn bookmark_items(
     ]
 }
 
-/// The floating dropdown panel for the active menu.
-pub fn dropdown_view(
-    menu: TopMenu,
-    config: &Config,
-    has_formatter: bool,
-    lang_picker_enabled: bool,
-    bookmarks: BookmarkState,
-    recents_open: bool,
-    tools: crate::plugins::Tools,
-) -> Element<'static, Message> {
-    let dark = config.dark_mode;
-    let items = menu_items(
-        menu,
-        config,
-        has_formatter,
-        lang_picker_enabled,
-        bookmarks,
-        tools,
-    );
-    let card = container(column(items).spacing(1).padding(6).width(260)).style(theme::card(dark));
-    if menu == TopMenu::File && recents_open && !config.recent_files.is_empty() {
-        row![card, recents_submenu(config)].spacing(4).into()
-    } else {
-        card.into()
+/// The height of a menu item and of a separator in a card, to put a submenu
+/// level with the entry that opens it.
+const ITEM_HEIGHT: f32 = 31.9;
+const SEPARATOR_HEIGHT: f32 = 8.0;
+
+/// An entry of a menu, drawn.
+fn drawn(entry: &Entry, dark: bool) -> Element<'static, Message> {
+    match entry {
+        Entry::Item {
+            label,
+            shortcut,
+            enabled: true,
+            message,
+        } => item(label.clone(), shortcut.clone(), dark, message.clone()),
+        Entry::Item { label, .. } => disabled_item(label.clone(), dark),
+        Entry::Separator => separator(dark),
+        Entry::Sub {
+            id,
+            label,
+            enabled: true,
+            ..
+        } => mouse_area(item(
+            label.clone(),
+            Some("›".to_string()),
+            dark,
+            Message::SetSubmenu(Some(*id)),
+        ))
+        .on_enter(Message::SetSubmenu(Some(*id)))
+        .into(),
+        Entry::Sub { label, .. } => disabled_item(label.clone(), dark),
     }
 }
 
-/// The recent files, then "Clear", in a card beside the File menu.
-fn recents_submenu(config: &Config) -> Element<'static, Message> {
-    let dark = config.dark_mode;
-    let recents: Vec<PathBuf> = config.recent_files.iter().map(PathBuf::from).collect();
-    let mut items: Vec<Element<'static, Message>> = recents
-        .iter()
-        .zip(crate::app::unique_labels(&recents))
-        .map(|(path, name)| item(name, None, dark, Message::OpenRecentFile(path.clone())))
-        .collect();
-    items.push(separator(dark));
-    items.push(item(
-        t!("menu.file_recents_clear").to_string(),
-        None,
-        dark,
-        Message::ClearRecents,
-    ));
-    container(column(items).spacing(1).padding(6).width(300))
-        .style(theme::card(dark))
+/// The floating dropdown panel for the active menu, with the submenu that is
+/// open beside it.
+pub fn dropdown_view(
+    menu: TopMenu,
+    state: &MenuState,
+    open: Option<SubMenu>,
+) -> Element<'static, Message> {
+    let dark = state.config.dark_mode;
+    let entries = menus::entries(menu, state, false);
+    // Where the open submenu goes: level with its entry.
+    let mut at = 0.0;
+    let mut flyout: Option<(f32, SubMenu, &Vec<Entry>)> = None;
+    let mut rows: Vec<Element<'static, Message>> = Vec::new();
+    for entry in &entries {
+        if let Entry::Sub {
+            id,
+            enabled: true,
+            entries: inside,
+            ..
+        } = entry
+        {
+            if open == Some(*id) {
+                flyout = Some((at, *id, inside));
+            }
+        }
+        at += match entry {
+            Entry::Separator => SEPARATOR_HEIGHT,
+            _ => ITEM_HEIGHT,
+        };
+        let drawn = drawn(entry, dark);
+        rows.push(match entry {
+            // Pointing at any other entry folds the submenu away.
+            Entry::Sub { enabled: true, .. } => drawn,
+            _ => mouse_area(drawn).on_enter(Message::SetSubmenu(None)).into(),
+        });
+    }
+    let card = container(column(rows).spacing(1).padding(6).width(260)).style(theme::card(dark));
+    let Some((top, id, inside)) = flyout else {
+        return card.into();
+    };
+    let width = if id == SubMenu::Recents { 300 } else { 260 };
+    let beside = container(
+        column(inside.iter().map(|entry| drawn(entry, dark)))
+            .spacing(1)
+            .padding(6)
+            .width(width),
+    )
+    .style(theme::card(dark));
+    row![card, column![Space::new().height(top), beside]]
+        .spacing(4)
         .into()
 }
 
@@ -256,425 +292,4 @@ pub fn separator(dark: bool) -> Element<'static, Message> {
     .padding([3, 4])
     .width(Length::Fill)
     .into()
-}
-
-fn sc(sc: &ShortcutConfig) -> Option<String> {
-    Some(sc.display())
-}
-
-fn menu_items(
-    menu: TopMenu,
-    config: &Config,
-    has_formatter: bool,
-    lang_picker_enabled: bool,
-    bookmarks: BookmarkState,
-    tools: crate::plugins::Tools,
-) -> Vec<Element<'static, Message>> {
-    let dark = config.dark_mode;
-    let sh = &config.shortcuts;
-    match menu {
-        TopMenu::File => {
-            let mut items = vec![
-                item(
-                    t!("menu.file_new").to_string(),
-                    sc(&sh.new_file),
-                    dark,
-                    Message::NewFile,
-                ),
-                item(
-                    t!("menu.file_open").to_string(),
-                    sc(&sh.open_file),
-                    dark,
-                    Message::OpenFile,
-                ),
-                item(
-                    t!("menu.file_add_project").to_string(),
-                    None,
-                    dark,
-                    Message::AddProject,
-                ),
-                item(
-                    t!("shortcuts.goto_file").to_string(),
-                    sc(&sh.goto_file),
-                    dark,
-                    Message::OpenGotoFile,
-                ),
-                item(
-                    t!("shortcuts.find_in_files").to_string(),
-                    sc(&sh.find_in_files),
-                    dark,
-                    Message::OpenFindInFiles,
-                ),
-                item(
-                    t!("shortcuts.replace_in_files").to_string(),
-                    sc(&sh.replace_in_files),
-                    dark,
-                    Message::OpenReplaceInFiles,
-                ),
-                item(
-                    t!("shortcuts.reopen_tab").to_string(),
-                    sc(&sh.reopen_tab),
-                    dark,
-                    Message::ReopenTab,
-                ),
-            ];
-
-            items.push(separator(dark));
-            let recents_at = items.len();
-            items.push(if config.recent_files.is_empty() {
-                disabled_item(t!("menu.file_recents").to_string(), dark)
-            } else {
-                mouse_area(item(
-                    t!("menu.file_recents").to_string(),
-                    Some("›".to_string()),
-                    dark,
-                    Message::SetRecents(true),
-                ))
-                .on_enter(Message::SetRecents(true))
-                .into()
-            });
-            items.push(separator(dark));
-
-            items.push(item(
-                t!("menu.file_save").to_string(),
-                sc(&sh.save_file),
-                dark,
-                Message::SaveFile,
-            ));
-            items.push(item(
-                t!("menu.file_save_as").to_string(),
-                sc(&sh.save_as),
-                dark,
-                Message::SaveFileAs,
-            ));
-            items.push(item(
-                t!("menu.file_close").to_string(),
-                sc(&sh.close_file),
-                dark,
-                Message::CloseFile,
-            ));
-            items.push(item(
-                t!("menu.file_close_others").to_string(),
-                None,
-                dark,
-                Message::CloseOtherTabs,
-            ));
-            items.push(item(
-                t!("menu.file_close_all").to_string(),
-                None,
-                dark,
-                Message::CloseTabs(None),
-            ));
-            items.push(separator(dark));
-            items.push(item(
-                t!("menu.file_preferences").to_string(),
-                None,
-                dark,
-                Message::TogglePreferences,
-            ));
-            items.push(item(
-                t!("menu.file_quit").to_string(),
-                sc(&sh.quit),
-                dark,
-                Message::Quit,
-            ));
-            // Pointing at any other entry folds the submenu away.
-            items
-                .into_iter()
-                .enumerate()
-                .map(|(i, entry)| {
-                    if i == recents_at {
-                        entry
-                    } else {
-                        mouse_area(entry)
-                            .on_enter(Message::SetRecents(false))
-                            .into()
-                    }
-                })
-                .collect()
-        }
-        TopMenu::Edit => {
-            let format_item: Element<'static, Message> = if has_formatter {
-                item(
-                    t!("menu.edit_format").to_string(),
-                    sc(&sh.format_code),
-                    dark,
-                    Message::FormatFile,
-                )
-            } else {
-                disabled_item(t!("menu.edit_format").to_string(), dark)
-            };
-            let mut items = vec![
-                item(
-                    t!("menu.edit_undo").to_string(),
-                    sc(&sh.undo),
-                    dark,
-                    Message::Undo,
-                ),
-                item(
-                    t!("menu.edit_redo").to_string(),
-                    sc(&sh.redo),
-                    dark,
-                    Message::Redo,
-                ),
-                separator(dark),
-                item(
-                    t!("menu.edit_duplicate_line").to_string(),
-                    sc(&sh.duplicate_line),
-                    dark,
-                    Message::DuplicateLine,
-                ),
-                item(
-                    t!("menu.edit_move_line_up").to_string(),
-                    sc(&sh.move_line_up),
-                    dark,
-                    Message::MoveLineUp,
-                ),
-                item(
-                    t!("menu.edit_move_line_down").to_string(),
-                    sc(&sh.move_line_down),
-                    dark,
-                    Message::MoveLineDown,
-                ),
-                item(
-                    t!("menu.edit_toggle_comment").to_string(),
-                    sc(&sh.toggle_comment),
-                    dark,
-                    Message::ToggleComment,
-                ),
-                item(
-                    t!("menu.edit_delete_line").to_string(),
-                    sc(&sh.delete_line),
-                    dark,
-                    Message::DeleteLine,
-                ),
-                separator(dark),
-                item(
-                    t!("menu.edit_select_all").to_string(),
-                    sc(&sh.select_all),
-                    dark,
-                    Message::SelectAll,
-                ),
-                item(
-                    t!("menu.edit_find").to_string(),
-                    sc(&sh.find),
-                    dark,
-                    Message::ToggleSearch,
-                ),
-                item(
-                    t!("menu.edit_goto_line").to_string(),
-                    sc(&sh.goto_line),
-                    dark,
-                    Message::OpenGotoLine,
-                ),
-                separator(dark),
-                item(
-                    t!("menu.lint_check").to_string(),
-                    None,
-                    dark,
-                    Message::LintNow,
-                ),
-                item(
-                    t!("menu.lint_fix").to_string(),
-                    None,
-                    dark,
-                    Message::LintFixAll,
-                ),
-                item(
-                    t!("menu.lint_next").to_string(),
-                    None,
-                    dark,
-                    Message::LintNext(true),
-                ),
-                item(
-                    t!("menu.lint_prev").to_string(),
-                    None,
-                    dark,
-                    Message::LintNext(false),
-                ),
-                separator(dark),
-            ];
-            items.extend(bookmark_items(bookmarks, dark, sc(&sh.toggle_bookmark)));
-            for (label, shortcut, message) in [
-                (
-                    t!("menu.bookmark_next"),
-                    &sh.next_bookmark,
-                    Message::NextBookmark,
-                ),
-                (
-                    t!("menu.bookmark_prev"),
-                    &sh.prev_bookmark,
-                    Message::PrevBookmark,
-                ),
-            ] {
-                items.push(if bookmarks.any {
-                    item(label.to_string(), sc(shortcut), dark, message)
-                } else {
-                    disabled_item(label.to_string(), dark)
-                });
-            }
-            items.push(separator(dark));
-            items.push(item(
-                t!("menu.nav_back").to_string(),
-                sc(&sh.nav_back),
-                dark,
-                Message::NavBack,
-            ));
-            items.push(item(
-                t!("menu.nav_forward").to_string(),
-                sc(&sh.nav_forward),
-                dark,
-                Message::NavForward,
-            ));
-            items.push(separator(dark));
-            items.push(item(
-                t!("menu.fold_toggle").to_string(),
-                sc(&sh.toggle_fold),
-                dark,
-                Message::ToggleFold,
-            ));
-            items.push(item(
-                t!("menu.fold_all").to_string(),
-                None,
-                dark,
-                Message::FoldAll,
-            ));
-            items.push(item(
-                t!("menu.unfold_all").to_string(),
-                None,
-                dark,
-                Message::UnfoldAll,
-            ));
-            items.extend([
-                separator(dark),
-                item(
-                    t!("shortcuts.complete").to_string(),
-                    sc(&sh.complete),
-                    dark,
-                    Message::CompletionInvoke,
-                ),
-                item(
-                    t!("shortcuts.parameter_info").to_string(),
-                    sc(&sh.parameter_info),
-                    dark,
-                    Message::HintInvoke,
-                ),
-                format_item,
-            ]);
-            items
-        }
-        TopMenu::View => {
-            let lang_item: Element<'static, Message> = if lang_picker_enabled {
-                item(
-                    t!("menu.view_language").to_string(),
-                    None,
-                    dark,
-                    Message::OpenLanguagePicker,
-                )
-            } else {
-                disabled_item(t!("menu.view_language").to_string(), dark)
-            };
-            let mut items = vec![
-                item(
-                    t!("menu.view_palette").to_string(),
-                    sc(&sh.command_palette),
-                    dark,
-                    Message::OpenPalette,
-                ),
-                item(
-                    t!("menu.view_sidebar").to_string(),
-                    sc(&sh.toggle_sidebar),
-                    dark,
-                    Message::ToggleSidebar,
-                ),
-                item(
-                    t!("menu.view_split_right").to_string(),
-                    None,
-                    dark,
-                    Message::Split(true),
-                ),
-                item(
-                    t!("menu.view_split_down").to_string(),
-                    None,
-                    dark,
-                    Message::Split(false),
-                ),
-                item(
-                    t!("menu.view_split_close").to_string(),
-                    None,
-                    dark,
-                    Message::CloseSplit,
-                ),
-            ];
-            // Git and the terminal only once their plugin is installed.
-            if tools.git {
-                items.push(item(
-                    t!("git.title").to_string(),
-                    sc(&sh.toggle_git),
-                    dark,
-                    Message::ToggleGit,
-                ));
-            }
-            if tools.terminal {
-                items.push(item(
-                    t!("terminal.title").to_string(),
-                    sc(&sh.toggle_terminal),
-                    dark,
-                    Message::ToggleTerminal,
-                ));
-            }
-            items.extend([
-                item(
-                    if config.dark_mode {
-                        t!("toolbar.light").to_string()
-                    } else {
-                        t!("toolbar.dark").to_string()
-                    },
-                    None,
-                    dark,
-                    Message::ThemeChanged(!config.dark_mode),
-                ),
-                item(
-                    if config.show_line_numbers {
-                        t!("menu.view_line_numbers_hide").to_string()
-                    } else {
-                        t!("menu.view_line_numbers_show").to_string()
-                    },
-                    None,
-                    dark,
-                    Message::Preferences(PreferencesMessage::ShowLineNumbersToggled(
-                        !config.show_line_numbers,
-                    )),
-                ),
-                lang_item,
-            ]);
-            items
-        }
-        TopMenu::Help => vec![
-            item(
-                t!("menu.help_about").to_string(),
-                None,
-                dark,
-                Message::About,
-            ),
-            item(
-                t!("menu.help_shortcuts").to_string(),
-                None,
-                dark,
-                Message::OpenShortcuts,
-            ),
-            item(
-                t!("menu.help_changelog").to_string(),
-                None,
-                dark,
-                Message::OpenChangelog,
-            ),
-            item(
-                t!("menu.help_check_updates").to_string(),
-                None,
-                dark,
-                Message::CheckForUpdate,
-            ),
-        ],
-    }
 }
