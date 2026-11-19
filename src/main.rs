@@ -88,7 +88,6 @@ const PATH_MARK: &str = "__SIMPLEEDIT_PATH__";
 
 /// The `PATH` a login shell printed between two markers, so that what the
 /// shell's startup files echo around it is ignored.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn marked_path(output: &str) -> Option<&str> {
     let start = output.find(PATH_MARK)? + PATH_MARK.len();
     let len = output[start..].find(PATH_MARK)?;
@@ -96,15 +95,16 @@ fn marked_path(output: &str) -> Option<&str> {
     (!path.is_empty()).then_some(path)
 }
 
-/// The `PATH` of the user's login shell (nvm and other version managers set
-/// it up there), or `None` if the shell is slow or fails: it is given 3 s.
-#[cfg(target_os = "macos")]
+/// The `PATH` of the user's shell (nvm and other version managers set it up
+/// in its startup files, `.zshrc` and `.bashrc` included: the shell is asked
+/// as a login and interactive one), or `None` if the shell is slow or fails:
+/// it is given 3 s. An app started from the desktop has none of it.
 fn login_shell_path() -> Option<String> {
     use std::io::Read;
     use std::process::{Command, Stdio};
     let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/zsh".into());
     let mut child = Command::new(shell)
-        .arg("-lc")
+        .arg("-ilc")
         .arg(format!("printf '{PATH_MARK}%s{PATH_MARK}' \"$PATH\""))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -131,12 +131,77 @@ fn login_shell_path() -> Option<String> {
     }
 }
 
-#[cfg(target_os = "macos")]
+/// The folders where the version managers of Node keep it, newest version
+/// last: used when the shell could not tell.
+fn node_manager_dirs(home: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    let nvm = std::env::var_os("NVM_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| home.join(".nvm"));
+    if let Ok(entries) = std::fs::read_dir(nvm.join("versions").join("node")) {
+        let mut versions: Vec<(Vec<u64>, std::path::PathBuf)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let numbers = name
+                    .trim_start_matches('v')
+                    .split('.')
+                    .map(|n| n.parse().ok())
+                    .collect::<Option<Vec<u64>>>()?;
+                Some((numbers, e.path().join("bin")))
+            })
+            .collect();
+        versions.sort();
+        if let Some((_, newest)) = versions.pop() {
+            dirs.push(newest);
+        }
+    }
+    dirs.extend([".volta/bin", ".bun/bin", ".npm-global/bin"].map(|d| home.join(d)));
+    dirs
+}
+
+/// Where the `PATH` of the shell is kept from one start to the next.
+fn shell_path_cache() -> Option<std::path::PathBuf> {
+    dirs::data_dir().map(|d| d.join("simpleedit").join("shell-path"))
+}
+
+/// The `PATH` of the shell: the one kept from the last start (asking the
+/// shell takes a second, with nvm), else asked now and kept. `true` when it
+/// came from what was kept, to be asked again in the background.
+fn shell_path() -> (Option<String>, bool) {
+    let kept = shell_path_cache()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if kept.is_some() {
+        return (kept, true);
+    }
+    let asked = login_shell_path();
+    if let (Some(path), Some(file)) = (&asked, shell_path_cache()) {
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(file, path);
+    }
+    (asked, false)
+}
+
+/// Asks the shell its `PATH` again, for the next start (it may have changed:
+/// another version of Node chosen).
+fn refresh_shell_path() {
+    std::thread::spawn(|| {
+        if let (Some(path), Some(file)) = (login_shell_path(), shell_path_cache()) {
+            let _ = std::fs::write(file, path);
+        }
+    });
+}
+
 fn complete_path() {
     let mut dirs: Vec<std::path::PathBuf> =
         std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect();
     // The shell's own folders (nvm, ...) come first.
-    if let Some(shell) = login_shell_path() {
+    let (shell, kept) = shell_path();
+    if let Some(shell) = shell {
         let mut first: Vec<std::path::PathBuf> = std::env::split_paths(&shell).collect();
         first.retain(|d| !d.as_os_str().is_empty());
         dirs.retain(|d| !first.contains(d));
@@ -148,9 +213,8 @@ fn complete_path() {
             .map(std::path::PathBuf::from)
             .into();
     if let Some(home) = dirs::home_dir() {
-        extra.extend(
-            [".cargo/bin", ".local/bin", "go/bin", ".npm-global/bin"].map(|d| home.join(d)),
-        );
+        extra.extend([".cargo/bin", ".local/bin", "go/bin"].map(|d| home.join(d)));
+        extra.extend(node_manager_dirs(&home));
     }
     for dir in extra {
         if !dirs.contains(&dir) {
@@ -161,10 +225,13 @@ fn complete_path() {
         // Single-threaded at this point.
         std::env::set_var("PATH", path);
     }
+    // Only now another thread: it reads the environment to start the shell.
+    if kept {
+        refresh_shell_path();
+    }
 }
 
 fn main() -> iced::Result {
-    #[cfg(target_os = "macos")]
     complete_path();
     // The saved preference wins; Config::load() falls back to the system locale
     // only when no config file exists yet.
@@ -252,6 +319,21 @@ mod tests {
         assert_eq!(marked_path("no marker"), None);
         assert_eq!(marked_path(&format!("{PATH_MARK}{PATH_MARK}")), None);
         assert_eq!(marked_path(&format!("{PATH_MARK}/a")), None);
+    }
+
+    #[test]
+    fn the_newest_node_of_nvm_is_found_when_the_shell_cannot_tell() {
+        let home = tempfile::tempdir().unwrap();
+        for v in ["v18.20.1", "v26.13.0", "v9.11.2", "not-a-version"] {
+            std::fs::create_dir_all(home.path().join(".nvm/versions/node").join(v).join("bin"))
+                .unwrap();
+        }
+        let dirs = node_manager_dirs(home.path());
+        let nvm = home.path().join(".nvm/versions/node/v26.13.0/bin");
+        if std::env::var_os("NVM_DIR").is_none() {
+            assert_eq!(dirs[0], nvm);
+        }
+        assert!(dirs.contains(&home.path().join(".volta/bin")));
     }
 
     #[test]

@@ -272,7 +272,12 @@ pub struct Entry {
 }
 
 /// Every command, with its current shortcut.
-pub fn entries(config: &Config, has_formatter: bool, language_enabled: bool) -> Vec<Entry> {
+pub fn entries(
+    config: &Config,
+    has_formatter: bool,
+    language_enabled: bool,
+    tools: crate::plugins::Tools,
+) -> Vec<Entry> {
     let sh = &config.shortcuts;
     let entry = |command, label: String, shortcut: Option<String>, enabled| Entry {
         command,
@@ -280,7 +285,7 @@ pub fn entries(config: &Config, has_formatter: bool, language_enabled: bool) -> 
         shortcut,
         enabled,
     };
-    vec![
+    let all = vec![
         entry(
             PaletteCommand::NewFile,
             t!("palette.new_file").to_string(),
@@ -773,7 +778,15 @@ pub fn entries(config: &Config, has_formatter: bool, language_enabled: bool) -> 
             Some(sh.quit.display()),
             true,
         ),
-    ]
+    ];
+    // Git and the terminal only once their plugin is installed.
+    all.into_iter()
+        .filter(|e| match e.command {
+            PaletteCommand::ToggleGit => tools.git,
+            PaletteCommand::ToggleTerminal => tools.terminal,
+            _ => true,
+        })
+        .collect()
 }
 
 /// The lowercase base letter of `c`: "É" and "é" both give "e", so a query
@@ -836,14 +849,22 @@ mod tests {
 
     #[test]
     fn every_command_maps_to_a_message() {
-        for entry in entries(&Config::default(), true, true) {
+        let all = crate::plugins::Tools {
+            git: true,
+            terminal: true,
+        };
+        for entry in entries(&Config::default(), true, true, all) {
             let _ = entry.command.message();
         }
     }
 
     #[test]
     fn the_real_list_has_every_command_once() {
-        let list = entries(&Config::default(), true, true);
+        let all = crate::plugins::Tools {
+            git: true,
+            terminal: true,
+        };
+        let list = entries(&Config::default(), true, true, all);
         for (i, a) in list.iter().enumerate() {
             assert!(
                 list[i + 1..].iter().all(|b| b.command != a.command),

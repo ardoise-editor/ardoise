@@ -756,6 +756,41 @@ mod tests {
     }
 
     #[test]
+    fn git_and_the_terminal_are_offered_only_once_their_plugin_is_installed() {
+        use crate::config::ShortcutTarget;
+        use crate::palette::PaletteCommand;
+        use crate::preferences::shortcut_shown;
+        let mut app = SimpleEditApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        let offered = |app: &SimpleEditApp| {
+            let tools = app.plugins.tools();
+            let palette: Vec<PaletteCommand> =
+                crate::palette::entries(&app.config, true, true, tools)
+                    .into_iter()
+                    .map(|e| e.command)
+                    .collect();
+            (
+                shortcut_shown(ShortcutTarget::GitCommit, tools),
+                shortcut_shown(ShortcutTarget::ToggleTerminal, tools),
+                palette.contains(&PaletteCommand::ToggleGit),
+                palette.contains(&PaletteCommand::ToggleTerminal),
+            )
+        };
+        assert_eq!(offered(&app), (false, false, false, false));
+        assert!(shortcut_shown(ShortcutTarget::Undo, app.plugins.tools()));
+        let manifest = simpleedit_plugin::manifest::Manifest::parse(
+            r#"{"id": "simpleedit.git", "name": "Git", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+        assert_eq!(offered(&app), (true, false, true, false));
+    }
+
+    #[test]
     fn the_rows_scroll_to_a_cursor_moved_out_of_view() {
         let rows: Vec<_> = (0..50)
             .map(|i| serde_json::json!({"cells": [{"text": i.to_string()}]}))

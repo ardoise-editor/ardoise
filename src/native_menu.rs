@@ -25,6 +25,7 @@ pub struct State<'a> {
     pub has_formatter: bool,
     pub lang_picker_enabled: bool,
     pub bookmarks: BookmarkState,
+    pub tools: crate::plugins::Tools,
 }
 
 impl State<'_> {
@@ -32,7 +33,7 @@ impl State<'_> {
     pub fn signature(&self) -> String {
         let c = self.config;
         format!(
-            "{}|{}|{}|{:?}|{}|{}|{}|{}",
+            "{}|{}|{}|{:?}|{}|{}|{}|{}|{:?}",
             &*rust_i18n::locale(),
             c.dark_mode,
             c.show_line_numbers,
@@ -41,6 +42,7 @@ impl State<'_> {
             self.lang_picker_enabled,
             self.bookmarks.on_line,
             self.bookmarks.any,
+            self.tools,
         )
     }
 }
@@ -272,8 +274,13 @@ fn view_menu(b: &mut Builder, state: &State) -> Submenu {
     b.on(&menu, t!("menu.view_split_right"), Message::Split(true));
     b.on(&menu, t!("menu.view_split_down"), Message::Split(false));
     b.on(&menu, t!("menu.view_split_close"), Message::CloseSplit);
-    b.on(&menu, t!("git.title"), Message::ToggleGit);
-    b.on(&menu, t!("terminal.title"), Message::ToggleTerminal);
+    // Git and the terminal only once their plugin is installed.
+    if state.tools.git {
+        b.on(&menu, t!("git.title"), Message::ToggleGit);
+    }
+    if state.tools.terminal {
+        b.on(&menu, t!("terminal.title"), Message::ToggleTerminal);
+    }
     for (label, dark) in [(t!("toolbar.dark"), true), (t!("toolbar.light"), false)] {
         let item = CheckMenuItem::new(label, true, config.dark_mode == dark, None);
         b.actions

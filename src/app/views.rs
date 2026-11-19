@@ -870,6 +870,7 @@ impl SimpleEditApp {
                     dark,
                     &self.config,
                     self.capturing,
+                    self.plugins.tools(),
                 ))
                 .style(se_theme::Scrollbar { dark }.style())
                 .height(Length::Fixed(420.0)),

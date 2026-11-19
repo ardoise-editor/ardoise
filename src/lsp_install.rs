@@ -310,7 +310,7 @@ fn package_name(spec: &str) -> &str {
 /// A command for an installer tool, or why it can't run.
 fn tool(name: &str) -> Result<Command, String> {
     let path = crate::lsp::find_executable(name)
-        .ok_or_else(|| format!("{name} not found: install it first"))?;
+        .ok_or_else(|| t!("lsp.tool_missing", name = name).to_string())?;
     Ok(Command::new(path))
 }
 

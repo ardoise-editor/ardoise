@@ -224,6 +224,13 @@ pub enum Registry {
     Failed(String),
 }
 
+/// Which official plugins with entries of their own in the menus are there.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Tools {
+    pub git: bool,
+    pub terminal: bool,
+}
+
 #[derive(Default)]
 pub struct Plugins {
     pub installed: Vec<Installed>,
@@ -430,6 +437,15 @@ impl Plugins {
         [&self.sidebar, &self.bottom, &self.settings_open]
             .into_iter()
             .any(|k| k.as_ref().is_some_and(|k| k.0 == id))
+    }
+
+    /// The tools of the official plugins that the menus, the shortcuts and
+    /// Search Everywhere offer: there only once their plugin is installed.
+    pub fn tools(&self) -> Tools {
+        Tools {
+            git: self.get(migrate::GIT).is_some(),
+            terminal: self.get(migrate::TERMINAL).is_some(),
+        }
     }
 
     /// The plugin installed that finds problems in files (Lint): it has a

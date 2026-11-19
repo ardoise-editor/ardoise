@@ -350,7 +350,7 @@ impl PreferencesState {
             .spacing(14)
             .into(),
             PrefsPage::Appearance => self.appearance_card(dark),
-            PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing),
+            PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing, plugin_state.tools()),
             PrefsPage::Language => self.language_card(config, dark),
             PrefsPage::Lint => lint_page(config, dark, plugin_state),
             PrefsPage::Servers => self.servers_page(dark, servers),
@@ -863,10 +863,25 @@ pub fn switch(dark: bool, on: bool, message: Message) -> Element<'static, Messag
 
 /// The configurable shortcuts: one row per action, click a key to rebind it.
 /// Used by the Preferences page and by Help > Configure shortcuts.
+/// Whether a shortcut is listed: the ones of Git and of the terminal only
+/// once their plugin is installed.
+pub(crate) fn shortcut_shown(target: ShortcutTarget, tools: crate::plugins::Tools) -> bool {
+    match target {
+        ShortcutTarget::ToggleGit
+        | ShortcutTarget::GitCommit
+        | ShortcutTarget::GitPush
+        | ShortcutTarget::GitPull
+        | ShortcutTarget::GitBranches => tools.git,
+        ShortcutTarget::ToggleTerminal => tools.terminal,
+        _ => true,
+    }
+}
+
 pub fn shortcuts_list(
     dark: bool,
     config: &Config,
     capturing: Option<ShortcutTarget>,
+    tools: crate::plugins::Tools,
 ) -> Element<'static, Message> {
     let p = theme::palette(dark);
     let sc = &config.shortcuts;
@@ -1111,6 +1126,7 @@ pub fn shortcuts_list(
 
     let rows: Vec<Element<'static, Message>> = entries
         .into_iter()
+        .filter(|(target, ..)| shortcut_shown(*target, tools))
         .map(|(target, label, key)| {
             let is_capturing = capturing == Some(target);
             let key_label = if is_capturing {

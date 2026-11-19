@@ -164,3 +164,29 @@ fn no_translation_is_left_unused() {
         .collect();
     assert!(unused.is_empty(), "unused keys: {unused:?}");
 }
+
+/// A `{name}` without its `%` is shown as it is, braces and all: the
+/// placeholders of rust-i18n are `%{name}`. (`${name}` is a regular
+/// expression's group, shown to the user on purpose.)
+#[test]
+fn every_placeholder_has_its_percent_sign() {
+    for locale in ["en.json", "fr.json"] {
+        for (key, value) in entries(locale) {
+            let bytes = value.as_bytes();
+            for (at, _) in value.match_indices('{') {
+                let before = at.checked_sub(1).map(|i| bytes[i]);
+                let word: String = value[at + 1..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                let closes = value[at + 1 + word.len()..].starts_with('}');
+                if !word.is_empty() && closes {
+                    assert!(
+                        matches!(before, Some(b'%') | Some(b'$')),
+                        "{locale}: {key} has {{{word}}} without its %: {value}"
+                    );
+                }
+            }
+        }
+    }
+}
