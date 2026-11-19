@@ -346,7 +346,7 @@ pub fn view<'a>(
                         list = list.push(if entry.enabled {
                             item(
                                 entry.label.clone(),
-                                None,
+                                entry.key.clone(),
                                 dark,
                                 msg(&k, id, GridMsg::Menu(entry.action.clone(), r, c)),
                             )
@@ -505,6 +505,30 @@ pub fn key(grid: &Grid, key: &str, ctrl: bool, shift: bool) -> Option<GridEvent>
         "c" | "C" if ctrl => Some(GridEvent::Copy),
         _ => None,
     }
+}
+
+/// The item of the menu of a grid that a key does, on the cell of the
+/// cursor: its action, row and column.
+pub fn menu_key(
+    grid: &Grid,
+    key: &str,
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+) -> Option<(String, usize, usize)> {
+    if grid.editing.is_some() || grid.rows.is_empty() {
+        return None;
+    }
+    let (row, col) = grid.selection.map_or((0, 0), |s| s.cursor);
+    grid.menu
+        .iter()
+        .filter(|item| item.enabled)
+        .find(|item| {
+            item.key
+                .as_deref()
+                .is_some_and(|spec| super::key_matches(spec, key, ctrl, alt, shift))
+        })
+        .map(|item| (item.action.clone(), row, col))
 }
 
 /// How a column is wider once dragged by `dx`.

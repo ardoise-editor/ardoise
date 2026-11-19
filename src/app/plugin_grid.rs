@@ -274,10 +274,16 @@ impl SimpleEditApp {
         &mut self,
         key: &str,
         ctrl: bool,
+        alt: bool,
         shift: bool,
     ) -> Option<Task<Message>> {
         let focus = self.plugins.grid_focus.clone()?;
         let grid = self.grid_node(&focus)?;
+        // An item of its menu named by the key, on the cell of the cursor.
+        if let Some((action, row, col)) = grid::menu_key(grid, key, ctrl, alt, shift) {
+            let ((plugin, panel), id) = focus;
+            return Some(self.plugin_grid(plugin, panel, id, GridMsg::Menu(action, row, col)));
+        }
         if ctrl && key.eq_ignore_ascii_case("v") && grid.editing.is_none() {
             return Some(
                 iced::clipboard::read().map(|t| Message::Plugin(PluginMsg::GridPasted(t))),
@@ -285,6 +291,32 @@ impl SimpleEditApp {
         }
         let event = grid::key(grid, key, ctrl, shift)?;
         self.grid_tell(&focus, event);
+        Some(Task::none())
+    }
+
+    /// A key named by a button of the panel the user clicked in last.
+    pub(super) fn plugin_panel_key(
+        &mut self,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        shift: bool,
+    ) -> Option<Task<Message>> {
+        if self.plugins.editor_focus.is_some() || self.plugins.grid_focus.is_some() {
+            return None;
+        }
+        let focus = self.plugins.panel_focus.clone()?;
+        let root = self.plugins.views.get(&focus)?;
+        let action = crate::plugins::keyed_button(root, key, ctrl, alt, shift)?;
+        host::notify(
+            &focus.0,
+            methods::UI_EVENT,
+            UiEvent {
+                panel: focus.1,
+                action,
+                value: None,
+            },
+        );
         Some(Task::none())
     }
 
@@ -302,6 +334,7 @@ impl SimpleEditApp {
         typed: Option<char>,
     ) -> Task<Message> {
         self.plugins.grid_focus = None;
+        self.plugins.panel_focus = None;
         self.plugins.editor_focus = Some(slot.clone());
         let open = self
             .plugins
@@ -483,7 +516,8 @@ mod tests {
             "selection": {"anchor": [0, 0], "cursor": [0, 0]}
         }));
         assert!(
-            app.plugin_grid_key("ArrowDown", false, false).is_none(),
+            app.plugin_grid_key("ArrowDown", false, false, false)
+                .is_none(),
             "not focused yet"
         );
         let _ = app.update(Message::Plugin(PluginMsg::Grid(
@@ -493,8 +527,10 @@ mod tests {
             GridMsg::Press(1, 1),
         )));
         assert_eq!(app.plugins.grid_focus, Some(key()));
-        assert!(app.plugin_grid_key("ArrowDown", false, false).is_some());
-        assert!(app.plugin_grid_key("q", false, false).is_none());
+        assert!(app
+            .plugin_grid_key("ArrowDown", false, false, false)
+            .is_some());
+        assert!(app.plugin_grid_key("q", false, false, false).is_none());
         // The edge of "name" dragged 40 pixels to the right.
         let _ = app.update(Message::Plugin(PluginMsg::Grid(
             "test.grid".into(),
@@ -513,6 +549,86 @@ mod tests {
             iced::widget::text_editor::Action::Click(iced::Point::ORIGIN),
         ));
         assert!(app.plugins.grid_focus.is_none());
+    }
+
+    #[test]
+    fn a_key_of_the_menu_of_a_grid_does_its_item_and_a_key_of_a_button_presses_it() {
+        let mut app = app_with_panel(serde_json::json!({
+            "type": "column", "children": [
+                {"type": "button", "label": "Copy SQL", "action": "copy_sql", "key": "Ctrl+C"},
+                {"type": "input", "id": "filter", "value": ""},
+                {"type": "grid", "id": "rows",
+                 "columns": [{"name": "id"}],
+                 "rows": [{"cells": [{"text": "1"}]}, {"cells": [{"text": "2"}]}],
+                 "selection": {"anchor": [1, 0], "cursor": [1, 0]},
+                 "menu": [{"label": "Form", "action": "form", "key": "F4"}]}
+            ]
+        }));
+        // Nothing clicked in the panel: its keys are not for it.
+        assert!(app.plugin_panel_key("c", true, false, false).is_none());
+        let _ = app.update(Message::Plugin(PluginMsg::Ui(
+            "test.grid".into(),
+            "p".into(),
+            "other".into(),
+            None,
+        )));
+        assert!(app.plugin_panel_key("c", true, false, false).is_some());
+        assert!(app.plugin_panel_key("c", false, false, false).is_none());
+        // Typing in a field: Ctrl+C is the field's.
+        let _ = app.update(Message::Plugin(PluginMsg::Input(
+            "test.grid".into(),
+            "p".into(),
+            "filter".into(),
+            "x".into(),
+        )));
+        assert!(app.plugin_panel_key("c", true, false, false).is_none());
+        // F4 on the grid: the item of its menu, on the cell of the cursor.
+        let _ = app.update(Message::Plugin(PluginMsg::Grid(
+            "test.grid".into(),
+            "p".into(),
+            "rows".into(),
+            GridMsg::Press(1, 0),
+        )));
+        let grid = app.grid_node(&key()).unwrap();
+        assert_eq!(
+            grid::menu_key(grid, "F4", false, false, false),
+            Some(("form".to_string(), 1, 0))
+        );
+        assert_eq!(grid::menu_key(grid, "F4", true, false, false), None);
+        assert!(app.plugin_grid_key("F4", false, false, false).is_some());
+        // The editor again: no panel has the keyboard.
+        let _ = app.update(Message::Plugin(PluginMsg::Ui(
+            "test.grid".into(),
+            "p".into(),
+            "other".into(),
+            None,
+        )));
+        let _ = app.update(Message::EditorAction(
+            iced::widget::text_editor::Action::Click(iced::Point::ORIGIN),
+        ));
+        assert!(app.plugins.panel_focus.is_none());
+    }
+
+    #[test]
+    fn a_file_a_plugin_brought_says_where_it_comes_from() {
+        let mut app = app_with_panel(serde_json::json!({"type": "column", "children": []}));
+        let path = PathBuf::from("/tmp/remote/web/index.html");
+        let _ = app.update(Message::Plugin(PluginMsg::Incoming(Incoming::Rpc(
+            "test.grid".into(),
+            Rpc::notification(
+                methods::SET_ORIGIN,
+                serde_json::json!({"path": path, "origin": "web:/srv/index.html"}),
+            ),
+        ))));
+        assert_eq!(
+            app.plugins.origins.get(&path).map(String::as_str),
+            Some("web:/srv/index.html")
+        );
+        let _ = app.update(Message::Plugin(PluginMsg::Incoming(Incoming::Rpc(
+            "test.grid".into(),
+            Rpc::notification(methods::SET_ORIGIN, serde_json::json!({"path": path})),
+        ))));
+        assert!(app.plugins.origins.is_empty());
     }
 
     #[test]

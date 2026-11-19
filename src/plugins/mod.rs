@@ -107,6 +107,14 @@ impl MenuItem {
 pub enum PluginMsg {
     /// A plugin said something, or stopped.
     Incoming(Incoming),
+    /// The boxes the plugins add to the question before a file is deleted:
+    /// (plugin, box).
+    DeleteOptions(
+        PathBuf,
+        Vec<(String, simpleedit_plugin::protocol::DeleteOption)>,
+    ),
+    /// A box of that question ticked or not.
+    DeleteOptionToggled(usize, bool),
     /// The button of a panel in the activity bar.
     TogglePanel(String, String),
     /// Closes the panel under the editor.
@@ -250,6 +258,14 @@ pub struct Plugins {
     /// The texts files are compared with to mark their changed lines: the
     /// text (none: new), or no marks at all.
     pub bases: HashMap<PathBuf, Base>,
+    /// Where files come from, shown in place of their folder (a copy of a
+    /// remote file: `host:/path`).
+    pub origins: HashMap<PathBuf, String>,
+    /// The panel the user clicked in last (its buttons' keys work), until
+    /// the keyboard goes elsewhere.
+    pub panel_focus: Option<PanelKey>,
+    /// The selection each editor of a panel was last given by its plugin.
+    editor_selections: HashMap<(PanelKey, String), simpleedit_plugin::ui::EditorSelection>,
     /// What each plugin offers in Search Everywhere.
     pub search_items: BTreeMap<String, Vec<simpleedit_plugin::protocol::SearchItem>>,
     /// A line pointed at in the gutter (right click): the next answer to
@@ -335,8 +351,9 @@ impl Plugins {
         // The editors: their text follows the plugin's when it changes it.
         let mut editors = Vec::new();
         collect_editors(&root, &mut editors);
-        for (id, value) in editors {
+        for (id, value, selection) in editors {
             let slot = (key.clone(), id);
+            let moved = selection.filter(|s| self.editor_selections.get(&slot) != Some(s));
             match self.editors.get_mut(&slot) {
                 Some((content, last)) if *last == value => {
                     let _ = content;
@@ -347,8 +364,18 @@ impl Plugins {
                 }
                 None => {
                     let content = iced::widget::text_editor::Content::with_text(&value);
-                    self.editors.insert(slot, (content, value));
+                    self.editors.insert(slot.clone(), (content, value));
                 }
+            }
+            match (moved, self.editors.get_mut(&slot)) {
+                (Some(selection), Some((content, _))) => {
+                    content.move_to(editor_cursor(&content.text(), selection));
+                    self.editor_selections.insert(slot, selection);
+                }
+                _ if selection.is_none() => {
+                    self.editor_selections.remove(&slot);
+                }
+                _ => {}
             }
         }
         self.views.insert(key, root);
@@ -359,6 +386,10 @@ impl Plugins {
         self.views.retain(|k, _| k.0 != id);
         self.inputs.retain(|k, _| k.0 .0 != id);
         self.editors.retain(|k, _| k.0 .0 != id);
+        self.editor_selections.retain(|k, _| k.0 .0 != id);
+        if self.panel_focus.as_ref().is_some_and(|k| k.0 == id) {
+            self.panel_focus = None;
+        }
         self.rendered_inputs.retain(|k, _| k.0 != id);
         self.status.retain(|k, _| k.0 != id);
         for by_plugin in self.published.values_mut() {
@@ -401,9 +432,76 @@ impl Plugins {
     }
 }
 
-fn collect_editors(node: &Node, out: &mut Vec<(String, String)>) {
+/// The cursor of an editor for a selection given in characters (the
+/// editor counts bytes).
+fn editor_cursor(
+    text: &str,
+    selection: simpleedit_plugin::ui::EditorSelection,
+) -> iced::widget::text_editor::Cursor {
+    use iced::widget::text_editor::Position;
+    let lines: Vec<&str> = text.split('\n').collect();
+    let at = |p: simpleedit_plugin::ui::EditorPos| {
+        let line = p.line.min(lines.len().saturating_sub(1));
+        let s = lines.get(line).copied().unwrap_or_default();
+        let column = s.char_indices().nth(p.column).map_or(s.len(), |(i, _)| i);
+        Position { line, column }
+    };
+    let (anchor, cursor) = (at(selection.anchor), at(selection.cursor));
+    iced::widget::text_editor::Cursor {
+        position: cursor,
+        selection: (anchor != cursor).then_some(anchor),
+    }
+}
+
+/// The button of a panel that a key presses, as its `key` names it
+/// (`"Ctrl+Shift+C"`, `"F4"`): its action.
+pub fn keyed_button(node: &Node, key: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
     match node {
-        Node::Editor { id, value, .. } => out.push((id.clone(), value.clone())),
+        Node::Button {
+            action,
+            enabled: true,
+            key: Some(spec),
+            ..
+        } if key_matches(spec, key, ctrl, alt, shift) => Some(action.clone()),
+        Node::Column { children, .. } | Node::Row { children, .. } => children
+            .iter()
+            .find_map(|c| keyed_button(c, key, ctrl, alt, shift)),
+        Node::Scroll { child, .. } => keyed_button(child, key, ctrl, alt, shift),
+        _ => None,
+    }
+}
+
+/// Whether a key pressed is the one a plugin named: its modifiers, then the
+/// key (letters in either case). `Ctrl` is Cmd on macOS.
+pub fn key_matches(spec: &str, key: &str, ctrl: bool, alt: bool, shift: bool) -> bool {
+    let mut parts: Vec<&str> = spec.split('+').map(str::trim).collect();
+    let Some(name) = parts.pop() else {
+        return false;
+    };
+    let has = |m: &str| parts.iter().any(|p| p.eq_ignore_ascii_case(m));
+    let wants_ctrl = has("ctrl") || has("cmd");
+    !name.is_empty()
+        && name.eq_ignore_ascii_case(key)
+        && wants_ctrl == ctrl
+        && has("alt") == alt
+        && has("shift") == shift
+}
+
+fn collect_editors(
+    node: &Node,
+    out: &mut Vec<(
+        String,
+        String,
+        Option<simpleedit_plugin::ui::EditorSelection>,
+    )>,
+) {
+    match node {
+        Node::Editor {
+            id,
+            value,
+            selection,
+            ..
+        } => out.push((id.clone(), value.clone(), *selection)),
         Node::Column { children, .. } | Node::Row { children, .. } => {
             for child in children {
                 collect_editors(child, out);
@@ -451,5 +549,72 @@ mod tests {
         assert_eq!(plugins.input_text(&key, "name", "Bob"), "Bob");
         plugins.forget("acme.a");
         assert!(plugins.views.is_empty() && plugins.inputs.is_empty());
+    }
+
+    #[test]
+    fn a_selection_sent_by_the_plugin_moves_the_cursor_once() {
+        use simpleedit_plugin::ui::{editor, EditorPos, EditorSelection};
+        let mut plugins = Plugins::default();
+        let key: PanelKey = ("acme.a".into(), "p".into());
+        let found = EditorSelection {
+            anchor: EditorPos { line: 1, column: 1 },
+            cursor: EditorPos { line: 1, column: 3 },
+        };
+        let text = "abc\néty";
+        plugins.set_view(
+            key.clone(),
+            column([editor("e", text, "").selection(found)]),
+        );
+        let slot = (key.clone(), "e".to_string());
+        let cursor = plugins.editors[&slot].0.cursor();
+        // In bytes for the editor: "é" is two.
+        assert_eq!((cursor.position.line, cursor.position.column), (1, 4));
+        assert_eq!(cursor.selection.map(|p| p.column), Some(2));
+        // The user moves; the same selection sent again leaves the cursor.
+        plugins
+            .editors
+            .get_mut(&slot)
+            .unwrap()
+            .0
+            .move_to(iced::widget::text_editor::Cursor {
+                position: iced::widget::text_editor::Position { line: 0, column: 0 },
+                selection: None,
+            });
+        plugins.set_view(
+            key.clone(),
+            column([editor("e", text, "").selection(found)]),
+        );
+        assert_eq!(plugins.editors[&slot].0.cursor().position.line, 0);
+    }
+
+    #[test]
+    fn a_key_presses_the_button_that_names_it() {
+        use simpleedit_plugin::ui::button;
+        let root = column([
+            button("Copy", "copy").key("Ctrl+C"),
+            button("Off", "off").key("F4").enabled(false),
+            button("Form", "form").key("shift+f4"),
+        ]);
+        assert_eq!(
+            keyed_button(&root, "c", true, false, false).as_deref(),
+            Some("copy")
+        );
+        assert_eq!(
+            keyed_button(&root, "C", true, false, false).as_deref(),
+            Some("copy")
+        );
+        assert_eq!(keyed_button(&root, "c", false, false, false), None);
+        assert_eq!(keyed_button(&root, "c", true, false, true), None);
+        assert_eq!(
+            keyed_button(&root, "F4", false, false, false),
+            None,
+            "disabled"
+        );
+        assert_eq!(
+            keyed_button(&root, "F4", false, false, true).as_deref(),
+            Some("form")
+        );
+        assert!(key_matches("Cmd+S", "s", true, false, false));
+        assert!(!key_matches("", "", false, false, false));
     }
 }

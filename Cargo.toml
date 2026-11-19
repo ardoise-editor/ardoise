@@ -37,7 +37,7 @@ unicode-width = "0.2"
 trash = "5.3.0"
 notify = "8"
 # The protocol and manifest of the plugins (the editor needs only the types).
-simpleedit-plugin = { git = "https://github.com/simple-edit-app/plugin-sdk", tag = "v0.9.3", default-features = false }
+simpleedit-plugin = { git = "https://github.com/simple-edit-app/plugin-sdk", tag = "v0.10.0", default-features = false }
 # The archives the plugins are published as.
 tar = { version = "0.4", default-features = false }
 flate2 = "1"

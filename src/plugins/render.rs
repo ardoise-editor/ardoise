@@ -83,6 +83,7 @@ fn draw<'a>(
             action,
             style,
             enabled,
+            ..
         } => {
             let style = *style;
             let b = button(text(label.as_str()).size(12.5))
@@ -177,6 +178,8 @@ fn draw<'a>(
             language,
             read_only,
             height,
+            regions,
+            mark,
             ..
         } => {
             let Some((content, _)) = plugins.editors.get(&(key.clone(), id.clone())) else {
@@ -194,8 +197,8 @@ fn draw<'a>(
                     ))
                 })
                 .font(se_theme::MONO)
-                .size(12.5)
-                .padding(8)
+                .size(EDITOR_SIZE)
+                .padding(EDITOR_PAD)
                 .height(height.map_or(Length::Fill, Length::Fixed))
                 .highlight_with::<crate::editor::highlighter::Highlighter>(
                     crate::editor::highlighter::Settings {
@@ -205,6 +208,75 @@ fn draw<'a>(
                     crate::editor::highlighter::to_format,
                 );
             let _ = read_only;
+            // A frame or a mark is placed by logical line, which wrapping
+            // would shift.
+            let placed = !regions.is_empty() || mark.is_some();
+            let editor = if placed {
+                editor.wrapping(iced::widget::text::Wrapping::None)
+            } else {
+                editor
+            };
+            let cursor = content.cursor();
+            let selects = cursor.selection.is_some_and(|s| s != cursor.position);
+            let framed = (!selects)
+                .then(|| framed_region(regions, cursor.position.line))
+                .flatten();
+            let editor: Element<Message> = match (framed, mark) {
+                (None, None) => editor.into(),
+                (framed, mark) => {
+                    let mut layers = iced::widget::Stack::new().push(editor);
+                    if let Some((first, last)) = framed {
+                        layers = layers.push(
+                            container(
+                                container(Space::new().width(Length::Fill).height(Length::Fixed(
+                                    (last - first + 1) as f32 * EDITOR_LINE + 2.0,
+                                )))
+                                .style(move |_: &iced::Theme| {
+                                    container::Style {
+                                        background: Some(iced::Background::Color(iced::Color {
+                                            a: 0.07,
+                                            ..p.accent
+                                        })),
+                                        border: iced::Border {
+                                            color: p.accent,
+                                            width: 1.0,
+                                            radius: 0.0.into(),
+                                        },
+                                        ..container::Style::default()
+                                    }
+                                }),
+                            )
+                            .padding(iced::Padding {
+                                top: EDITOR_PAD + first as f32 * EDITOR_LINE - 1.0,
+                                left: 4.0,
+                                right: 4.0,
+                                bottom: 0.0,
+                            })
+                            .width(Length::Fill)
+                            .height(Length::Fill),
+                        );
+                    }
+                    if let Some(mark) = mark {
+                        let red = se_theme::error_color(dark);
+                        layers = layers.push(
+                            container(
+                                container(Space::new().height(2))
+                                    .width(Length::Fixed(mark.len.max(1) as f32 * EDITOR_CHAR))
+                                    .style(move |_: &iced::Theme| container::Style {
+                                        background: Some(iced::Background::Color(red)),
+                                        ..container::Style::default()
+                                    }),
+                            )
+                            .padding(iced::Padding {
+                                top: EDITOR_PAD + (mark.line as f32 + 1.0) * EDITOR_LINE - 1.0,
+                                left: EDITOR_PAD + mark.column as f32 * EDITOR_CHAR,
+                                ..iced::Padding::ZERO
+                            }),
+                        );
+                    }
+                    layers.into()
+                }
+            };
             let editor = container(editor).width(Length::Fill);
             // The completions the plugin gave, under its editor.
             let slot = (key.clone(), id_of(node).to_string());
@@ -339,6 +411,25 @@ fn flatten<'a>(items: &'a [TreeItem], level: usize, out: &mut Vec<(&'a TreeItem,
     }
 }
 
+/// The size of the text of an editor of a panel, and so the height of its
+/// lines, the width of its characters (monospace) and its padding.
+const EDITOR_SIZE: f32 = 12.5;
+const EDITOR_LINE: f32 = EDITOR_SIZE * 1.3;
+const EDITOR_CHAR: f32 = EDITOR_SIZE * 0.6;
+const EDITOR_PAD: f32 = 8.0;
+
+/// The span of lines (both ends in) to frame: the one the cursor is in,
+/// else the next one, else the last (what a Run would run).
+fn framed_region(regions: &[[usize; 2]], line: usize) -> Option<(usize, usize)> {
+    let spans: Vec<(usize, usize)> = regions.iter().map(|&[a, b]| (a.min(b), a.max(b))).collect();
+    spans
+        .iter()
+        .find(|&&(first, last)| (first..=last).contains(&line))
+        .or_else(|| spans.iter().find(|&&(first, _)| first > line))
+        .or_else(|| spans.last())
+        .copied()
+}
+
 fn tree_row<'a>(
     key: &PanelKey,
     tree: &str,
@@ -385,7 +476,7 @@ fn tree_row<'a>(
     if let Some(detail) = &item.detail {
         label = label.push(text(detail.as_str()).size(11.5).color(p.muted));
     }
-    row![
+    let line = row![
         Space::new().width(level.min(MAX_DEPTH) as f32 * 14.0),
         chevron,
         button(label)
@@ -404,8 +495,30 @@ fn tree_row<'a>(
                 .style()
             ),
     ]
-    .align_y(Alignment::Center)
-    .into()
+    .align_y(Alignment::Center);
+    if item.menu.is_empty() {
+        return line.into();
+    }
+    // Its context menu: an item picked sends its action with the row.
+    let (k, items, id) = (key.clone(), item.menu.clone(), item.id.clone());
+    crate::pointer_area::context_menu(line, move || {
+        use crate::menu_bar::{disabled_item, item};
+        let mut list = column![].spacing(1).padding(6).width(Length::Fixed(240.0));
+        for entry in &items {
+            list = list.push(if entry.enabled {
+                // A tree has no cursor: keys are for the menus of grids.
+                item(
+                    entry.label.clone(),
+                    None,
+                    dark,
+                    ui(&k, &entry.action, Some(json!({"item": id}))),
+                )
+            } else {
+                disabled_item(entry.label.clone(), dark)
+            });
+        }
+        container(list).style(se_theme::card(dark)).into()
+    })
 }
 
 #[cfg(test)]
@@ -425,5 +538,25 @@ mod tests {
         flatten(&items, 0, &mut rows);
         let shown: Vec<(&str, usize)> = rows.iter().map(|(i, l)| (i.id.as_str(), *l)).collect();
         assert_eq!(shown, vec![("a", 0), ("a/1", 1), ("a/2", 1), ("b", 0)]);
+    }
+
+    #[test]
+    fn the_region_of_the_cursor_is_framed() {
+        let regions = [[0, 1], [3, 3], [6, 4]];
+        assert_eq!(framed_region(&regions, 0), Some((0, 1)));
+        assert_eq!(framed_region(&regions, 1), Some((0, 1)));
+        assert_eq!(
+            framed_region(&regions, 2),
+            Some((3, 3)),
+            "between: the next"
+        );
+        assert_eq!(framed_region(&regions, 9), Some((4, 6)), "after: the last");
+        assert_eq!(framed_region(&regions, 3), Some((3, 3)));
+        assert_eq!(
+            framed_region(&regions, 5),
+            Some((4, 6)),
+            "ends in any order"
+        );
+        assert_eq!(framed_region(&[], 0), None);
     }
 }

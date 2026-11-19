@@ -203,7 +203,11 @@ pub enum ActiveOverlay {
     /// A file or folder dragged onto a folder, to move there.
     ConfirmMove(PathBuf, PathBuf),
     /// A file to delete for good.
-    ConfirmFileDelete(PathBuf),
+    /// The file, and the boxes the plugins added: (plugin, box as ticked).
+    ConfirmFileDelete(
+        PathBuf,
+        Vec<(String, simpleedit_plugin::protocol::DeleteOption)>,
+    ),
     /// A question of a plugin.
     PluginConfirm(Box<plugins::PluginQuestion>),
 }
@@ -1982,10 +1986,27 @@ impl SimpleEditApp {
                     }
                     ActiveOverlay::ConfirmClose(path) => self.view_confirm_overlay(dark, path),
                     ActiveOverlay::PluginConfirm(q) => self.view_plugin_question(dark, q),
-                    ActiveOverlay::ConfirmFileDelete(path) => confirm_card(
+                    ActiveOverlay::ConfirmFileDelete(path, options) => confirm_card_with(
                         dark,
                         t!("delete_file.title").to_string(),
                         t!("delete_file.message", name = file_label(path).as_str()).to_string(),
+                        // The boxes of the plugins ("Also remove it from Git").
+                        (!options.is_empty()).then(|| {
+                            column(options.iter().enumerate().map(|(i, (_, option))| {
+                                iced::widget::checkbox(option.checked)
+                                    .label(option.label.clone())
+                                    .size(15)
+                                    .text_size(13)
+                                    .on_toggle(move |on| {
+                                        Message::Plugin(
+                                            crate::plugins::PluginMsg::DeleteOptionToggled(i, on),
+                                        )
+                                    })
+                                    .into()
+                            }))
+                            .spacing(6)
+                            .into()
+                        }),
                         t!("delete_file.confirm").to_string(),
                         Message::DeleteFile(path.clone()),
                     ),
@@ -2169,6 +2190,7 @@ impl SimpleEditApp {
             Message::EditorAction(action) => {
                 // The editor has the keyboard again.
                 self.plugins.grid_focus = None;
+                self.plugins.panel_focus = None;
                 self.plugins.editor_focus = None;
                 self.plugins.completion = None;
                 self.symbol_card = None;
@@ -3679,14 +3701,24 @@ impl SimpleEditApp {
                 self.config_dirty = true;
                 Task::none()
             }
-            Message::AskDeleteFile(path) => {
-                self.overlay = ActiveOverlay::ConfirmFileDelete(path);
-                Task::none()
-            }
+            Message::AskDeleteFile(path) => self.plugins_ask_delete(path),
             Message::DeleteFile(path) => {
+                // The boxes of the plugins left ticked, by plugin.
+                let mut chosen: std::collections::BTreeMap<String, Vec<String>> =
+                    Default::default();
+                if let ActiveOverlay::ConfirmFileDelete(asked, options) = &self.overlay {
+                    if *asked == path {
+                        for (plugin, option) in options.iter().filter(|(_, o)| o.checked) {
+                            chosen
+                                .entry(plugin.clone())
+                                .or_default()
+                                .push(option.id.clone());
+                        }
+                    }
+                }
                 self.overlay = ActiveOverlay::None;
                 self.bookmarks.clear(&path);
-                self.plugins_before_delete(&path);
+                self.plugins_before_delete(&path, &chosen);
                 let close = self.close_path(path.clone());
                 let delete = Task::perform(delete_file(path), Message::FileDeleted);
                 Task::batch([close, delete])
@@ -4369,7 +4401,10 @@ impl SimpleEditApp {
                         return task;
                     }
                 }
-                if let Some(task) = self.plugin_grid_key(&key, ctrl, shift) {
+                if let Some(task) = self.plugin_grid_key(&key, ctrl, alt, shift) {
+                    return task;
+                }
+                if let Some(task) = self.plugin_panel_key(&key, ctrl, alt, shift) {
                     return task;
                 }
                 // The list of completions: its arrows, pages, Enter and Tab.
@@ -7990,6 +8025,13 @@ impl SimpleEditApp {
             .and_then(Path::parent)
             .map(short_dir)
             .unwrap_or_default();
+        // A file a plugin brought (a copy of a remote one) says where it
+        // comes from.
+        let dir = self
+            .current_file
+            .as_ref()
+            .and_then(|p| self.plugins.origins.get(p).cloned())
+            .unwrap_or(dir);
 
         let on_diff = self.current_file.as_deref().is_some_and(is_virtual);
         let large_bar = |view: LargeView| -> Element<'_, Message> {

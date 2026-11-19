@@ -347,7 +347,7 @@ impl SimpleEditApp {
                 self.close_path(p)
             })
             .collect();
-        self.plugins_before_delete(&dir);
+        self.plugins_before_delete(&dir, &Default::default());
         tasks.push(Task::perform(
             async move {
                 let target = dir.clone();

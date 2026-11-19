@@ -613,12 +613,47 @@ mod behavior_tests {
         let loose = dir.path().join("loose.txt");
         std::fs::write(&loose, "x").unwrap();
         let _ = app.handle(Message::AskDeleteFile(loose.clone()));
-        assert_eq!(app.overlay, ActiveOverlay::ConfirmFileDelete(loose.clone()));
+        assert_eq!(
+            app.overlay,
+            ActiveOverlay::ConfirmFileDelete(loose.clone(), Vec::new())
+        );
         let _ = app.handle(Message::DeleteFile(loose.clone()));
         assert!(matches!(app.overlay, ActiveOverlay::None));
         let runtime = tokio::runtime::Runtime::new().unwrap();
         assert_eq!(runtime.block_on(super::delete_file(loose.clone())), Ok(()));
         assert!(!loose.exists());
+    }
+
+    #[test]
+    fn the_boxes_a_plugin_adds_to_the_deletion_are_shown_and_ticked() {
+        use crate::plugins::PluginMsg;
+        use simpleedit_plugin::protocol::DeleteOption;
+        let mut app = app();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("tracked.txt");
+        std::fs::write(&file, "x").unwrap();
+        let option = DeleteOption {
+            id: "git_rm".into(),
+            label: "Also remove it from Git".into(),
+            checked: true,
+        };
+        let _ = app.handle(Message::Plugin(PluginMsg::DeleteOptions(
+            file.clone(),
+            vec![("simpleedit.git".into(), option.clone())],
+        )));
+        assert_eq!(
+            app.overlay,
+            ActiveOverlay::ConfirmFileDelete(file.clone(), vec![("simpleedit.git".into(), option)])
+        );
+        let _ = app.handle(Message::Plugin(PluginMsg::DeleteOptionToggled(0, false)));
+        let ActiveOverlay::ConfirmFileDelete(_, options) = &app.overlay else {
+            panic!("{:?}", app.overlay);
+        };
+        assert!(!options[0].1.checked);
+        // Out of range: nothing breaks.
+        let _ = app.handle(Message::Plugin(PluginMsg::DeleteOptionToggled(5, true)));
+        let _ = app.handle(Message::DeleteFile(file.clone()));
+        assert!(matches!(app.overlay, ActiveOverlay::None));
     }
 
     #[test]

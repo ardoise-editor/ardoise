@@ -304,6 +304,7 @@ impl SimpleEditApp {
         let params = FileParams {
             path: path.to_path_buf(),
             previous,
+            options: Vec::new(),
         };
         for plugin in &self.plugins.installed {
             if plugin.manifest.events.contains(&event) {
@@ -322,8 +323,13 @@ impl SimpleEditApp {
     }
 
     /// A file or folder about to be deleted: the plugins that follow it are
-    /// told what each file in it holds (for a folder, its first files).
-    pub(super) fn plugins_before_delete(&mut self, path: &Path) {
+    /// told what each file in it holds (for a folder, its first files), and
+    /// which of their boxes were left ticked (by plugin).
+    pub(super) fn plugins_before_delete(
+        &mut self,
+        path: &Path,
+        chosen: &std::collections::BTreeMap<String, Vec<String>>,
+    ) {
         if !self.plugins_follow(Event::FileDeleted) {
             return;
         }
@@ -333,12 +339,66 @@ impl SimpleEditApp {
             vec![path.to_path_buf()]
         };
         for file in files {
+            if is_untitled(&file) || is_virtual(&file) {
+                continue;
+            }
             let text = std::fs::read(&file)
                 .ok()
                 .filter(|b| b.len() <= 5 * 1024 * 1024)
                 .and_then(|b| String::from_utf8(b).ok());
-            self.plugins_file_event_with(Event::FileDeleted, &file, text);
+            for plugin in &self.plugins.installed {
+                if !plugin.manifest.events.contains(&Event::FileDeleted) {
+                    continue;
+                }
+                let params = FileParams {
+                    path: file.clone(),
+                    previous: text.clone(),
+                    options: chosen.get(plugin.id()).cloned().unwrap_or_default(),
+                };
+                host::notify(plugin.id(), methods::FILE_DELETED, &params);
+            }
         }
+    }
+
+    /// Asks before a file is deleted, with the boxes the plugins that follow
+    /// deletions add (each has 2 seconds to answer; one that can't adds
+    /// none).
+    pub(super) fn plugins_ask_delete(&mut self, path: PathBuf) -> Task<Message> {
+        let asked: Vec<String> = self
+            .plugins
+            .installed
+            .iter()
+            .filter(|p| p.manifest.events.contains(&Event::FileDeleted))
+            .map(|p| p.id().to_string())
+            .collect();
+        if asked.is_empty() || path.is_dir() {
+            self.overlay = ActiveOverlay::ConfirmFileDelete(path, Vec::new());
+            return Task::none();
+        }
+        Task::perform(
+            async move {
+                let mut options = Vec::new();
+                for id in asked {
+                    let answer = host::request(
+                        &id,
+                        methods::DELETE_OPTIONS,
+                        FileParams::new(path.clone()),
+                        std::time::Duration::from_secs(2),
+                    )
+                    .await;
+                    let given = answer
+                        .ok()
+                        .and_then(|v| {
+                            serde_json::from_value::<simpleedit_plugin::protocol::DeleteOptions>(v)
+                                .ok()
+                        })
+                        .unwrap_or_default();
+                    options.extend(given.options.into_iter().map(|o| (id.clone(), o)));
+                }
+                (path, options)
+            },
+            |(path, options)| Message::Plugin(PluginMsg::DeleteOptions(path, options)),
+        )
     }
 
     /// A file or folder was renamed or moved.
@@ -785,6 +845,8 @@ impl SimpleEditApp {
             }
             PluginMsg::Ui(plugin, panel, action, value) => {
                 self.plugin_settings_touched(&plugin, &panel);
+                // The panel clicked in: its keys work now.
+                self.plugins.panel_focus = Some((plugin.clone(), panel.clone()));
                 host::notify(
                     &plugin,
                     methods::UI_EVENT,
@@ -837,6 +899,8 @@ impl SimpleEditApp {
             }
             PluginMsg::Input(plugin, panel, field, value) => {
                 self.plugin_settings_touched(&plugin, &panel);
+                // A field has the keyboard: its keys are its own.
+                self.plugins.panel_focus = None;
                 self.plugins.inputs.insert(
                     ((plugin.clone(), panel.clone()), field.clone()),
                     value.clone(),
@@ -881,6 +945,18 @@ impl SimpleEditApp {
                 host::respond(&plugin, request, result);
                 Task::none()
             }
+            PluginMsg::DeleteOptions(path, options) => {
+                self.overlay = ActiveOverlay::ConfirmFileDelete(path, options);
+                Task::none()
+            }
+            PluginMsg::DeleteOptionToggled(at, on) => {
+                if let ActiveOverlay::ConfirmFileDelete(_, options) = &mut self.overlay {
+                    if let Some((_, option)) = options.get_mut(at) {
+                        option.checked = on;
+                    }
+                }
+                Task::none()
+            }
             PluginMsg::Answer(plugin, request, yes) => {
                 self.overlay = ActiveOverlay::None;
                 host::respond(&plugin, request, Ok(Value::Bool(yes)));
@@ -888,6 +964,7 @@ impl SimpleEditApp {
             }
             PluginMsg::ScreenFocus(plugin, panel, id, on) => {
                 self.plugins.screen_focus = on.then_some(((plugin, panel), id));
+                self.plugins.panel_focus = None;
                 Task::none()
             }
             PluginMsg::ScreenCopy(text) => iced::clipboard::write(text),
@@ -1305,6 +1382,17 @@ impl SimpleEditApp {
                             if self.current_file.as_ref() == Some(&p.path) {
                                 self.plugin_base_loaded(p.path, base);
                             }
+                        }
+                    }
+                    methods::SET_ORIGIN => {
+                        if let Ok(p) = serde_json::from_value::<
+                            simpleedit_plugin::protocol::SetOriginParams,
+                        >(params)
+                        {
+                            match p.origin {
+                                Some(origin) => self.plugins.origins.insert(p.path, origin),
+                                None => self.plugins.origins.remove(&p.path),
+                            };
                         }
                     }
                     methods::ANNOTATE => {
