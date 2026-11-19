@@ -229,6 +229,9 @@ pub struct Plugins {
     /// The newer version of a plugin, by id.
     pub updates: HashMap<String, String>,
     pub checking_updates: bool,
+    /// The check of the plugins was asked with the app's: the newer ones
+    /// install as soon as they are known.
+    pub update_all: bool,
     pub repo_input: String,
     pub review: Option<Review>,
     /// What each panel shows, as the plugin last sent it.
@@ -419,6 +422,14 @@ impl Plugins {
         [&self.sidebar, &self.bottom, &self.settings_open]
             .into_iter()
             .any(|k| k.as_ref().is_some_and(|k| k.0 == id))
+    }
+
+    /// The plugin installed that finds problems in files (Lint): it has a
+    /// page of its own in the preferences.
+    pub fn linter(&self) -> Option<&Installed> {
+        self.installed
+            .iter()
+            .find(|p| p.manifest.contributes.linter.is_some())
     }
 
     /// The panel of a plugin's settings, if it has one.

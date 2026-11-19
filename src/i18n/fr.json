@@ -709,8 +709,6 @@
   "plugins.err_release": "La dernière release n'a pas de numéro de version (vMAJEUR.MINEUR.CORRECTIF)",
   "plugins.err_repo": "Saisissez un dépôt GitHub : propriétaire/nom",
   "plugins.err_taken": "Un autre plugin avec cet identifiant est installé (depuis %{from}) : désinstallez-le d'abord",
-  "lint.plugin_settings": "Les linters (ESLint, ruff, ShellCheck…) et les langages qu'ils examinent se règlent dans les réglages du plugin Lint.",
-  "lint.plugin_missing": "Sans linter, seuls les serveurs de langage trouvent des problèmes. Installez le plugin Lint pour ESLint, ruff, ShellCheck et les autres.",
   "plugins.settings": "Réglages",
   "plugins.carrying": "Installation des %{n} outils que vous utilisiez, devenus des plugins…",
   "plugins.not_running": "le plugin %{id} ne tourne pas",

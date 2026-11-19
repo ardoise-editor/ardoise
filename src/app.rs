@@ -2972,9 +2972,13 @@ impl SimpleEditApp {
             }
             Message::OpenLintSettings => {
                 self.show_preferences = true;
-                self.handle(Message::Preferences(PreferencesMessage::PageSelected(
-                    crate::preferences::PrefsPage::Lint,
-                )))
+                // Without the Lint plugin there is no Lint page: the plugins.
+                let page = if self.plugins.linter().is_some() {
+                    crate::preferences::PrefsPage::Lint
+                } else {
+                    crate::preferences::PrefsPage::Plugins
+                };
+                self.handle(Message::Preferences(PreferencesMessage::PageSelected(page)))
             }
             Message::LintNext(forward) => {
                 self.lint_next(forward);
@@ -3824,6 +3828,14 @@ impl SimpleEditApp {
                     crate::lsp::set_completion_options(&self.config.completion_options);
                     self.completion_servers_restarted();
                     return Task::future(crate::lsp::restart_servers()).discard();
+                }
+                // The Lint page shows the settings of the Lint plugin.
+                if matches!(
+                    msg,
+                    PreferencesMessage::PageSelected(crate::preferences::PrefsPage::Lint)
+                ) {
+                    let _ = self.preferences.update(msg, &mut self.config);
+                    return self.plugin_lint_settings_open();
                 }
                 let servers_page = matches!(
                     msg,
@@ -5064,7 +5076,13 @@ impl SimpleEditApp {
             }
             Message::CheckForUpdate => {
                 self.overlay = ActiveOverlay::UpdateChecking;
-                Task::perform(crate::updater::check_for_update(), Message::UpdateChecked)
+                // The plugins are updated with the app.
+                self.plugins.update_all = true;
+                let plugins = self.plugin_update(crate::plugins::PluginMsg::CheckUpdates);
+                Task::batch([
+                    Task::perform(crate::updater::check_for_update(), Message::UpdateChecked),
+                    plugins,
+                ])
             }
             Message::OpenChangelog => {
                 self.overlay = ActiveOverlay::Changelog;

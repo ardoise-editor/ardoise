@@ -91,6 +91,12 @@ impl PrefsPage {
         .to_string()
     }
 
+    /// Whether the page is in the preferences: Lint only once a plugin
+    /// that lints is installed.
+    pub(crate) fn shown(self, plugins: &crate::plugins::Plugins) -> bool {
+        self != PrefsPage::Lint || plugins.linter().is_some()
+    }
+
     fn title(self) -> String {
         match self {
             PrefsPage::Editor => t!("prefs.editor").to_string(),
@@ -294,6 +300,7 @@ impl PreferencesState {
 
         let nav_items: Vec<Element<Message>> = PrefsPage::ALL
             .iter()
+            .filter(|page| page.shown(plugin_state))
             .map(|page| {
                 button(text(page.label()).size(13))
                     .padding([8, 12])
@@ -328,26 +335,24 @@ impl PreferencesState {
                 ..container::Style::default()
             });
 
-        let page: Element<Message> = match self.page {
+        // A page that is no longer there (its plugin removed): the editor's.
+        let shown = if self.page.shown(plugin_state) {
+            self.page
+        } else {
+            PrefsPage::Editor
+        };
+        let page: Element<Message> = match shown {
             PrefsPage::Editor => column![
                 self.editor_card(config, dark),
                 self.projects_card(config, dark),
                 self.scratch_card(dark),
-                self.language_card(config, dark)
             ]
             .spacing(14)
             .into(),
             PrefsPage::Appearance => self.appearance_card(dark),
             PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing),
             PrefsPage::Language => self.language_card(config, dark),
-            PrefsPage::Lint => lint_page(
-                config,
-                dark,
-                plugin_state
-                    .installed
-                    .iter()
-                    .any(|p| p.manifest.contributes.linter.is_some()),
-            ),
+            PrefsPage::Lint => lint_page(config, dark, plugin_state),
             PrefsPage::Servers => self.servers_page(dark, servers),
             PrefsPage::Plugins => plugins::page(plugin_state, dark),
             PrefsPage::Updates => self.updates_card(dark),
@@ -1147,9 +1152,14 @@ pub fn shortcuts_list(
     .into()
 }
 
-/// The Lint page: whether and how problems are shown. The linters are a
-/// plugin, with its own settings (Preferences › Plugins).
-fn lint_page<'a>(config: &Config, dark: bool, has_linter: bool) -> Element<'a, Message> {
+/// The Lint page, there once the Lint plugin is installed: whether and how
+/// problems are shown, then the settings of the plugin itself (its
+/// linters, by language).
+fn lint_page<'a>(
+    config: &Config,
+    dark: bool,
+    plugins: &'a crate::plugins::Plugins,
+) -> Element<'a, Message> {
     use crate::lint::Setting;
     let p = theme::palette(dark);
     let general = card_of_rows(
@@ -1285,31 +1295,29 @@ fn lint_page<'a>(config: &Config, dark: bool, has_linter: bool) -> Element<'a, M
         })
         .collect(),
     );
-    let hint = if has_linter {
-        t!("lint.plugin_settings")
-    } else {
-        t!("lint.plugin_missing")
-    };
-    column![
-        general,
-        colors,
-        row![
-            text(hint.to_string())
-                .size(12.5)
+    let mut page = column![general, colors].spacing(14);
+    // The settings of the plugin, drawn as it sends them.
+    let linter = plugins
+        .linter()
+        .and_then(|l| Some((l.id().to_string(), plugins.settings_panel(l.id())?)));
+    if let Some((id, panel)) = linter {
+        let key = (id, panel.id.clone());
+        let body: Element<'a, Message> = match plugins.views.get(&key) {
+            Some(node) => crate::plugins::render::view(plugins, &key, node, dark),
+            None => text(t!("plugins.panel_loading").to_string())
+                .size(12)
                 .color(p.muted)
-                .width(Length::Fill),
-            button(text(t!("prefs.nav_plugins").to_string()).size(12))
-                .padding([6, 12])
-                .on_press(Message::Preferences(PreferencesMessage::PageSelected(
-                    PrefsPage::Plugins
-                )))
-                .style((theme::Outline { dark }).style()),
-        ]
-        .spacing(12)
-        .align_y(Alignment::Center),
-    ]
-    .spacing(14)
-    .into()
+                .into(),
+        };
+        page = page.push(
+            text(panel.title.get(&rust_i18n::locale()).to_string())
+                .size(14)
+                .font(theme::UI_SEMIBOLD)
+                .color(p.text),
+        );
+        page = page.push(container(body).padding([4, 4]).width(Length::Fill));
+    }
+    page.into()
 }
 
 #[cfg(test)]

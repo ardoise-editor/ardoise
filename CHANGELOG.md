@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.1] - 2026-11-19
+
+### Changed
+- "Check for updates" updates the plugins too.
+- Preferences: the Lint page is there once the Lint plugin is installed, and holds all of its settings, the linters by language included; the language is set on its own page only.
+
+### Fixed
+- A plugin panel without a glyph shows the first letter of its title instead of a blank square in the activity bar.
+
 ## [2.0.0] - 2026-11-19
 
 ### Added

@@ -781,6 +781,7 @@ impl SimpleEditApp {
             let rest = rest.trim();
             let mut rows: Vec<Row> = PrefsPage::ALL
                 .iter()
+                .filter(|p| p.shown(&self.plugins))
                 .filter(|p| ew::action_score(rest, &p.label(), &[], &[]).is_some())
                 .map(|p| Row::Page(*p))
                 .collect();
@@ -2121,11 +2122,17 @@ mod tests {
         // A setting is turned on or off in place, the list staying open.
         let wrap = app.config.word_wrap;
         typed(&mut app, "/");
-        assert!(app
+        // No Lint plugin: no Lint page to go to.
+        assert!(!app
             .everywhere
             .rows
             .iter()
             .any(|r| matches!(r, Row::Page(PrefsPage::Lint))));
+        assert!(app
+            .everywhere
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Page(PrefsPage::Editor))));
         let i = app
             .everywhere
             .rows

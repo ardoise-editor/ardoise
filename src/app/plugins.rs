@@ -1207,7 +1207,11 @@ impl SimpleEditApp {
                     .filter(|p| p.origin.linked.is_none())
                     .filter_map(|p| Some((p.id().to_string(), p.origin.repository.clone()?)))
                     .collect();
-                if list.is_empty() || self.plugins.checking_updates {
+                if list.is_empty() {
+                    self.plugins.update_all = false;
+                    return Task::none();
+                }
+                if self.plugins.checking_updates {
                     return Task::none();
                 }
                 self.plugins.checking_updates = true;
@@ -1231,6 +1235,15 @@ impl SimpleEditApp {
                             self.plugins.errors.insert(id, e);
                         }
                     }
+                }
+                // Asked with the app's update: the newer ones install now.
+                if std::mem::take(&mut self.plugins.update_all) {
+                    let newer: Vec<String> = self.plugins.updates.keys().cloned().collect();
+                    return Task::batch(
+                        newer
+                            .into_iter()
+                            .map(|id| self.plugin_update(PluginMsg::Update(id))),
+                    );
                 }
                 Task::none()
             }
@@ -1737,6 +1750,21 @@ impl SimpleEditApp {
 
     /// The buttons of the panels of the plugins at `location`, for the
     /// activity bar: icon, open, tooltip, message.
+    /// The settings of the Lint plugin opened, for its page of the
+    /// preferences (they are not shown in the list of the plugins).
+    pub(super) fn plugin_lint_settings_open(&mut self) -> Task<Message> {
+        let Some(id) = self.plugins.linter().map(|l| l.id().to_string()) else {
+            return Task::none();
+        };
+        let Some(panel) = self.plugins.settings_panel(&id).map(|p| p.id.clone()) else {
+            return Task::none();
+        };
+        if self.plugins.settings_open.as_ref() == Some(&(id.clone(), panel)) {
+            return Task::none();
+        }
+        self.plugin_update(PluginMsg::ToggleSettings(id))
+    }
+
     pub(super) fn plugin_tools(&self, location: Location) -> Vec<(String, bool, String, Message)> {
         let open = match location {
             Location::Sidebar => self.plugins.sidebar.as_ref().filter(|_| self.show_sidebar),

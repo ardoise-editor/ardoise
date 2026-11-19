@@ -41,10 +41,14 @@ fn entry<'a>(
 ) -> Element<'a, Message> {
     let installed = plugins.get(id).is_some();
     let settings = plugins.settings_panel(id).filter(|_| installed);
+    // The Lint plugin's settings are on the Lint page: its button goes there.
+    let lints = plugins
+        .get(id)
+        .is_some_and(|p| p.manifest.contributes.linter.is_some());
     let open = plugins
         .settings_open
         .as_ref()
-        .filter(|k| k.0 == id && settings.is_some_and(|p| p.id == k.1));
+        .filter(|k| !lints && k.0 == id && settings.is_some_and(|p| p.id == k.1));
     let mut line = row![label.width(Length::Fill)]
         .spacing(10)
         .align_y(Alignment::Center);
@@ -52,7 +56,13 @@ fn entry<'a>(
         line = line.push(
             button(text(t!("plugins.settings").to_string()).size(12))
                 .padding([6, 12])
-                .on_press(msg(PluginMsg::ToggleSettings(id.to_string())))
+                .on_press(if lints {
+                    Message::Preferences(crate::preferences::PreferencesMessage::PageSelected(
+                        crate::preferences::PrefsPage::Lint,
+                    ))
+                } else {
+                    msg(PluginMsg::ToggleSettings(id.to_string()))
+                })
                 .style(
                     (theme::GhostButton {
                         dark,

@@ -709,8 +709,6 @@
   "plugins.err_release": "The latest release has no version number (vMAJOR.MINOR.PATCH)",
   "plugins.err_repo": "Type a GitHub repository: owner/name",
   "plugins.err_taken": "Another plugin with this id is installed (from %{from}): uninstall it first",
-  "lint.plugin_settings": "The linters (ESLint, ruff, ShellCheck…) and the languages they look at are set in the Lint plugin's settings.",
-  "lint.plugin_missing": "Without a linter, only the language servers find problems. Install the Lint plugin for ESLint, ruff, ShellCheck and the others.",
   "plugins.settings": "Settings",
   "plugins.carrying": "Installing the %{n} tools you used before, now plugins…",
   "plugins.not_running": "the plugin %{id} is not running",

@@ -1,5 +1,14 @@
 # Journal des modifications
 
+## [2.0.1] - 2026-11-19
+
+### Modifié
+- « Rechercher des mises à jour » met aussi à jour les plugins.
+- Préférences : la page Lint apparaît une fois le plugin Lint installé, et regroupe tous ses réglages, linters par langage compris ; la langue se règle seulement dans sa page.
+
+### Corrigé
+- Un panneau de plugin sans glyphe affiche la première lettre de son titre au lieu d'un carré vide dans la barre d'activité.
+
 ## [2.0.0] - 2026-11-19
 
 ### Ajouté
