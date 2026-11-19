@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.0] - 2026-11-19
+
+### Added
+- Plugins: a fresh install is a simple editor, and Preferences › Plugins installs and removes what you need. The official plugins, each in its own repository of the `simple-edit-app` organization, are signed: Git, Database (PostgreSQL, MySQL / MariaDB, SQLite), API, Lint, Spelling, Local history, Tasks, Remote files (SSH) and Terminal. Anyone can write one, in any language, and install it from a GitHub repository: see "Write a plugin" on the website.
+- The tools you used before install themselves as plugins on the first launch, with their settings and data.
+
+### Changed
+- Git, the databases, the API client, the linters, spelling, the local history, the tasks, the remote files and the terminal are now plugins, run as separate programs: the editor carries only what you use.
+- Releases are signed with a new key (`SHA256SUMS.sig2`); `SHA256SUMS.sig`, with the previous key, stays for the versions installed before.
+
 ## [1.27.0] - 2026-11-13
 
 ### Fixed

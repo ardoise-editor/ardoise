@@ -226,6 +226,28 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// The real registry and releases: every official plugin downloads for
+    /// this machine, its signature checked. Over the network, so asked for:
+    /// `cargo test -- --ignored every_official_plugin`.
+    #[test]
+    #[ignore]
+    fn every_official_plugin_downloads_with_a_valid_signature() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let listed = fetch_registry().await.expect("the registry");
+            assert!(listed.len() >= 9, "{} plugins listed", listed.len());
+            for plugin in listed {
+                let release = latest_release(plugin.repository.clone())
+                    .await
+                    .unwrap_or_else(|e| panic!("{}: {e}", plugin.repository));
+                let bytes = download(release, true)
+                    .await
+                    .unwrap_or_else(|e| panic!("{}: {e}", plugin.repository));
+                assert!(!bytes.is_empty(), "{}", plugin.repository);
+            }
+        });
+    }
+
     #[test]
     fn repositories_are_read_from_what_people_paste() {
         for input in [
