@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.3.1] - 2026-11-20
+
+### Changed
+- Edit: Find / Replace, Go to file, Find in files and Replace in files are in a Find submenu.
+
 ## [2.3.0] - 2026-11-20
 
 ### Changed

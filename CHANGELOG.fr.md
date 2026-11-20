@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## [2.3.1] - 2026-11-20
+
+### Modifié
+- Édition : Rechercher / Remplacer, Aller à un fichier, Chercher dans les fichiers et Remplacer dans les fichiers sont dans un sous-menu Rechercher.
+
 ## [2.3.0] - 2026-11-20
 
 ### Modifié
