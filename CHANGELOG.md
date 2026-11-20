@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0] - 2026-11-20
+
+### Changed
+- The Preferences window can be moved by its title bar and resized by its edges and its corner.
+- Menus: View has the submenus Panel and Split; Edit has the submenus Line, Problems, Bookmarks and Fold / Unfold, and the searches by file name (Go to file, Find in files, Replace in files) come from File; the Dark / Light entry of View is gone (the switch is in the title bar). The panels of the plugins (Git, Terminal) are in Panel. The macOS menu bar follows.
+- The shortcuts are set in the Preferences only: Help no longer has its own copy of the list. The "Configure shortcuts…" action of the command palette opens the page of the Preferences.
+
 ## [2.2.0] - 2026-11-20
 
 ### Changed

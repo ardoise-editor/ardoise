@@ -97,16 +97,24 @@ mod behavior_tests {
     }
 
     #[test]
-    fn the_recents_submenu_opens_and_closes_with_the_menu() {
+    fn a_submenu_opens_and_closes_with_the_menu() {
+        use crate::menus::SubMenu;
         let mut app = app();
         let _ = app.handle(Message::ToggleMenu(TopMenu::File));
-        let _ = app.handle(Message::SetRecents(true));
-        assert!(app.recents_open);
-        let _ = app.handle(Message::SetRecents(false));
-        assert!(!app.recents_open);
-        let _ = app.handle(Message::SetRecents(true));
-        let _ = app.handle(Message::ToggleMenu(TopMenu::File));
-        assert!(!app.recents_open);
+        let _ = app.handle(Message::SetSubmenu(Some(SubMenu::Recents)));
+        assert_eq!(app.open_submenu, Some(SubMenu::Recents));
+        // Pointing at another entry folds it away.
+        let _ = app.handle(Message::SetSubmenu(None));
+        assert_eq!(app.open_submenu, None);
+        // Another submenu takes its place; changing the menu closes it.
+        let _ = app.handle(Message::ToggleMenu(TopMenu::Edit));
+        let _ = app.handle(Message::SetSubmenu(Some(SubMenu::EditLine)));
+        assert_eq!(app.open_submenu, Some(SubMenu::EditLine));
+        let _ = app.handle(Message::HoverMenu(TopMenu::View));
+        assert_eq!(app.open_submenu, None);
+        let _ = app.handle(Message::SetSubmenu(Some(SubMenu::ViewSplit)));
+        let _ = app.handle(Message::ToggleMenu(TopMenu::View));
+        assert_eq!(app.open_submenu, None);
     }
 
     fn type_text(app: &mut ArdoiseApp, text: &str) {
@@ -604,6 +612,70 @@ mod behavior_tests {
             ),
         );
         app.current_file.clone().unwrap()
+    }
+
+    #[test]
+    fn the_preferences_window_is_moved_by_its_title_and_resized_by_its_edges() {
+        use crate::preferences::PrefsGrab;
+        let mut app = app();
+        app.config.window_width = 1200.0;
+        app.config.window_height = 800.0;
+        app.show_preferences = true;
+        let drag = |app: &mut ArdoiseApp, grab: PrefsGrab, by: (f32, f32)| {
+            let _ = app.handle(Message::PrefsDragStart(grab));
+            // The first move only says where the pointer is.
+            let _ = app.handle(Message::PrefsDragMove(iced::Point::new(500.0, 400.0)));
+            let _ = app.handle(Message::PrefsDragMove(iced::Point::new(
+                500.0 + by.0,
+                400.0 + by.1,
+            )));
+            let _ = app.handle(Message::PrefsDragEnd);
+            assert!(app.prefs_drag.is_none());
+        };
+        // At first: its first size, in the middle.
+        assert_eq!(app.prefs_rect(), (150.0, 80.0, 900.0, 640.0));
+        // Moved by the title bar.
+        drag(&mut app, PrefsGrab::Move, (-100.0, 40.0));
+        assert_eq!(app.prefs_rect(), (50.0, 120.0, 900.0, 640.0));
+        // It stays inside the window.
+        drag(&mut app, PrefsGrab::Move, (-900.0, 900.0));
+        assert_eq!(app.prefs_rect(), (0.0, 160.0, 900.0, 640.0));
+        drag(&mut app, PrefsGrab::Move, (2000.0, -2000.0));
+        assert_eq!(app.prefs_rect(), (300.0, 0.0, 900.0, 640.0));
+        // The edges resize one way, the corner both; the top left stays.
+        drag(&mut app, PrefsGrab::Bottom, (50.0, -100.0));
+        assert_eq!(app.prefs_rect(), (300.0, 0.0, 900.0, 540.0));
+        drag(&mut app, PrefsGrab::Right, (-300.0, 70.0));
+        assert_eq!(app.prefs_rect(), (300.0, 0.0, 600.0, 540.0));
+        drag(&mut app, PrefsGrab::Corner, (100.0, 100.0));
+        assert_eq!(app.prefs_rect(), (300.0, 0.0, 700.0, 640.0));
+        // Neither smaller than it can be, nor bigger than the window.
+        drag(&mut app, PrefsGrab::Corner, (-5000.0, -5000.0));
+        assert_eq!(app.prefs_rect(), (300.0, 0.0, 520.0, 360.0));
+        drag(&mut app, PrefsGrab::Corner, (5000.0, 5000.0));
+        let (x, y, w, h) = app.prefs_rect();
+        assert_eq!((w, h), (1200.0, 800.0));
+        assert_eq!((x, y), (0.0, 0.0));
+        // A window of the app that became small keeps it inside.
+        app.config.window_width = 700.0;
+        app.config.window_height = 500.0;
+        assert_eq!(app.prefs_rect(), (0.0, 0.0, 700.0, 500.0));
+        // Moves of the pointer with nothing taken hold of do nothing.
+        let before = app.prefs_rect();
+        let _ = app.handle(Message::PrefsDragMove(iced::Point::new(9.0, 9.0)));
+        assert_eq!(app.prefs_rect(), before);
+    }
+
+    #[test]
+    fn the_preferences_window_is_in_the_middle_and_fits_a_small_window_at_first() {
+        let mut app = app();
+        app.config.window_width = 700.0;
+        app.config.window_height = 500.0;
+        // The margin of 40 px around it, but never under its least size.
+        assert_eq!(app.prefs_rect(), (40.0, 40.0, 620.0, 420.0));
+        app.config.window_width = 400.0;
+        app.config.window_height = 300.0;
+        assert_eq!(app.prefs_rect(), (0.0, 0.0, 400.0, 300.0));
     }
 
     #[test]

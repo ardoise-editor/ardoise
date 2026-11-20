@@ -1,5 +1,12 @@
 # Journal des modifications
 
+## [2.3.0] - 2026-11-20
+
+### Modifié
+- La fenêtre des Préférences se déplace par sa barre de titre et se redimensionne par ses bords et son coin.
+- Menus : Affichage a les sous-menus Panneau et Diviser ; Édition a les sous-menus Ligne, Problèmes, Marque-pages et Replier / déplier, et les recherches par nom de fichier (Aller à un fichier, Chercher et Remplacer dans les fichiers) viennent de Fichier ; l'entrée Sombre / Clair d'Affichage n'existe plus (le bouton est dans la barre de titre). Les panneaux des plugins (Git, Terminal) sont dans Panneau. La barre de menus de macOS suit.
+- Les raccourcis se règlent uniquement dans les Préférences : Aide n'a plus sa propre copie de la liste. L'action « Configurer les raccourcis… » de la palette de commandes ouvre la page des Préférences.
+
 ## [2.2.0] - 2026-11-20
 
 ### Modifié
