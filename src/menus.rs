@@ -16,6 +16,7 @@ pub enum SubMenu {
     Recents,
     ViewPanel,
     ViewSplit,
+    EditFind,
     EditLine,
     EditProblems,
     EditBookmarks,
@@ -166,6 +167,28 @@ fn file(state: &MenuState, native: bool) -> Vec<Entry> {
 fn edit(state: &MenuState) -> Vec<Entry> {
     let sh = &state.config.shortcuts;
     let marks = state.bookmarks;
+    let find = sub(
+        SubMenu::EditFind,
+        t!("menu.sub_find"),
+        vec![
+            item(t!("menu.edit_find"), Some(&sh.find), Message::ToggleSearch),
+            item(
+                t!("shortcuts.goto_file"),
+                Some(&sh.goto_file),
+                Message::OpenGotoFile,
+            ),
+            item(
+                t!("shortcuts.find_in_files"),
+                Some(&sh.find_in_files),
+                Message::OpenFindInFiles,
+            ),
+            item(
+                t!("shortcuts.replace_in_files"),
+                Some(&sh.replace_in_files),
+                Message::OpenReplaceInFiles,
+            ),
+        ],
+    );
     let line = sub(
         SubMenu::EditLine,
         t!("menu.sub_line"),
@@ -259,22 +282,7 @@ fn edit(state: &MenuState) -> Vec<Entry> {
             Some(&sh.select_all),
             Message::SelectAll,
         ),
-        item(t!("menu.edit_find"), Some(&sh.find), Message::ToggleSearch),
-        item(
-            t!("shortcuts.goto_file"),
-            Some(&sh.goto_file),
-            Message::OpenGotoFile,
-        ),
-        item(
-            t!("shortcuts.find_in_files"),
-            Some(&sh.find_in_files),
-            Message::OpenFindInFiles,
-        ),
-        item(
-            t!("shortcuts.replace_in_files"),
-            Some(&sh.replace_in_files),
-            Message::OpenReplaceInFiles,
-        ),
+        find,
         Entry::Separator,
         item(
             t!("menu.edit_toggle_comment"),
@@ -441,14 +449,15 @@ mod tests {
         let config = Config::default();
         let s = state(&config);
         let file = labels(&entries(TopMenu::File, &s, false));
-        let edit = labels(&entries(TopMenu::Edit, &s, false));
+        let edit_menu = entries(TopMenu::Edit, &s, false);
+        let edit = labels(submenu(&edit_menu, SubMenu::EditFind));
         for moved in [
             t!("shortcuts.goto_file"),
             t!("shortcuts.find_in_files"),
             t!("shortcuts.replace_in_files"),
         ] {
             assert!(!file.contains(&moved.to_string()), "{moved} left File");
-            assert!(edit.contains(&moved.to_string()), "{moved} is in Edit");
+            assert!(edit.contains(&moved.to_string()), "{moved} is in Find");
         }
         assert!(file.contains(&t!("shortcuts.reopen_tab").to_string()));
     }
@@ -459,13 +468,22 @@ mod tests {
         let s = state(&config);
         let edit = entries(TopMenu::Edit, &s, false);
         let top = labels(&edit);
-        for group in ["sub_line", "sub_problems", "sub_bookmarks", "sub_fold"] {
+        for group in [
+            "sub_find",
+            "sub_line",
+            "sub_problems",
+            "sub_bookmarks",
+            "sub_fold",
+        ] {
             let key = format!("menu.{group}");
             let title = t!(&key).to_string();
             assert!(top.contains(&format!("> {title}")), "{group}");
         }
         // None of what is in them is left at the top.
         for gone in [
+            t!("menu.edit_find"),
+            t!("shortcuts.goto_file"),
+            t!("shortcuts.find_in_files"),
             t!("menu.edit_duplicate_line"),
             t!("menu.edit_goto_line"),
             t!("menu.lint_check"),
@@ -484,6 +502,9 @@ mod tests {
                 t!("menu.edit_goto_line").to_string(),
             ]
         );
+        assert_eq!(labels(submenu(&edit, SubMenu::EditFind)).len(), 4);
+        // "Select all" stays on its own, above.
+        assert!(top.contains(&t!("menu.edit_select_all").to_string()));
         assert_eq!(labels(submenu(&edit, SubMenu::EditProblems)).len(), 4);
         assert_eq!(labels(submenu(&edit, SubMenu::EditFold)).len(), 3);
     }

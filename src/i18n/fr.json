@@ -36,6 +36,7 @@
   "menu.sub_problems": "Problèmes",
   "menu.sub_bookmarks": "Marque-pages",
   "menu.sub_fold": "Replier / déplier",
+  "menu.sub_find": "Rechercher",
   "split.unavailable": "Seul un fichier peut être divisé.",
   "split.click_to_open": "Cliquer pour ouvrir ce fichier",
   "menu.view_language": "Définir le langage…",

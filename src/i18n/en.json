@@ -36,6 +36,7 @@
   "menu.sub_problems": "Problems",
   "menu.sub_bookmarks": "Bookmarks",
   "menu.sub_fold": "Fold / Unfold",
+  "menu.sub_find": "Find",
   "split.unavailable": "Only a file can be split.",
   "split.click_to_open": "Click to open this file",
   "menu.view_language": "Set syntax language…",
