@@ -139,6 +139,7 @@ fn draw<'a>(
             children,
             spacing,
             padding,
+            width,
         } => column(
             children
                 .iter()
@@ -146,7 +147,7 @@ fn draw<'a>(
         )
         .spacing(spacing.unwrap_or(6.0))
         .padding(padding.unwrap_or(0.0))
-        .width(Length::Fill)
+        .width(width.map_or(Length::Fill, Length::Fixed))
         .into(),
         Node::Row { children, spacing } => row(children
             .iter()
@@ -173,11 +174,12 @@ fn draw<'a>(
             enabled,
             icon,
             tooltip,
+            show_label,
             ..
         } => {
             // A picto: a square button, its label the tooltip. An icon the
             // editor doesn't know is drawn as the plain button.
-            if let Some(picto) = icon.as_deref().and_then(|name| {
+            if let Some(picto) = icon.as_deref().filter(|_| !show_label).and_then(|name| {
                 crate::popin::icon_button(
                     dark,
                     name,
@@ -189,7 +191,19 @@ fn draw<'a>(
                 return picto;
             }
             let style = *style;
-            let b = button(text(label.as_str()).size(12.5))
+            let shown: Element<'a, Message> = match icon
+                .as_deref()
+                .filter(|_| *show_label)
+                .and_then(|name| crate::popin::glyph(name, 14.0))
+            {
+                // The picto and its label.
+                Some(picto) => row![picto, text(label.as_str()).size(12.5)]
+                    .spacing(6)
+                    .align_y(Alignment::Center)
+                    .into(),
+                None => text(label.as_str()).size(12.5).into(),
+            };
+            let b = button(shown)
                 .padding([5, 12])
                 .on_press_maybe(enabled.then(|| ui(key, action, None)))
                 .style(move |theme: &iced::Theme, status| match style {
@@ -303,6 +317,7 @@ fn draw<'a>(
         }))
         .width(Length::Fill)
         .into(),
+        Node::Fill => Space::new().width(Length::Fill).into(),
         Node::Tabs {
             id,
             items,
@@ -819,6 +834,16 @@ mod tests {
             let unknown = size_of(&button("Add", "add").icon("no-such-icon"), dark);
             assert_eq!(unknown.width, Length::Shrink);
         }
+    }
+
+    #[test]
+    fn a_button_with_a_picto_and_its_label_is_not_a_square() {
+        use ardoise_plugin::ui::button;
+        let node = button("Add a column", "add")
+            .icon("plus")
+            .with_label()
+            .button_style(ButtonStyle::Ghost);
+        assert_eq!(size_of(&node, true).width, Length::Shrink);
     }
 
     #[test]

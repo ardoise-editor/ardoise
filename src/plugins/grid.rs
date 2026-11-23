@@ -629,6 +629,7 @@ mod tests {
             }],
             spacing: None,
             padding: None,
+            width: None,
         };
         assert!(find(&node, "g").is_some());
         assert!(find(&node, "h").is_none());
