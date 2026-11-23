@@ -166,6 +166,8 @@ pub enum ActiveOverlay {
     /// Search everywhere (Shift twice).
     Everywhere,
     About,
+    /// The first launch: the basic settings and the plugins to install.
+    Welcome,
     /// Every release.
     Changelog,
     /// The releases since the given version, shown after an update.
@@ -1271,7 +1273,7 @@ impl ArdoiseApp {
         if let Some(name) = app.config.set_aside.clone() {
             app.set_status(t!("status.config_set_aside", name = name.as_str()), true);
         }
-        app.announce_new_version();
+        commands.push(app.announce_new_version());
 
         // This window takes the files that other commands name.
         app.ipc_listening = owner && crate::ipc::listen();
@@ -2068,6 +2070,7 @@ impl ArdoiseApp {
             other => {
                 let overlay = match other {
                     ActiveOverlay::About => self.view_about_overlay(dark),
+                    ActiveOverlay::Welcome => self.view_welcome_overlay(dark),
                     ActiveOverlay::Changelog => {
                         self.changelog_card(dark, t!("changelog.title").to_string(), None)
                     }
@@ -8604,6 +8607,7 @@ mod split;
 mod tab_groups;
 #[path = "app/views.rs"]
 mod views;
+mod welcome;
 pub(crate) use views::resize_edge;
 
 #[cfg(test)]

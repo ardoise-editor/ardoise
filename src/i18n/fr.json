@@ -736,5 +736,12 @@
   "remote.plugin_missing": "Installez le plugin Fichiers distants (Préférences › Plugins) pour ouvrir des fichiers par SSH",
   "terminal.plugin_missing": "Installez le plugin Terminal (Préférences › Plugins) pour avoir un terminal",
   "git.plugin_missing": "Installez le plugin Git (Préférences › Plugins) pour utiliser Git",
-  "plugins.err_tab": "Un onglet a besoin d'un identifiant (lettres, chiffres, . - _) et d'un titre"
+  "plugins.err_tab": "Un onglet a besoin d'un identifiant (lettres, chiffres, . - _) et d'un titre",
+  "welcome.title": "Bienvenue dans Ardoise",
+  "welcome.intro": "Quelques réglages pour commencer. Tout se change plus tard dans les Préférences.",
+  "welcome.plugins_title": "Plugins",
+  "welcome.plugins_hint": "Un éditeur simple au départ : installez seulement ce dont vous avez besoin.",
+  "welcome.later": "Vous retrouverez ces plugins dans Préférences › Plugins.",
+  "welcome.installed": "Installé",
+  "welcome.done": "Terminer"
 }

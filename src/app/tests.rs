@@ -1976,6 +1976,92 @@ mod behavior_tests {
     // ---- the Database panel's tables
 }
 
+#[cfg(test)]
+mod welcome_tests {
+    use super::*;
+
+    fn app_with_version(last: &str) -> ArdoiseApp {
+        let config = Config {
+            last_version: last.into(),
+            ..Config::default()
+        };
+        let mut app = ArdoiseApp::blank(config);
+        let _ = app.restore_session(crate::session::Session::default());
+        app
+    }
+
+    #[test]
+    fn a_fresh_install_opens_the_welcome_popin_once() {
+        let mut app = app_with_version("");
+        let _ = app.announce_new_version();
+        assert_eq!(app.overlay, ActiveOverlay::Welcome);
+        // The version is recorded at once: the next launch is not a first one.
+        assert_eq!(app.config.last_version, env!("CARGO_PKG_VERSION"));
+        assert!(app.config_dirty);
+        // Closed, it stays closed (the same launch, and the next).
+        let _ = app.update(Message::CloseOverlay);
+        assert_eq!(app.overlay, ActiveOverlay::None);
+        let _ = app.announce_new_version();
+        assert_eq!(app.overlay, ActiveOverlay::None);
+        let mut next_launch = app_with_version(&app.config.last_version);
+        let _ = next_launch.announce_new_version();
+        assert_eq!(next_launch.overlay, ActiveOverlay::None);
+    }
+
+    #[test]
+    fn an_update_shows_the_news_and_not_the_welcome() {
+        let mut app = app_with_version("2.0.0");
+        let _ = app.announce_new_version();
+        assert!(matches!(app.overlay, ActiveOverlay::WhatsNew(_)));
+    }
+
+    #[test]
+    fn escape_closes_the_welcome_popin() {
+        let mut app = app_with_version("");
+        let _ = app.announce_new_version();
+        let _ = app.update(Message::EscapePressed);
+        assert_eq!(app.overlay, ActiveOverlay::None);
+    }
+
+    #[test]
+    fn the_welcome_popin_lists_the_official_plugins_with_their_state() {
+        use crate::plugins::Registry;
+        let mut app = app_with_version("");
+        let _ = app.announce_new_version();
+        // The list is being fetched, then there: drawn each time.
+        let _ = app.view();
+        let listed: Vec<crate::plugins::remote::Listed> = serde_json::from_value(serde_json::json!([
+            {"id": "ardoise.git", "name": "Git", "description": "Git in the editor", "repository": "ardoise-editor/plugin-git"},
+            {"id": "ardoise.terminal", "name": "Terminal", "description": "", "repository": "ardoise-editor/plugin-terminal"}
+        ]))
+        .unwrap();
+        app.plugins.registry = Registry::Loaded(listed);
+        app.plugins.busy.insert("ardoise.git".into());
+        let _ = app.view();
+        app.plugins.registry = Registry::Failed("offline".into());
+        let _ = app.view();
+    }
+
+    #[test]
+    fn the_settings_of_the_welcome_popin_are_the_preferences_ones() {
+        let mut app = app_with_version("");
+        let _ = app.announce_new_version();
+        let _ = app.update(Message::Preferences(
+            crate::preferences::PreferencesMessage::AutoSaveToggled(true),
+        ));
+        assert!(app.config.auto_save);
+        let _ = app.update(Message::Preferences(
+            crate::preferences::PreferencesMessage::LocaleChanged("fr".into()),
+        ));
+        assert_eq!(app.config.locale, "fr");
+        let _ = app.update(Message::ThemeChanged(false));
+        assert!(!app.config.dark_mode);
+        // Still open: the settings are changed while it shows.
+        assert_eq!(app.overlay, ActiveOverlay::Welcome);
+        rust_i18n::set_locale("en");
+    }
+}
+
 /// Draws the window to a PNG, to look at the design without a screen:
 /// `SNAPSHOT=/tmp/look.png cargo test look_tests -- --ignored`.
 #[cfg(test)]
@@ -2093,6 +2179,18 @@ mod look_tests {
                 app.plugins.dialogs.push((key, "Drop public.items?".into()));
             }
             "about" => app.overlay = ActiveOverlay::About,
+            "welcome" => {
+                let listed: Vec<crate::plugins::remote::Listed> =
+                    serde_json::from_value(serde_json::json!([
+                        {"id": "ardoise.git", "name": "Git", "description": "Branches, commits, diffs and merges in the editor", "repository": "a/b"},
+                        {"id": "ardoise.terminal", "name": "Terminal", "description": "A terminal under the editor", "repository": "a/c"},
+                        {"id": "ardoise.database", "name": "Database", "description": "PostgreSQL, MySQL / MariaDB and SQLite", "repository": "a/d"}
+                    ]))
+                    .unwrap();
+                app.plugins.registry = crate::plugins::Registry::Loaded(listed);
+                app.plugins.busy.insert("ardoise.terminal".into());
+                app.overlay = ActiveOverlay::Welcome;
+            }
             "delete" => {
                 app.overlay = ActiveOverlay::ConfirmFolderDelete(root.join("src"));
             }

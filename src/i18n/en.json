@@ -736,5 +736,12 @@
   "remote.plugin_missing": "Install the Remote Files plugin (Preferences › Plugins) to open files over SSH",
   "terminal.plugin_missing": "Install the Terminal plugin (Preferences › Plugins) to have a terminal",
   "git.plugin_missing": "Install the Git plugin (Preferences › Plugins) to use Git",
-  "plugins.err_tab": "A tab needs an id (letters, digits, . - _) and a title"
+  "plugins.err_tab": "A tab needs an id (letters, digits, . - _) and a title",
+  "welcome.title": "Welcome to Ardoise",
+  "welcome.intro": "A few settings to start with. Everything can be changed later in the Preferences.",
+  "welcome.plugins_title": "Plugins",
+  "welcome.plugins_hint": "A simple editor to begin with: install only what you need.",
+  "welcome.later": "You will find these plugins again in Preferences › Plugins.",
+  "welcome.installed": "Installed",
+  "welcome.done": "Get started"
 }
