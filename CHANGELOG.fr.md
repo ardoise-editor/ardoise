@@ -1,5 +1,11 @@
 # Journal des modifications
 
+## [2.4.0] - 2026-11-23
+
+### Modifié
+- Toutes les popins (À propos, Nouveautés, Mise à jour, Préférences, confirmations, renommage, Aller à la ligne, les choix de la barre d'état, les questions des plugins…) partagent un même cadre : un en-tête avec son titre et une croix, le corps, et un pied avec Annuler et l'action principale (rouge quand quelque chose est perdu).
+- Les plugins peuvent dessiner un bouton en picto (une icône [Lucide](https://lucide.dev/icons/)) avec son infobulle, et ouvrir leurs fenêtres en popins par-dessus l'éditeur, avec onglets, tuiles, pied, champs de largeur donnée et un œil sur les champs secrets (SDK des plugins 0.13 : voir la page pour les auteurs de plugins).
+
 ## [2.3.1] - 2026-11-20
 
 ### Modifié

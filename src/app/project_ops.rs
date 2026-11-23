@@ -2,7 +2,6 @@
 //! make a file or a folder, rename, delete.
 
 use super::*;
-use iced::widget::column;
 
 /// What the name asked for is for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -387,7 +386,6 @@ impl ArdoiseApp {
         dark: bool,
         dialog: &'a NameDialog,
     ) -> Element<'a, Message> {
-        let p = se_theme::palette(dark);
         let folder_name = |dir: &Path| {
             dir.file_name()
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
@@ -413,40 +411,38 @@ impl ArdoiseApp {
                 t!("projects.duplicate").to_string(),
             ),
         };
-        container(
-            column![
-                text(title).size(14).color(p.text),
-                iced::widget::text_input(&t!("projects.name_placeholder"), &dialog.input)
-                    .id(name_field_id())
-                    .on_input(Message::ProjectNameChanged)
-                    .on_submit(Message::ProjectNameSubmit)
-                    .padding([8, 10])
-                    .size(14)
-                    .style(se_theme::Field::new(dark).style()),
-                row![
-                    button(text(t!("goto_line.cancel").to_string()).size(13))
-                        .padding([7, 16])
-                        .on_press(Message::CloseOverlay)
-                        .style(
-                            (se_theme::GhostButton {
-                                dark,
-                                active: false
-                            })
-                            .style()
-                        ),
-                    Space::new().width(Length::Fill),
-                    button(text(confirm).size(13))
-                        .padding([7, 16])
-                        .on_press(Message::ProjectNameSubmit)
-                        .style((se_theme::GhostButton { dark, active: true }).style()),
+        use crate::popin::{action, Action};
+        let field = iced::widget::text_input(&t!("projects.name_placeholder"), &dialog.input)
+            .id(name_field_id())
+            .on_input(Message::ProjectNameChanged)
+            .on_submit(Message::ProjectNameSubmit)
+            .padding([8, 10])
+            .size(14)
+            .style(se_theme::Field::new(dark).style());
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            title,
+            Some(Message::CloseOverlay),
+            field.into(),
+            Some((
+                vec![],
+                vec![
+                    action(
+                        dark,
+                        t!("goto_line.cancel").to_string(),
+                        Some(Message::CloseOverlay),
+                        Action::Cancel,
+                    ),
+                    action(
+                        dark,
+                        confirm,
+                        Some(Message::ProjectNameSubmit),
+                        Action::Primary,
+                    ),
                 ],
-            ]
-            .spacing(12),
+            )),
         )
-        .padding(20)
-        .width(360)
-        .style(se_theme::card(dark))
-        .into()
     }
 }
 

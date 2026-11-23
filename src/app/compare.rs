@@ -141,16 +141,7 @@ impl ArdoiseApp {
             text("↔").size(13).color(p.muted),
             text(right.to_string()).size(13).font(se_theme::UI_SEMIBOLD),
             Space::new().width(Length::Fill),
-            button(text("×").size(17))
-                .padding([4, 8])
-                .on_press(Message::CloseOverlay)
-                .style(
-                    (se_theme::GhostButton {
-                        dark,
-                        active: false,
-                    })
-                    .style()
-                ),
+            crate::popin::close_button(dark, Message::CloseOverlay),
         ]
         .spacing(10)
         .align_y(Alignment::Center);
@@ -168,7 +159,7 @@ impl ArdoiseApp {
         )
         .width(1100)
         .height(640)
-        .style(se_theme::palette_card(dark))
+        .style(se_theme::card(dark))
         .into()
     }
 }

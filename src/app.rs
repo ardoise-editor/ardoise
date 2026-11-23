@@ -2027,6 +2027,9 @@ impl ArdoiseApp {
             with_dropdown
         };
 
+        // The dialogs of the plugins, under the overlays of the editor.
+        let with_prefs = self.plugin_dialogs_view(with_prefs, dark);
+
         // Modal overlays
         match &self.overlay {
             ActiveOverlay::None => with_prefs,
@@ -2091,7 +2094,7 @@ impl ArdoiseApp {
                             .get(id)
                             .map_or_else(|| id.clone(), |p| p.name());
                         let with_data = *with_data;
-                        confirm_card_with(
+                        confirm_card_kind(
                             dark,
                             t!("plugins.uninstall_title", name = name.as_str()).to_string(),
                             t!("plugins.uninstall_message").to_string(),
@@ -2113,9 +2116,10 @@ impl ArdoiseApp {
                             } else {
                                 crate::plugins::PluginMsg::Uninstall(id.clone())
                             }),
+                            Confirm::Delete,
                         )
                     }
-                    ActiveOverlay::ConfirmFileDelete(path, options) => confirm_card_with(
+                    ActiveOverlay::ConfirmFileDelete(path, options) => confirm_card_kind(
                         dark,
                         t!("delete_file.title").to_string(),
                         t!("delete_file.message", name = file_label(path).as_str()).to_string(),
@@ -2138,23 +2142,26 @@ impl ArdoiseApp {
                         }),
                         t!("delete_file.confirm").to_string(),
                         Message::DeleteFile(path.clone()),
+                        Confirm::Delete,
                     ),
                     ActiveOverlay::ProjectName(dialog) => self.view_name_overlay(dark, dialog),
-                    ActiveOverlay::ConfirmMove(source, dir) => confirm_card(
+                    ActiveOverlay::ConfirmMove(source, dir) => confirm_card_kind(
                         dark,
                         t!("projects.move_title").to_string(),
                         move_message(source, dir),
+                        None,
                         t!("projects.move").to_string(),
                         Message::MoveEntry(source.clone(), dir.clone()),
+                        Confirm::Primary,
                     ),
-                    ActiveOverlay::ConfirmFolderDelete(dir) => confirm_card(
+                    ActiveOverlay::ConfirmFolderDelete(dir) => confirm_delete_card(
                         dark,
                         t!("projects.delete_title").to_string(),
                         t!("projects.delete_message", name = file_label(dir).as_str()).to_string(),
                         t!("projects.delete_confirm").to_string(),
                         Message::DeleteFolder(dir.clone()),
                     ),
-                    ActiveOverlay::ConfirmScratchDelete(path) => confirm_card(
+                    ActiveOverlay::ConfirmScratchDelete(path) => confirm_delete_card(
                         dark,
                         t!("scratch.delete_title").to_string(),
                         t!("scratch.delete_message", name = file_label(path).as_str()).to_string(),
@@ -2166,12 +2173,14 @@ impl ArdoiseApp {
                     }
                     ActiveOverlay::ConfirmTrust(root) => {
                         let folder = root.display().to_string();
-                        confirm_card(
+                        confirm_card_kind(
                             dark,
                             t!("trust.title").to_string(),
                             t!("trust.message", folder = folder.as_str()).to_string(),
+                            None,
                             t!("trust.confirm").to_string(),
                             Message::TrustFolder(root.clone()),
+                            Confirm::Primary,
                         )
                     }
                     ActiveOverlay::ConfirmQuit(error) => confirm_card(
@@ -5209,6 +5218,14 @@ impl ArdoiseApp {
                 }
             }
             Message::EscapePressed => {
+                // A dialog of a plugin is over everything but the overlays
+                // of the editor: it goes first.
+                if self.overlay == ActiveOverlay::None {
+                    if let Some(key) = self.plugin_front_dialog().cloned() {
+                        self.plugin_close_dialog(&key);
+                        return Task::none();
+                    }
+                }
                 // Several cursors go back to one.
                 if self.overlay == ActiveOverlay::None && self.editor.content.cursor_count() > 1 {
                     self.editor.content.clear_extras();
@@ -8655,6 +8672,18 @@ pub fn unique_labels(paths: &[PathBuf]) -> Vec<String> {
         .collect()
 }
 
+/// How a confirmation looks: the main action red (and a picto if it removes
+/// something), or the accent.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Confirm {
+    /// Red, as for a loss (changes thrown away, a quit).
+    Danger,
+    /// Red with the trash: something is deleted.
+    Delete,
+    /// The accent: no loss.
+    Primary,
+}
+
 /// A small modal asking to confirm a destructive action (or cancel).
 fn confirm_card(
     dark: bool,
@@ -8664,6 +8693,25 @@ fn confirm_card(
     confirm: Message,
 ) -> Element<'static, Message> {
     confirm_card_with(dark, title, message, None, confirm_label, confirm)
+}
+
+/// The same for something that is deleted.
+fn confirm_delete_card(
+    dark: bool,
+    title: String,
+    message: String,
+    confirm_label: String,
+    confirm: Message,
+) -> Element<'static, Message> {
+    confirm_card_kind(
+        dark,
+        title,
+        message,
+        None,
+        confirm_label,
+        confirm,
+        Confirm::Delete,
+    )
 }
 
 /// A confirmation card, with something (a checkbox) between the text and the
@@ -8676,40 +8724,81 @@ fn confirm_card_with(
     confirm_label: String,
     confirm: Message,
 ) -> Element<'static, Message> {
-    let p = se_theme::palette(dark);
-    container(
-        column![
-            text(title).size(15).color(p.text),
-            text(message)
-                .size(12)
-                .color(p.muted)
-                .shaping(iced::widget::text::Shaping::Advanced),
-            extra.unwrap_or_else(|| Space::new().height(0).into()),
-            row![
-                button(text(t!("confirm.cancel").to_string()).size(13))
-                    .padding([7, 16])
-                    .on_press(Message::CloseOverlay)
-                    .style((se_theme::GhostButton { dark, active: true }).style()),
-                Space::new().width(Length::Fill),
-                button(text(confirm_label).size(13))
-                    .padding([7, 16])
-                    .on_press(confirm)
-                    .style(
-                        (se_theme::GhostButton {
-                            dark,
-                            active: false,
-                        })
-                        .style()
-                    ),
-            ]
-            .align_y(Alignment::Center),
-        ]
-        .spacing(14)
-        .padding(24),
+    confirm_card_kind(
+        dark,
+        title,
+        message,
+        extra,
+        confirm_label,
+        confirm,
+        Confirm::Danger,
     )
-    .width(360)
-    .style(se_theme::card(dark))
-    .into()
+}
+
+fn confirm_card_kind(
+    dark: bool,
+    title: String,
+    message: String,
+    extra: Option<Element<'static, Message>>,
+    confirm_label: String,
+    confirm: Message,
+    kind: Confirm,
+) -> Element<'static, Message> {
+    use crate::popin::{action, Action};
+    let p = se_theme::palette(dark);
+    let words = column![
+        text(title)
+            .size(15)
+            .font(se_theme::UI_SEMIBOLD)
+            .color(p.text)
+            .shaping(iced::widget::text::Shaping::Advanced),
+        text(message)
+            .size(13)
+            .color(p.muted)
+            .shaping(iced::widget::text::Shaping::Advanced),
+    ]
+    .spacing(6)
+    .width(Length::Fill);
+    let mut line = row![].spacing(14);
+    if kind == Confirm::Delete {
+        if let Some(picto) = crate::popin::glyph("trash-2", 18.0) {
+            line = line.push(
+                container(picto)
+                    .width(36)
+                    .height(36)
+                    .center_x(36)
+                    .center_y(36)
+                    .style(se_theme::popin_pastille(se_theme::error_color(dark))),
+            );
+        }
+    }
+    let mut body = column![line.push(words)].spacing(14);
+    if let Some(extra) = extra {
+        body = body.push(extra);
+    }
+    let mut parts = crate::popin::Frame::new(crate::popin::WIDTH_CONFIRM);
+    parts.footer = Some((
+        vec![],
+        vec![
+            action(
+                dark,
+                t!("confirm.cancel").to_string(),
+                Some(Message::CloseOverlay),
+                Action::Cancel,
+            ),
+            action(
+                dark,
+                confirm_label,
+                Some(confirm),
+                if kind == Confirm::Primary {
+                    Action::Primary
+                } else {
+                    Action::Danger
+                },
+            ),
+        ],
+    ));
+    crate::popin::frame(dark, parts, body.into())
 }
 
 /// A 1px horizontal hairline.

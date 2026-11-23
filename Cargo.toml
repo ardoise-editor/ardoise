@@ -1,6 +1,6 @@
 [package]
 name = "ardoise"
-version = "2.3.1"
+version = "2.4.0"
 edition = "2021"
 rust-version = "1.90"
 description = "A fast, stable, cross-platform text editor"
@@ -37,7 +37,7 @@ unicode-width = "0.2"
 trash = "5.3.0"
 notify = "8"
 # The protocol and manifest of the plugins (the editor needs only the types).
-ardoise-plugin = { git = "https://github.com/ardoise-editor/plugin-sdk", tag = "v0.12.0", default-features = false }
+ardoise-plugin = { git = "https://github.com/ardoise-editor/plugin-sdk", tag = "v0.13.0", default-features = false }
 # The archives the plugins are published as.
 tar = { version = "0.4", default-features = false }
 flate2 = "1"

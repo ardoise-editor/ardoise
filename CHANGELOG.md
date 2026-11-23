@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.4.0] - 2026-11-23
+
+### Changed
+- Every popin (About, What's new, Update, Preferences, confirmations, renaming, Go to line, the choices of the status bar, the questions of the plugins…) shares one frame: a header with its title and a cross, the body, and a footer with Cancel and the main action (red when something is lost).
+- The plugins can draw a button as a picto (a [Lucide](https://lucide.dev/icons/) icon) with its tooltip, and open their windows as dialogs over the editor, with tabs, tiles, a footer, fields of a given width and an eye on the secret fields (plugin SDK 0.13: see the page for plugin authors).
+
 ## [2.3.1] - 2026-11-20
 
 ### Changed

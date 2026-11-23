@@ -2021,6 +2021,98 @@ mod look_tests {
         let shot = ui.snapshot(&theme).unwrap();
         assert!(shot.matches_image(&out).unwrap());
     }
+
+    /// A popin or a panel of the Database plugin, drawn from what the plugin
+    /// rendered (see `dump_the_renders` in the plugin): `PLUGIN_UI=/tmp/ui
+    /// SNAPSHOT=/tmp/look.png SCENE=form cargo test look_tests -- --ignored`.
+    /// Scenes: `tree`, `tree_empty` (the panel), `form`, `form_edit`,
+    /// `confirm` (dialogs of the plugin), `about`, `delete` (popins of the
+    /// editor). `LIGHT=1` for the light theme.
+    #[test]
+    #[ignore]
+    fn a_popin_is_drawn_to_a_png() {
+        let (Ok(out), Ok(scene)) = (std::env::var("SNAPSHOT"), std::env::var("SCENE")) else {
+            return;
+        };
+        let config = Config {
+            dark_mode: std::env::var("LIGHT").is_err(),
+            ..Config::default()
+        };
+        let mut app = ArdoiseApp::blank(config);
+        let _ = app.restore_session(crate::session::Session::default());
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let _ = app.update(Message::ProjectPicked(Some(root.clone())));
+        let path = root.join("README.md");
+        let _ = app.update(Message::TabRead(Ok(Loaded {
+            text: std::fs::read_to_string(&path).unwrap(),
+            path,
+            format: TextFormat::default(),
+            stamp: None,
+        })));
+        let dir = std::env::var("PLUGIN_UI")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let node = |name: &str| -> ardoise_plugin::ui::Node {
+            // As a plugin's message is read: to a value, then to the node.
+            let value: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dir.join(name)).unwrap()).unwrap();
+            serde_json::from_value(value).unwrap()
+        };
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
+            r#"{"id": "ardoise.database", "name": "Database", "version": "1.0.0", "api": 1,
+                "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "database", "title": "Database", "icon": "D"}]}}"#,
+        )
+        .unwrap();
+        app.plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+        let panel = |id: &str| ("ardoise.database".to_string(), id.to_string());
+        match scene.as_str() {
+            "tree" | "tree_empty" => {
+                let key = panel("database");
+                app.plugins
+                    .set_view(key.clone(), node(&format!("{scene}.json")));
+                app.plugins.sidebar = Some(key);
+            }
+            "form" | "form_edit" => {
+                let (title, file) = if scene == "form" {
+                    ("New data source", "form.json")
+                } else {
+                    ("Edit the data source", "form_edit.json")
+                };
+                let key = panel("connection");
+                app.plugins.set_view(key.clone(), node(file));
+                app.plugins.dialogs.push((key, title.into()));
+            }
+            "confirm" => {
+                let key = panel("text");
+                app.plugins.set_view(key.clone(), node("confirm.json"));
+                app.plugins.dialogs.push((key, "Drop public.items?".into()));
+            }
+            "about" => app.overlay = ActiveOverlay::About,
+            "delete" => {
+                app.overlay = ActiveOverlay::ConfirmFolderDelete(root.join("src"));
+            }
+            other => panic!("no scene {other}"),
+        }
+        let theme = if app.config.dark_mode {
+            se_theme::ink_dark()
+        } else {
+            se_theme::ink_light()
+        };
+        let settings = iced::Settings {
+            default_font: se_theme::UI,
+            fonts: se_theme::font_files(),
+            ..Default::default()
+        };
+        let _ = std::fs::remove_file(&out);
+        let mut ui = iced_test::Simulator::with_size(settings, (1280.0, 800.0), app.view());
+        let shot = ui.snapshot(&theme).unwrap();
+        assert!(shot.matches_image(&out).unwrap());
+    }
 }
 
 #[cfg(test)]

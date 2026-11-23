@@ -408,39 +408,42 @@ impl ArdoiseApp {
             );
         }
         let (add_at, ignore_at) = (found.list.len(), found.list.len() + 1);
-        container(
-            column![
-                row![
-                    text(t!("spell.title").to_string()).size(14).color(p.text),
-                    text(found.word.clone())
-                        .size(14)
-                        .font(se_theme::MONO)
-                        .color(se_theme::error_color(dark)),
-                ]
-                .spacing(10),
-                column(items).spacing(2),
-                row![
-                    button(text(t!("spell.add").to_string()).size(12.5))
-                        .padding([5, 10])
-                        .on_press(Message::SpellAdd)
-                        .style(ghost(self.overlay_pick == add_at)),
-                    button(text(t!("spell.ignore").to_string()).size(12.5))
-                        .padding([5, 10])
-                        .on_press(Message::SpellIgnore)
-                        .style(ghost(self.overlay_pick == ignore_at)),
-                ]
-                .spacing(8),
-            ]
-            .spacing(12)
-            .padding(16),
+        let body = column![
+            text(found.word.clone())
+                .size(14)
+                .font(se_theme::MONO)
+                .color(se_theme::error_color(dark)),
+            column(items).spacing(2),
+        ]
+        .spacing(12);
+        let tool = |label: String, msg: Message, at: usize| -> Element<Message> {
+            button(text(label).size(12.5))
+                .padding([7, 14])
+                .on_press(msg)
+                .style(ghost(self.overlay_pick == at))
+                .into()
+        };
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            t!("spell.title").to_string(),
+            Some(Message::CloseOverlay),
+            body.into(),
+            Some((
+                vec![],
+                vec![
+                    tool(
+                        t!("spell.ignore").to_string(),
+                        Message::SpellIgnore,
+                        ignore_at,
+                    ),
+                    tool(t!("spell.add").to_string(), Message::SpellAdd, add_at),
+                ],
+            )),
         )
-        .width(300)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     pub(super) fn view_spell_languages(&self, dark: bool) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
         let current = &self.spell.language;
         let mut items: Vec<Element<Message>> =
             vec![button(text(t!("spell.language_auto").to_string()).size(13))
@@ -472,19 +475,16 @@ impl ArdoiseApp {
                     .into(),
             );
         }
-        container(
-            column![
-                text(t!("spell.languages").to_string())
-                    .size(14)
-                    .color(p.text),
-                scrollable(column(items).spacing(2).padding(4)).height(Length::Fixed(320.0)),
-            ]
-            .spacing(10)
-            .padding(16),
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            t!("spell.languages").to_string(),
+            Some(Message::CloseOverlay),
+            scrollable(column(items).spacing(2))
+                .height(Length::Fixed(320.0))
+                .into(),
+            None,
         )
-        .width(260)
-        .style(se_theme::card(dark))
-        .into()
     }
 }
 

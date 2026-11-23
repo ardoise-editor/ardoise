@@ -43,6 +43,7 @@ mod palette;
 mod places;
 mod plugins;
 mod pointer_area;
+mod popin;
 mod preferences;
 mod preview;
 mod projects;
