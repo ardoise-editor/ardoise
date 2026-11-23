@@ -1634,27 +1634,16 @@ impl ArdoiseApp {
                 .style(ghost(self.everywhere.filter_open)),
             );
         }
-        let mut export = button(
-            row![
-                crate::popin::glyph("panel-bottom", 14.0)
-                    .map(Element::from)
-                    .unwrap_or_else(|| Space::new().into()),
-                text(t!("everywhere.export").to_string()).size(12.5),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
+        // A picto with its tooltip: the words did not fit beside the tabs.
+        let export = crate::popin::icon_button(
+            dark,
+            "panel-bottom",
+            &t!("everywhere.export"),
+            self.everywhere_exportable()
+                .then_some(Message::EverywhereExport),
+            se_theme::IconTone::Outline,
         )
-        .padding([6, 12])
-        .style(
-            (se_theme::IconButton {
-                dark,
-                tone: se_theme::IconTone::Outline,
-            })
-            .style(),
-        );
-        if self.everywhere_exportable() {
-            export = export.on_press(Message::EverywhereExport);
-        }
+        .unwrap_or_else(|| Space::new().into());
         header = header.push(export);
         header = header.push(crate::popin::close_button(dark, Message::CloseOverlay));
 
@@ -1822,13 +1811,14 @@ impl ArdoiseApp {
 }
 
 /// The hints of the keys, as the footer of the card: each key in a small
-/// frame, its words after it; the last hint (the right click) at the right.
+/// frame with its words after it, in as many lines as it takes; the last hint
+/// (the right click) on a line of its own.
 fn keys_hint<'a>(dark: bool) -> Element<'a, Message> {
     let p = se_theme::palette(dark);
     let said = t!("everywhere.keys").to_string();
     let mut parts: Vec<&str> = said.split(" · ").collect();
-    let right = parts.pop().unwrap_or_default().to_string();
-    let mut line = row![].spacing(18).align_y(Alignment::Center);
+    let last = parts.pop().unwrap_or_default().to_string();
+    let mut line = iced_aw::Wrap::new().spacing(18.0).line_spacing(6.0);
     for part in parts {
         let (key, words) = part.split_once(' ').unwrap_or((part, ""));
         let key = container(
@@ -1858,15 +1848,15 @@ fn keys_hint<'a>(dark: bool) -> Element<'a, Message> {
             .align_y(Alignment::Center),
         );
     }
-    row![
+    column![
         line,
-        Space::new().width(Length::Fill),
-        text(right)
+        text(last)
             .size(12)
             .color(se_theme::muted_strong(dark))
             .shaping(iced::widget::text::Shaping::Advanced),
     ]
-    .align_y(Alignment::Center)
+    .spacing(6)
+    .width(Length::Fill)
     .into()
 }
 

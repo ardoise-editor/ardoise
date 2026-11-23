@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.6.1] - 2026-11-23
+
+### Changed
+- The sidebar is wider by default (360 px), so the panels of the plugins show their buttons and fields whole; a sidebar still at the old width takes it.
+- Search everywhere: "Open in Results" is a picto with its tooltip, and the hints of the keys wrap, the one of the right click on its own line.
+
 ## [2.6.0] - 2026-11-23
 
 ### Changed

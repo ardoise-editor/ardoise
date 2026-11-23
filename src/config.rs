@@ -502,6 +502,12 @@ pub struct UserSnippet {
 
 /// Every field has a default, so a config written by an older version (or
 /// one with extra legacy keys, which are ignored) still loads.
+/// The width of the sidebar on a fresh install: wide enough for the panels of
+/// the plugins (their rows of buttons and fields).
+pub const DEFAULT_SIDEBAR_WIDTH: f32 = 360.0;
+/// What it was before: still in the config of those who never moved it.
+const OLD_SIDEBAR_WIDTH: f32 = 208.0;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -691,7 +697,7 @@ impl Default for Config {
             show_projects_panel: false,
             show_database_panel: false,
             show_api_panel: false,
-            sidebar_width: 208.0,
+            sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             git_pull_mode: "merge".into(),
             git_merge_mode: "default".into(),
             git_auto_fetch_minutes: 5,
@@ -910,6 +916,11 @@ impl Config {
 
     /// Brings hand-edited values back into a range the app works with.
     pub fn sanitize(&mut self) {
+        // The panels of the plugins need room for their buttons: a sidebar
+        // still at the old default (208) takes the new one.
+        if self.sidebar_width == OLD_SIDEBAR_WIDTH {
+            self.sidebar_width = DEFAULT_SIDEBAR_WIDTH;
+        }
         self.tab_width = self.tab_width.clamp(1, 16);
         self.font_size = if self.font_size.is_finite() {
             self.font_size.clamp(8.0, 32.0)
@@ -994,6 +1005,25 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn the_sidebar_is_wide_enough_for_the_plugin_panels_and_the_old_default_follows() {
+        assert_eq!(Config::default().sidebar_width, DEFAULT_SIDEBAR_WIDTH);
+        // Never moved (still the old default): it takes the new one.
+        let mut old = Config {
+            sidebar_width: 208.0,
+            ..Config::default()
+        };
+        old.sanitize();
+        assert_eq!(old.sidebar_width, DEFAULT_SIDEBAR_WIDTH);
+        // Moved on purpose: it stays where it was put.
+        let mut mine = Config {
+            sidebar_width: 250.0,
+            ..Config::default()
+        };
+        mine.sanitize();
+        assert_eq!(mine.sidebar_width, 250.0);
+    }
 
     #[test]
     fn default_config_is_valid() {
