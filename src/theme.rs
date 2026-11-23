@@ -970,6 +970,92 @@ impl Primary {
     }
 }
 
+/// A tab of a popin: muted text, the open one lit (its line is drawn under
+/// it by the caller).
+pub struct PopinTab {
+    pub dark: bool,
+    pub open: bool,
+}
+
+impl PopinTab {
+    pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
+        move |_theme, status| {
+            let p = palette(self.dark);
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button_appearance(
+                None,
+                if self.open || hovered {
+                    p.text
+                } else {
+                    p.muted
+                },
+                no_border(),
+            )
+        }
+    }
+}
+
+/// The line under a tab of a popin: the accent for the open one.
+pub fn popin_tab_line(dark: bool, open: bool) -> impl Fn(&Theme) -> container::Style {
+    let p = palette(dark);
+    move |_theme| container::Style {
+        background: open.then_some(Background::Color(p.accent)),
+        ..container::Style::default()
+    }
+}
+
+/// A tile of a choice (the type of a data source): hairline, the chosen one
+/// in the accent.
+pub struct Tile {
+    pub dark: bool,
+    pub on: bool,
+}
+
+impl Tile {
+    pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
+        move |_theme, status| {
+            let p = palette(self.dark);
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let (background, line, ink) = if self.on {
+                (Some(p.accent_soft), p.accent, p.text)
+            } else if hovered {
+                (Some(p.hover), p.border_strong, p.text)
+            } else {
+                (Some(p.bg), p.border_strong, p.muted)
+            };
+            button_appearance(background, ink, border(line, 1.0, R_ROW))
+        }
+    }
+}
+
+/// A destructive action: error fill, the ink of the primary action.
+pub struct Danger {
+    pub dark: bool,
+}
+
+impl Danger {
+    pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
+        move |_theme, status| {
+            let p = palette(self.dark);
+            let fill = error_color(self.dark);
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let look = button_appearance(
+                Some(Color {
+                    a: if hovered { 0.88 } else { 1.0 },
+                    ..fill
+                }),
+                p.accent_ink,
+                border(Color::TRANSPARENT, 0.0, R_ROW),
+            );
+            if status == button::Status::Disabled {
+                dimmed(look)
+            } else {
+                look
+            }
+        }
+    }
+}
+
 /// Sidebar file-row button: selected rows get a soft accent wash.
 pub struct SidebarRow {
     pub dark: bool,
@@ -1204,6 +1290,76 @@ impl Select {
                 selected_text_color: p.accent,
                 selected_background: Background::Color(p.accent_soft),
                 shadow: Shadow::default(),
+            }
+        }
+    }
+}
+
+/// A 1px hairline inside a popin (its own color is the popin's, so the
+/// plain rule would vanish): under the header, over the footer.
+pub fn popin_rule(dark: bool) -> impl Fn(&Theme) -> container::Style {
+    let p = palette(dark);
+    move |_theme| container::Style {
+        background: Some(Background::Color(p.border_strong)),
+        ..container::Style::default()
+    }
+}
+
+/// The square pastille behind the picto of a confirmation: a soft wash of
+/// `color`.
+pub fn popin_pastille(color: Color) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| container::Style {
+        text_color: Some(color),
+        background: Some(Background::Color(Color { a: 0.14, ..color })),
+        ..container::Style::default()
+    }
+}
+
+/// How a button that is only a picto looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IconTone {
+    /// Grey at rest, lit under the pointer: the tools of a bar or a row.
+    Muted,
+    /// The main action of a bar (the "+").
+    Accent,
+    /// A destructive action.
+    Danger,
+    /// With a hairline, in the footer of a popin.
+    Outline,
+}
+
+/// A button that is only a picto, square, with sharp corners.
+pub struct IconButton {
+    pub dark: bool,
+    pub tone: IconTone,
+}
+
+impl IconButton {
+    pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
+        move |_theme, status| {
+            let p = palette(self.dark);
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let rest = match self.tone {
+                IconTone::Muted => p.muted,
+                IconTone::Accent => p.accent,
+                IconTone::Danger => error_color(self.dark),
+                IconTone::Outline => p.text,
+            };
+            let ink = if hovered && self.tone == IconTone::Muted {
+                p.text
+            } else {
+                rest
+            };
+            let line = if self.tone == IconTone::Outline {
+                border(if hovered { p.muted } else { p.border_strong }, 1.0, R_ROW)
+            } else {
+                border(Color::TRANSPARENT, 0.0, R_ROW)
+            };
+            let look = button_appearance(hovered.then_some(p.hover), ink, line);
+            if status == button::Status::Disabled {
+                dimmed(look)
+            } else {
+                look
             }
         }
     }

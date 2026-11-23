@@ -32,179 +32,128 @@ impl ArdoiseApp {
     pub(super) fn view_about_overlay(&self, dark: bool) -> Element<'_, Message> {
         let p = se_theme::palette(dark);
         let version = env!("CARGO_PKG_VERSION");
-        container(
-            column![
-                text("Ardoise").size(24).color(p.accent),
-                text(format!("v{}", version)).size(15).color(p.text),
-                text(t!("about.tagline").to_string())
-                    .size(12)
-                    .color(p.muted),
-                button(text(t!("about.close").to_string()).size(13))
-                    .padding([8, 24])
-                    .on_press(Message::CloseOverlay)
-                    .style((se_theme::GhostButton { dark, active: true }).style()),
-            ]
-            .spacing(12)
-            .align_x(Alignment::Center)
-            .padding(36)
-            .width(Length::Fill),
+        let body = column![
+            text(format!("v{}", version)).size(15).color(p.text),
+            text(t!("about.tagline").to_string())
+                .size(12)
+                .color(p.muted),
+        ]
+        .spacing(8)
+        .align_x(Alignment::Center)
+        .width(Length::Fill);
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            "Ardoise",
+            Some(Message::CloseOverlay),
+            body.into(),
+            Some((
+                vec![],
+                vec![crate::popin::action(
+                    dark,
+                    t!("about.close").to_string(),
+                    Some(Message::CloseOverlay),
+                    crate::popin::Action::Cancel,
+                )],
+            )),
         )
-        .width(320)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     pub(super) fn view_update_overlay(&self, dark: bool) -> Element<'_, Message> {
+        use crate::popin::{action, Action};
         let p = se_theme::palette(dark);
-
-        let content: Element<'_, Message> = match &self.overlay {
-            ActiveOverlay::UpdateChecking => column![text(t!("update.checking").to_string())
+        let line = |said: String, color: iced::Color| -> Element<'_, Message> {
+            text(said)
                 .size(14)
-                .color(p.text),]
-            .spacing(12)
-            .align_x(Alignment::Center)
-            .padding(36)
-            .width(Length::Fill)
-            .into(),
-
-            ActiveOverlay::UpdateUpToDate => column![
-                text(t!("update.up_to_date").to_string())
-                    .size(16)
-                    .color(p.accent),
-                button(text(t!("about.close").to_string()).size(13))
-                    .padding([8, 24])
-                    .on_press(Message::CloseOverlay)
-                    .style((se_theme::GhostButton { dark, active: true }).style()),
-            ]
-            .spacing(12)
-            .align_x(Alignment::Center)
-            .padding(36)
-            .width(Length::Fill)
-            .into(),
-
-            ActiveOverlay::UpdateAvailable(version, notes) => {
-                let version = version.clone();
-                let mut body =
-                    column![
-                        text(t!("update.available", version = version.as_str()).to_string())
-                            .size(16)
-                            .color(p.accent)
-                    ]
-                    .spacing(16)
-                    .align_x(Alignment::Center);
-                if !notes.is_empty() {
-                    body = body.push(
-                        scrollable(changelog_list(dark, notes))
-                            .height(Length::Fixed(260.0))
-                            .width(Length::Fill),
-                    );
-                }
-                body.push(
-                    row![
-                        button(text(t!("about.close").to_string()).size(13))
-                            .padding([8, 20])
-                            .on_press(Message::CloseOverlay)
-                            .style(
-                                (se_theme::GhostButton {
-                                    dark,
-                                    active: false,
-                                })
-                                .style()
-                            ),
-                        button(text(t!("update.download_install").to_string()).size(13))
-                            .padding([8, 20])
-                            .on_press(Message::ConfirmInstallUpdate(version))
-                            .style((se_theme::GhostButton { dark, active: true }).style()),
-                    ]
-                    .spacing(12),
-                )
-                .padding(28)
-                .width(Length::Fill)
+                .color(color)
+                .shaping(iced::widget::text::Shaping::Advanced)
                 .into()
-            }
-
-            ActiveOverlay::UpdateDownloading => column![text(t!("update.downloading").to_string())
-                .size(14)
-                .color(p.text),]
-            .spacing(12)
-            .align_x(Alignment::Center)
-            .padding(36)
-            .width(Length::Fill)
-            .into(),
-
-            ActiveOverlay::UpdateInstalling => column![text(t!("update.installing").to_string())
-                .size(14)
-                .color(p.text),]
-            .spacing(12)
-            .align_x(Alignment::Center)
-            .padding(36)
-            .width(Length::Fill)
-            .into(),
-
-            ActiveOverlay::UpdateError(e) => column![
-                text(t!("update.error").to_string())
-                    .size(14)
-                    .color(p.accent),
-                text(e.clone())
-                    .size(12)
-                    .color(p.muted)
-                    .shaping(iced::widget::text::Shaping::Advanced),
-                button(text(t!("about.close").to_string()).size(13))
-                    .padding([8, 24])
-                    .on_press(Message::CloseOverlay)
-                    .style(
-                        (se_theme::GhostButton {
-                            dark,
-                            active: false,
-                        })
-                        .style()
-                    ),
-            ]
-            .spacing(12)
-            .align_x(Alignment::Center)
-            .padding(36)
-            .width(Length::Fill)
-            .into(),
-
-            // Shown by their own views (`view`).
-            ActiveOverlay::None
-            | ActiveOverlay::About
-            | ActiveOverlay::Changelog
-            | ActiveOverlay::WhatsNew(_)
-            | ActiveOverlay::GotoLine
-            | ActiveOverlay::LanguagePicker
-            | ActiveOverlay::TextOptions(_)
-            | ActiveOverlay::Rename(_)
-            | ActiveOverlay::Compare(..)
-            | ActiveOverlay::Spelling(_)
-            | ActiveOverlay::SpellLanguages
-            | ActiveOverlay::References(_)
-            | ActiveOverlay::Everywhere
-            | ActiveOverlay::ConfirmClose(_)
-            | ActiveOverlay::ConfirmCloseMany(..)
-            | ActiveOverlay::ConfirmQuit(_)
-            | ActiveOverlay::ConfirmTrust(_)
-            | ActiveOverlay::ConfirmScratchDelete(_)
-            | ActiveOverlay::ConfirmFileDelete(..)
-            | ActiveOverlay::ProjectName(_)
-            | ActiveOverlay::FindInFiles
-            | ActiveOverlay::ConfirmFolderDelete(_)
-            | ActiveOverlay::ConfirmMove(..)
-            | ActiveOverlay::PluginConfirm(_)
-            | ActiveOverlay::ConfirmPluginUninstall(..)
-            | ActiveOverlay::ConfirmOverwrite(_) => Space::new().height(0).into(),
         };
-
-        let width = if matches!(&self.overlay, ActiveOverlay::UpdateAvailable(_, n) if !n.is_empty())
-        {
-            480
-        } else {
-            360
+        let close = || {
+            action(
+                dark,
+                t!("about.close").to_string(),
+                Some(Message::CloseOverlay),
+                Action::Cancel,
+            )
         };
-        container(content)
-            .width(width)
-            .style(se_theme::card(dark))
-            .into()
+        let mut width = crate::popin::WIDTH_CARD;
+        // The body, the actions (none: nothing to do but wait), and whether
+        // the cross closes it (not while something is running).
+        let (body, actions, closable): (Element<'_, Message>, Vec<Element<'_, Message>>, bool) =
+            match &self.overlay {
+                ActiveOverlay::UpdateChecking => (
+                    line(t!("update.checking").to_string(), p.text),
+                    vec![],
+                    true,
+                ),
+                ActiveOverlay::UpdateUpToDate => (
+                    line(t!("update.up_to_date").to_string(), p.accent),
+                    vec![close()],
+                    true,
+                ),
+                ActiveOverlay::UpdateAvailable(version, notes) => {
+                    let mut body = column![line(
+                        t!("update.available", version = version.as_str()).to_string(),
+                        p.accent
+                    )]
+                    .spacing(16);
+                    if !notes.is_empty() {
+                        width = crate::popin::WIDTH_FORM;
+                        body = body.push(
+                            scrollable(changelog_list(dark, notes))
+                                .height(Length::Fixed(260.0))
+                                .width(Length::Fill),
+                        );
+                    }
+                    (
+                        body.into(),
+                        vec![
+                            close(),
+                            action(
+                                dark,
+                                t!("update.download_install").to_string(),
+                                Some(Message::ConfirmInstallUpdate(version.clone())),
+                                Action::Primary,
+                            ),
+                        ],
+                        true,
+                    )
+                }
+                ActiveOverlay::UpdateDownloading => (
+                    line(t!("update.downloading").to_string(), p.text),
+                    vec![],
+                    false,
+                ),
+                ActiveOverlay::UpdateInstalling => (
+                    line(t!("update.installing").to_string(), p.text),
+                    vec![],
+                    false,
+                ),
+                ActiveOverlay::UpdateError(e) => (
+                    column![
+                        line(t!("update.error").to_string(), p.accent),
+                        text(e.clone())
+                            .size(12)
+                            .color(p.muted)
+                            .shaping(iced::widget::text::Shaping::Advanced),
+                    ]
+                    .spacing(8)
+                    .into(),
+                    vec![close()],
+                    true,
+                ),
+                // Shown by their own views (`view`).
+                _ => (Space::new().height(0).into(), vec![], true),
+            };
+        crate::popin::card(
+            dark,
+            width,
+            t!("update.title").to_string(),
+            closable.then_some(Message::CloseOverlay),
+            body,
+            (!actions.is_empty()).then(|| (vec![], actions)),
+        )
     }
 
     /// Records the running version; right after an update, opens the notes
@@ -232,7 +181,6 @@ impl ArdoiseApp {
         title: String,
         since: Option<&str>,
     ) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
         // The whole changelog is shown as it is compiled in; only a part of it
         // is copied.
         let part;
@@ -247,25 +195,25 @@ impl ArdoiseApp {
             }
             None => crate::changelog::embedded_ref(),
         };
-        container(
-            column![
-                text(title).size(18).color(p.accent),
-                scrollable(changelog_list(dark, entries))
-                    .height(Length::Fixed(380.0))
-                    .width(Length::Fill),
-                button(text(t!("about.close").to_string()).size(13))
-                    .padding([8, 24])
-                    .on_press(Message::CloseOverlay)
-                    .style((se_theme::GhostButton { dark, active: true }).style()),
-            ]
-            .spacing(16)
-            .align_x(Alignment::Center)
-            .padding(28)
-            .width(Length::Fill),
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_FORM,
+            title,
+            Some(Message::CloseOverlay),
+            scrollable(changelog_list(dark, entries))
+                .height(Length::Fixed(380.0))
+                .width(Length::Fill)
+                .into(),
+            Some((
+                vec![],
+                vec![crate::popin::action(
+                    dark,
+                    t!("about.close").to_string(),
+                    Some(Message::CloseOverlay),
+                    crate::popin::Action::Cancel,
+                )],
+            )),
         )
-        .width(520)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     pub(super) fn view_confirm_overlay(&self, dark: bool, path: &Path) -> Element<'_, Message> {
@@ -307,83 +255,73 @@ impl ArdoiseApp {
 
     /// The new name of the symbol under the cursor.
     pub(super) fn view_rename(&self, dark: bool, name: &str) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
-        container(
-            column![
-                text(t!("rename.title").to_string()).size(14).color(p.text),
-                text_input(t!("rename.placeholder").as_ref(), name)
-                    .id(rename_field_id())
-                    .on_input(Message::RenameInput)
-                    .on_submit(Message::RenameConfirm)
-                    .padding([8, 10])
-                    .size(14)
-                    .style(se_theme::Field::new(dark).style()),
-                row![
-                    button(text(t!("goto_line.cancel").to_string()).size(13))
-                        .padding([7, 16])
-                        .on_press(Message::CloseOverlay)
-                        .style(
-                            (se_theme::GhostButton {
-                                dark,
-                                active: false,
-                            })
-                            .style()
-                        ),
-                    Space::new().width(Length::Fill),
-                    button(text(t!("rename.confirm").to_string()).size(13))
-                        .padding([7, 16])
-                        .on_press(Message::RenameConfirm)
-                        .style((se_theme::GhostButton { dark, active: true }).style()),
-                ]
-                .align_y(Alignment::Center),
-            ]
-            .spacing(14)
-            .padding(24),
+        use crate::popin::{action, Action};
+        let field = text_input(t!("rename.placeholder").as_ref(), name)
+            .id(rename_field_id())
+            .on_input(Message::RenameInput)
+            .on_submit(Message::RenameConfirm)
+            .padding([8, 10])
+            .size(14)
+            .style(se_theme::Field::new(dark).style());
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            t!("rename.title").to_string(),
+            Some(Message::CloseOverlay),
+            field.into(),
+            Some((
+                vec![],
+                vec![
+                    action(
+                        dark,
+                        t!("goto_line.cancel").to_string(),
+                        Some(Message::CloseOverlay),
+                        Action::Cancel,
+                    ),
+                    action(
+                        dark,
+                        t!("rename.confirm").to_string(),
+                        Some(Message::RenameConfirm),
+                        Action::Primary,
+                    ),
+                ],
+            )),
         )
-        .width(340)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     pub(super) fn view_goto_line_overlay(&self, dark: bool) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
-        container(
-            column![
-                text(t!("goto_line.title").to_string())
-                    .size(14)
-                    .color(p.text),
-                text_input(t!("goto_line.placeholder").as_ref(), &self.goto_line_input)
-                    .id(goto_line_id())
-                    .on_input(Message::GotoLineInputChanged)
-                    .on_submit(Message::GotoLineSubmit)
-                    .padding([8, 10])
-                    .size(14)
-                    .style(se_theme::Field::new(dark).style()),
-                row![
-                    button(text(t!("goto_line.cancel").to_string()).size(13))
-                        .padding([7, 16])
-                        .on_press(Message::CloseOverlay)
-                        .style(
-                            (se_theme::GhostButton {
-                                dark,
-                                active: false,
-                            })
-                            .style()
-                        ),
-                    Space::new().width(Length::Fill),
-                    button(text(t!("goto_line.go").to_string()).size(13))
-                        .padding([7, 16])
-                        .on_press(Message::GotoLineSubmit)
-                        .style((se_theme::GhostButton { dark, active: true }).style()),
-                ]
-                .align_y(Alignment::Center),
-            ]
-            .spacing(14)
-            .padding(24),
+        use crate::popin::{action, Action};
+        let field = text_input(t!("goto_line.placeholder").as_ref(), &self.goto_line_input)
+            .id(goto_line_id())
+            .on_input(Message::GotoLineInputChanged)
+            .on_submit(Message::GotoLineSubmit)
+            .padding([8, 10])
+            .size(14)
+            .style(se_theme::Field::new(dark).style());
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            t!("goto_line.title").to_string(),
+            Some(Message::CloseOverlay),
+            field.into(),
+            Some((
+                vec![],
+                vec![
+                    action(
+                        dark,
+                        t!("goto_line.cancel").to_string(),
+                        Some(Message::CloseOverlay),
+                        Action::Cancel,
+                    ),
+                    action(
+                        dark,
+                        t!("goto_line.go").to_string(),
+                        Some(Message::GotoLineSubmit),
+                        Action::Primary,
+                    ),
+                ],
+            )),
         )
-        .width(320)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     /// The scratch files: a form to make one, then the list.
@@ -622,16 +560,7 @@ impl ArdoiseApp {
                     })
                     .size(12)
                     .color(p.muted),
-                    button(text("×").size(16))
-                        .padding([0, 7])
-                        .on_press(Message::CloseOverlay)
-                        .style(
-                            (se_theme::GhostButton {
-                                dark,
-                                active: false
-                            })
-                            .style()
-                        ),
+                    crate::popin::close_button(dark, Message::CloseOverlay),
                 ]
                 .spacing(10)
                 .padding([2, 6])
@@ -746,17 +675,16 @@ impl ArdoiseApp {
                 t!("textopt.indent").to_string()
             }
         };
-        container(
-            column![
-                text(title).size(14).color(p.text),
-                scrollable(column(items).spacing(2).padding(4)).height(Length::Fixed(340.0)),
-            ]
-            .spacing(10)
-            .padding(16),
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            title,
+            Some(Message::CloseOverlay),
+            scrollable(column(items).spacing(2))
+                .height(Length::Fixed(340.0))
+                .into(),
+            None,
         )
-        .width(280)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     pub(super) fn view_language_picker_overlay(&self, dark: bool) -> Element<'_, Message> {
@@ -826,19 +754,16 @@ impl ArdoiseApp {
             );
         }
 
-        container(
-            column![
-                text(t!("language.title").to_string())
-                    .size(14)
-                    .color(p.text),
-                scrollable(column(items).spacing(2).padding(4)).height(Length::Fixed(320.0)),
-            ]
-            .spacing(10)
-            .padding(16),
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CARD,
+            t!("language.title").to_string(),
+            Some(Message::CloseOverlay),
+            scrollable(column(items).spacing(2))
+                .height(Length::Fixed(320.0))
+                .into(),
+            None,
         )
-        .width(260)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     // ─── Session persistence ─────────────────────────────────────────────────

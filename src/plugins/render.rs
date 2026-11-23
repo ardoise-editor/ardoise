@@ -26,6 +26,84 @@ pub fn view<'a>(
     draw(plugins, key, node, dark, 0)
 }
 
+/// A dialog of a plugin cut in the parts of the frame of a popin: the tabs
+/// (the first node of its column, if it is a strip of tabs), the body, and
+/// the footer (the last node, if it is one).
+pub struct DialogParts<'a> {
+    pub tabs: Option<Element<'a, Message>>,
+    pub body: Element<'a, Message>,
+    pub footer: Option<crate::popin::Actions<'a, Message>>,
+    /// A dialog with fields or tabs is a form: wider, and it stays when the
+    /// backdrop is clicked.
+    pub form: bool,
+}
+
+pub fn dialog_parts<'a>(
+    plugins: &'a Plugins,
+    key: &PanelKey,
+    node: &'a Node,
+    dark: bool,
+) -> DialogParts<'a> {
+    let form = has_form(node, 0);
+    let (children, spacing) = match node {
+        Node::Column {
+            children, spacing, ..
+        } => (children.as_slice(), spacing.unwrap_or(16.0).max(12.0)),
+        other => (std::slice::from_ref(other), 16.0),
+    };
+    let (tabs, rest) = match children.split_first() {
+        Some((
+            Node::Tabs {
+                id,
+                items,
+                selected,
+            },
+            rest,
+        )) => (
+            Some(tab_strip(key, id, items, selected.as_deref(), dark)),
+            rest,
+        ),
+        _ => (None, children),
+    };
+    let (footer, rest) = match rest.split_last() {
+        Some((Node::Footer { start, end }, rest)) => {
+            let draw_all = |nodes: &'a [Node]| -> Vec<Element<'a, Message>> {
+                nodes
+                    .iter()
+                    .map(|n| draw(plugins, key, n, dark, 1))
+                    .collect()
+            };
+            (Some((draw_all(start), draw_all(end))), rest)
+        }
+        _ => (None, rest),
+    };
+    let body = column(rest.iter().map(|c| draw(plugins, key, c, dark, 1)))
+        .spacing(spacing)
+        .width(Length::Fill)
+        .into();
+    DialogParts {
+        tabs,
+        body,
+        footer,
+        form,
+    }
+}
+
+/// Whether a node holds a field, a strip of tabs or tiles.
+fn has_form(node: &Node, depth: usize) -> bool {
+    if depth > MAX_DEPTH {
+        return false;
+    }
+    match node {
+        Node::Input { .. } | Node::Tabs { .. } | Node::Tiles { .. } | Node::Editor { .. } => true,
+        Node::Column { children, .. } | Node::Row { children, .. } => {
+            children.iter().any(|c| has_form(c, depth + 1))
+        }
+        Node::Scroll { child, .. } => has_form(child, depth + 1),
+        _ => false,
+    }
+}
+
 fn ui(key: &PanelKey, action: &str, value: Option<Value>) -> Message {
     Message::Plugin(PluginMsg::Ui(
         key.0.clone(),
@@ -33,6 +111,16 @@ fn ui(key: &PanelKey, action: &str, value: Option<Value>) -> Message {
         action.to_string(),
         value,
     ))
+}
+
+/// How a button that is only a picto looks, for the style the plugin asked.
+fn icon_tone(style: ButtonStyle) -> se_theme::IconTone {
+    match style {
+        ButtonStyle::Primary => se_theme::IconTone::Accent,
+        ButtonStyle::Outline => se_theme::IconTone::Outline,
+        ButtonStyle::Ghost => se_theme::IconTone::Muted,
+        ButtonStyle::Danger => se_theme::IconTone::Danger,
+    }
 }
 
 fn draw<'a>(
@@ -83,8 +171,23 @@ fn draw<'a>(
             action,
             style,
             enabled,
+            icon,
+            tooltip,
             ..
         } => {
+            // A picto: a square button, its label the tooltip. An icon the
+            // editor doesn't know is drawn as the plain button.
+            if let Some(picto) = icon.as_deref().and_then(|name| {
+                crate::popin::icon_button(
+                    dark,
+                    name,
+                    tooltip.as_deref().unwrap_or(label),
+                    enabled.then(|| ui(key, action, None)),
+                    icon_tone(*style),
+                )
+            }) {
+                return picto;
+            }
             let style = *style;
             let b = button(text(label.as_str()).size(12.5))
                 .padding([5, 12])
@@ -111,21 +214,58 @@ fn draw<'a>(
             placeholder,
             submit,
             secret,
+            width,
         } => {
             let shown = plugins.input_text(key, id, value);
             let (k, field) = (key.clone(), id.clone());
+            let revealed = plugins.revealed.contains(&(key.clone(), id.clone()));
             let mut input = text_input(placeholder, shown)
                 .on_input(move |v| {
                     Message::Plugin(PluginMsg::Input(k.0.clone(), k.1.clone(), field.clone(), v))
                 })
-                .secure(*secret)
+                .secure(*secret && !revealed)
                 .padding([5, 8])
                 .size(13)
                 .style(se_theme::Field::new(dark).style());
             if let Some(action) = submit {
                 input = input.on_submit(ui(key, action, Some(json!(shown))));
             }
-            input.into()
+            let mut field: Element<'a, Message> = input.into();
+            if *secret {
+                // The eye shows what is typed, or hides it again.
+                let msg =
+                    Message::Plugin(PluginMsg::Reveal(key.0.clone(), key.1.clone(), id.clone()));
+                let name = if revealed { "eye-off" } else { "eye" };
+                let tip = if revealed {
+                    t!("plugins.hide_secret")
+                } else {
+                    t!("plugins.show_secret")
+                };
+                if let Some(eye) = crate::popin::icon_button(
+                    dark,
+                    name,
+                    &tip,
+                    Some(msg),
+                    se_theme::IconTone::Muted,
+                ) {
+                    field = iced::widget::stack![
+                        field,
+                        container(eye)
+                            .width(Length::Fill)
+                            .align_x(iced::alignment::Horizontal::Right)
+                            .padding(iced::Padding {
+                                top: 1.0,
+                                right: 1.0,
+                                ..iced::Padding::ZERO
+                            })
+                    ]
+                    .into();
+                }
+            }
+            match width {
+                Some(w) => container(field).width(Length::Fixed(*w)).into(),
+                None => field,
+            }
         }
         Node::Checkbox { id, label, checked } => {
             let (k, id) = (key.clone(), id.clone());
@@ -162,6 +302,29 @@ fn draw<'a>(
             list_row(item, on, dark, ui(key, id, Some(json!(item.id))))
         }))
         .width(Length::Fill)
+        .into(),
+        Node::Tabs {
+            id,
+            items,
+            selected,
+        } => tab_strip(key, id, items, selected.as_deref(), dark),
+        Node::Tiles {
+            id,
+            items,
+            selected,
+        } => row(items.iter().map(|item| {
+            let on = selected.as_deref() == Some(item.id.as_str());
+            tile(item, on, dark, ui(key, id, Some(json!(item.id))))
+        }))
+        .spacing(8)
+        .width(Length::Fill)
+        .into(),
+        Node::Footer { start, end } => column![
+            container(Space::new().height(1))
+                .width(Length::Fill)
+                .style(se_theme::popin_rule(dark)),
+            footer_bar(plugins, key, start, end, dark, depth),
+        ]
         .into(),
         Node::Tree { id, items } => {
             let mut rows = Vec::new();
@@ -400,6 +563,97 @@ fn list_row<'a>(item: &'a Item, selected: bool, dark: bool, on: Message) -> Elem
         .into()
 }
 
+/// A strip of tabs: the open one lit, with a line of the accent under it.
+pub fn tab_strip<'a>(
+    key: &PanelKey,
+    id: &str,
+    items: &'a [Item],
+    selected: Option<&str>,
+    dark: bool,
+) -> Element<'a, Message> {
+    row(items.iter().map(|item| {
+        let open = selected == Some(item.id.as_str());
+        column![
+            button(
+                text(item.label.as_str())
+                    .size(13)
+                    .font(se_theme::UI_MEDIUM)
+                    .shaping(iced::widget::text::Shaping::Advanced)
+            )
+            .padding([9, 12])
+            .on_press(ui(key, id, Some(json!(item.id))))
+            .style(se_theme::PopinTab { dark, open }.style()),
+            container(Space::new().height(2))
+                .width(Length::Fill)
+                .style(se_theme::popin_tab_line(dark, open)),
+        ]
+        .into()
+    }))
+    .spacing(2)
+    .into()
+}
+
+/// A tile of a choice: its picto above its label.
+fn tile<'a>(item: &'a Item, on: bool, dark: bool, msg: Message) -> Element<'a, Message> {
+    let p = se_theme::palette(dark);
+    let mut face = column![].spacing(6).align_x(Alignment::Center);
+    if let Some(picto) = item
+        .icon
+        .as_deref()
+        .and_then(|i| crate::popin::glyph(i, 20.0))
+    {
+        face = face.push(picto.color(if on { p.accent } else { p.muted }));
+    }
+    face = face.push(
+        text(item.label.as_str())
+            .size(12)
+            .font(se_theme::UI_MEDIUM)
+            .shaping(iced::widget::text::Shaping::Advanced),
+    );
+    button(
+        container(face)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(64)
+    .padding(0)
+    .on_press(msg)
+    .style(se_theme::Tile { dark, on }.style())
+    .into()
+}
+
+/// The bar of a footer: what is secondary at the left, the actions at the
+/// right.
+pub fn footer_bar<'a>(
+    plugins: &'a Plugins,
+    key: &PanelKey,
+    start: &'a [Node],
+    end: &'a [Node],
+    dark: bool,
+    depth: usize,
+) -> Element<'a, Message> {
+    let draw_all = |nodes: &'a [Node]| {
+        row(nodes.iter().map(|n| draw(plugins, key, n, dark, depth + 1)))
+            .spacing(8)
+            .align_y(Alignment::Center)
+    };
+    container(
+        row![
+            draw_all(start),
+            Space::new().width(Length::Fill),
+            draw_all(end)
+        ]
+        .align_y(Alignment::Center),
+    )
+    .height(56)
+    .padding([0, 20])
+    .align_y(Alignment::Center)
+    .into()
+}
+
 /// The rows of a tree that show: the children of the open ones, with
 /// their depth.
 fn flatten<'a>(items: &'a [TreeItem], level: usize, out: &mut Vec<(&'a TreeItem, usize)>) {
@@ -538,6 +792,53 @@ mod tests {
         flatten(&items, 0, &mut rows);
         let shown: Vec<(&str, usize)> = rows.iter().map(|(i, l)| (i.id.as_str(), *l)).collect();
         assert_eq!(shown, vec![("a", 0), ("a/1", 1), ("a/2", 1), ("b", 0)]);
+    }
+
+    fn size_of(node: &Node, dark: bool) -> iced::Size<Length> {
+        let plugins = Plugins::default();
+        let key: PanelKey = ("acme".into(), "panel".into());
+        let size = view(&plugins, &key, node, dark).as_widget().size();
+        size
+    }
+
+    #[test]
+    fn a_button_with_a_picto_is_a_square_and_without_one_is_the_text_button() {
+        use ardoise_plugin::ui::button;
+        for dark in [true, false] {
+            let picto = size_of(
+                &button("Add", "add")
+                    .icon("plus")
+                    .button_style(ButtonStyle::Ghost),
+                dark,
+            );
+            assert_eq!(picto.width, Length::Fixed(crate::popin::ICON_BUTTON));
+            assert_eq!(picto.height, Length::Fixed(crate::popin::ICON_BUTTON));
+            let plain = size_of(&button("Add", "add"), dark);
+            assert_eq!(plain.width, Length::Shrink);
+            // An icon nobody knows: the plain button, the label stays.
+            let unknown = size_of(&button("Add", "add").icon("no-such-icon"), dark);
+            assert_eq!(unknown.width, Length::Shrink);
+        }
+    }
+
+    #[test]
+    fn a_picto_button_takes_the_style_it_was_asked() {
+        use ardoise_plugin::ui::button;
+        for style in [
+            ButtonStyle::Primary,
+            ButtonStyle::Outline,
+            ButtonStyle::Ghost,
+            ButtonStyle::Danger,
+        ] {
+            let node = button("Delete", "del").icon("trash-2").button_style(style);
+            let side = size_of(&node, true);
+            let want = if style == ButtonStyle::Outline {
+                crate::popin::ICON_BUTTON_FOOTER
+            } else {
+                crate::popin::ICON_BUTTON
+            };
+            assert_eq!(side.width, Length::Fixed(want));
+        }
     }
 
     #[test]

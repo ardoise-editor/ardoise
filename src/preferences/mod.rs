@@ -296,30 +296,20 @@ impl PreferencesState {
         let dark = config.dark_mode;
         let p = theme::palette(dark);
 
-        let close = button(text("×").size(17))
-            .padding([4, 8])
-            .on_press(Message::TogglePreferences)
-            .style(
-                (theme::GhostButton {
-                    dark,
-                    active: false,
-                })
-                .style(),
-            );
-
         let title_row = row![
-            Space::new().width(40),
             text(t!("prefs.window_title").to_string())
-                .size(13)
+                .size(15)
                 .font(theme::UI_SEMIBOLD)
-                .width(Length::Fill)
-                .align_x(iced::alignment::Horizontal::Center),
-            container(close)
-                .width(40)
-                .align_x(iced::alignment::Horizontal::Right),
+                .width(Length::Fill),
+            crate::popin::close_button(dark, Message::TogglePreferences),
         ]
-        .padding([0, 16])
-        .height(46)
+        .padding(Padding {
+            top: 0.0,
+            right: 10.0,
+            bottom: 0.0,
+            left: 20.0,
+        })
+        .height(48)
         .align_y(Alignment::Center);
         // The window is moved by its title bar.
         let title_row = iced::widget::mouse_area(title_row)
@@ -432,12 +422,12 @@ impl PreferencesState {
             title_row,
             container(Space::new().height(1))
                 .width(Length::Fill)
-                .style(theme::rule(dark)),
+                .style(theme::popin_rule(dark)),
             row![nav, content].height(Length::Fill),
         ])
         .style(move |_: &iced::Theme| container::Style {
             text_color: Some(p.text),
-            background: Some(iced::Background::Color(p.bg)),
+            background: Some(iced::Background::Color(p.elevated)),
             border: iced::Border {
                 color: p.border_strong,
                 width: 1.0,

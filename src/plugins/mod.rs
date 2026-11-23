@@ -124,6 +124,12 @@ pub enum PluginMsg {
     Ui(String, String, String, Option<Value>),
     /// A field of a panel typed in: the plugin, the panel, the field, the text.
     Input(String, String, String, String),
+    /// A secret field shown in clear or hidden again: the plugin, the
+    /// panel, the field.
+    Reveal(String, String, String),
+    /// A dialog of a plugin closed by the user (the cross, Escape, the
+    /// backdrop): the plugin, the panel.
+    CloseDialog(String, String),
     /// Something done in an editor of a panel: the plugin, the panel, the
     /// editor, the action.
     EditorAction(String, String, String, iced::widget::text_editor::Action),
@@ -293,6 +299,11 @@ pub struct Plugins {
     pub annotations_of: Option<String>,
     /// The tabs of the plugins among the files, by path.
     pub tabs: BTreeMap<PathBuf, PluginTab>,
+    /// The dialogs of the plugins open over the editor, the last one in
+    /// front: (panel, title).
+    pub dialogs: Vec<(PanelKey, String)>,
+    /// The secret fields shown in clear, until their panel changes.
+    pub revealed: HashSet<(PanelKey, String)>,
     /// The text of the editors of the panels, and the value each had in the
     /// last render.
     pub editors: HashMap<(PanelKey, String), (iced::widget::text_editor::Content, String)>,
@@ -402,6 +413,8 @@ impl Plugins {
     /// Forgets what a plugin showed (it stopped or was removed).
     pub fn forget(&mut self, id: &str) {
         self.views.retain(|k, _| k.0 != id);
+        self.dialogs.retain(|(k, _)| k.0 != id);
+        self.revealed.retain(|(k, _)| k.0 != id);
         self.inputs.retain(|k, _| k.0 .0 != id);
         self.editors.retain(|k, _| k.0 .0 != id);
         self.editor_selections.retain(|k, _| k.0 .0 != id);
@@ -516,6 +529,10 @@ pub fn keyed_button(node: &Node, key: &str, ctrl: bool, alt: bool, shift: bool) 
             .iter()
             .find_map(|c| keyed_button(c, key, ctrl, alt, shift)),
         Node::Scroll { child, .. } => keyed_button(child, key, ctrl, alt, shift),
+        Node::Footer { start, end } => start
+            .iter()
+            .chain(end)
+            .find_map(|c| keyed_button(c, key, ctrl, alt, shift)),
         _ => None,
     }
 }

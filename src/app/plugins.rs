@@ -205,6 +205,88 @@ impl ArdoiseApp {
             .into()
     }
 
+    /// Opens (or brings in front) a dialog of a plugin over the editor.
+    fn plugin_open_dialog(&mut self, plugin: &str, tab: String, title: String) -> Task<Message> {
+        let key: PanelKey = (plugin.to_string(), tab);
+        match self.plugins.dialogs.iter().position(|(k, _)| *k == key) {
+            Some(at) => {
+                let (k, _) = self.plugins.dialogs.remove(at);
+                self.plugins.dialogs.push((k, title));
+            }
+            None => {
+                self.plugins.dialogs.push((key.clone(), title));
+                if self.plugin_ensure(plugin) {
+                    host::notify(plugin, methods::PANEL_OPENED, PanelParams { panel: key.1 });
+                }
+            }
+        }
+        Task::none()
+    }
+
+    /// Closes a dialog of a plugin (the plugin hears `tab/closed`, as for a
+    /// tab). Whether there was one.
+    pub(super) fn plugin_close_dialog(&mut self, key: &PanelKey) -> bool {
+        let Some(at) = self.plugins.dialogs.iter().position(|(k, _)| k == key) else {
+            return false;
+        };
+        self.plugins.dialogs.remove(at);
+        self.plugins.views.remove(key);
+        self.plugins.revealed.retain(|(k, _)| k != key);
+        host::notify(
+            &key.0,
+            methods::TAB_CLOSED,
+            PanelParams {
+                panel: key.1.clone(),
+            },
+        );
+        true
+    }
+
+    /// `base` with the dialogs of the plugins over it, each in the frame of a
+    /// popin: the title and a cross, the tabs, the body, the footer.
+    pub(super) fn plugin_dialogs_view<'a>(
+        &'a self,
+        base: Element<'a, Message>,
+        dark: bool,
+    ) -> Element<'a, Message> {
+        let mut shown = base;
+        for (key, title) in &self.plugins.dialogs {
+            let close = || Message::Plugin(PluginMsg::CloseDialog(key.0.clone(), key.1.clone()));
+            let parts = match self.plugins.views.get(key) {
+                Some(node) => crate::plugins::render::dialog_parts(&self.plugins, key, node, dark),
+                None => crate::plugins::render::DialogParts {
+                    tabs: None,
+                    body: self.plugin_panel_body(key, dark),
+                    footer: None,
+                    form: false,
+                },
+            };
+            let mut frame = crate::popin::Frame::new(if parts.form {
+                crate::popin::WIDTH_FORM
+            } else {
+                crate::popin::WIDTH_CONFIRM
+            });
+            frame.title = Some(title.clone());
+            frame.on_close = Some(close());
+            frame.tabs = parts.tabs;
+            frame.footer = parts.footer;
+            let body = container(
+                iced::widget::scrollable(parts.body)
+                    .width(Length::Fill)
+                    .style(se_theme::Scrollbar { dark }.style()),
+            )
+            .max_height(crate::popin::MAX_BODY);
+            let card = crate::popin::frame(dark, frame, body.into());
+            shown = crate::floating::modal(shown, card, (!parts.form).then(close), dark, false);
+        }
+        shown
+    }
+
+    /// The dialog of a plugin in front, if any.
+    pub(super) fn plugin_front_dialog(&self) -> Option<&PanelKey> {
+        self.plugins.dialogs.last().map(|(k, _)| k)
+    }
+
     /// Opens (or brings in front) a tab of a plugin.
     fn plugin_open_tab(&mut self, plugin: &str, p: TabParams) -> Result<Task<Message>, String> {
         let good = !p.tab.is_empty()
@@ -214,6 +296,9 @@ impl ArdoiseApp {
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'));
         if !good || p.title.trim().is_empty() {
             return Err(t!("plugins.err_tab").to_string());
+        }
+        if p.dialog {
+            return Ok(self.plugin_open_dialog(plugin, p.tab, p.title.trim().to_string()));
         }
         let path = crate::plugins::tab_path(plugin, &p.tab, p.title.trim());
         let old = self
@@ -897,6 +982,17 @@ impl ArdoiseApp {
                 }
                 touched
             }
+            PluginMsg::Reveal(plugin, panel, field) => {
+                let slot = ((plugin, panel), field);
+                if !self.plugins.revealed.remove(&slot) {
+                    self.plugins.revealed.insert(slot);
+                }
+                Task::none()
+            }
+            PluginMsg::CloseDialog(plugin, panel) => {
+                self.plugin_close_dialog(&(plugin, panel));
+                Task::none()
+            }
             PluginMsg::Input(plugin, panel, field, value) => {
                 self.plugin_settings_touched(&plugin, &panel);
                 // A field has the keyboard: its keys are its own.
@@ -1413,7 +1509,12 @@ impl ArdoiseApp {
                                 .plugins
                                 .tabs
                                 .values()
-                                .any(|t| t.plugin == id && t.tab == p.panel);
+                                .any(|t| t.plugin == id && t.tab == p.panel)
+                                || self
+                                    .plugins
+                                    .dialogs
+                                    .iter()
+                                    .any(|(k, _)| k.0 == id && k.1 == p.panel);
                             if known {
                                 let key = (id, p.panel);
                                 self.plugins.set_view(key.clone(), p.root);
@@ -1488,6 +1589,17 @@ impl ArdoiseApp {
                     }
                     methods::CLOSE_TAB => {
                         if let Ok(p) = serde_json::from_value::<PanelParams>(params) {
+                            // A dialog the plugin closed itself: it is not
+                            // told again that it was closed.
+                            let key: PanelKey = (id.clone(), p.panel.clone());
+                            if let Some(at) =
+                                self.plugins.dialogs.iter().position(|(k, _)| *k == key)
+                            {
+                                self.plugins.dialogs.remove(at);
+                                self.plugins.views.remove(&key);
+                                self.plugins.revealed.retain(|(k, _)| *k != key);
+                                return Task::none();
+                            }
                             let path = self
                                 .plugins
                                 .tabs
@@ -2028,39 +2140,37 @@ impl ArdoiseApp {
             .unwrap_or(q.plugin.clone());
         let no = plugin_msg(PluginMsg::Answer(q.plugin.clone(), q.request, false));
         let yes = plugin_msg(PluginMsg::Answer(q.plugin.clone(), q.request, true));
-        container(
-            iced::widget::column![
-                text(name).size(15).color(p.text),
-                text(q.message.clone())
-                    .size(12.5)
-                    .color(p.muted)
-                    .shaping(iced::widget::text::Shaping::Advanced),
-                row![
-                    button(text(t!("confirm.cancel").to_string()).size(13))
-                        .padding([7, 16])
-                        .on_press(no)
-                        .style((se_theme::GhostButton { dark, active: true }).style()),
-                    Space::new().width(Length::Fill),
-                    button(
-                        text(
-                            q.confirm
-                                .clone()
-                                .unwrap_or_else(|| t!("plugins.ok").to_string())
-                        )
-                        .size(13)
-                    )
-                    .padding([7, 16])
-                    .on_press(yes)
-                    .style((se_theme::Primary { dark }).style()),
-                ]
-                .align_y(Alignment::Center),
-            ]
-            .spacing(14)
-            .padding(24),
+        use crate::popin::{action, Action};
+        let body = text(q.message.clone())
+            .size(13)
+            .color(p.muted)
+            .shaping(iced::widget::text::Shaping::Advanced);
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CONFIRM,
+            name,
+            Some(no.clone()),
+            body.into(),
+            Some((
+                vec![],
+                vec![
+                    action(
+                        dark,
+                        t!("confirm.cancel").to_string(),
+                        Some(no),
+                        Action::Cancel,
+                    ),
+                    action(
+                        dark,
+                        q.confirm
+                            .clone()
+                            .unwrap_or_else(|| t!("plugins.ok").to_string()),
+                        Some(yes),
+                        Action::Primary,
+                    ),
+                ],
+            )),
         )
-        .width(380)
-        .style(se_theme::card(dark))
-        .into()
     }
 
     /// Escape or a click beside the question: it is answered no.
@@ -2361,7 +2471,7 @@ pub(super) async fn merge_written(
 #[cfg(test)]
 mod tab_tests {
     use super::*;
-    use ardoise_plugin::ui::{column, editor};
+    use ardoise_plugin::ui::{column, editor, text};
 
     fn app_with_plugin() -> ArdoiseApp {
         let mut app = ArdoiseApp::blank(Config::default());
@@ -2383,6 +2493,88 @@ mod tab_tests {
             "test.tabs".into(),
             message,
         ))));
+    }
+
+    fn open_dialog_request(tab: &str, title: &str) -> Rpc {
+        Rpc::request(
+            9,
+            methods::OPEN_TAB,
+            serde_json::json!({"tab": tab, "title": title, "dialog": true}),
+        )
+    }
+
+    #[test]
+    fn a_plugin_opens_a_dialog_in_place_of_a_tab_and_it_closes_by_the_cross_or_escape() {
+        let mut app = app_with_plugin();
+        let key: PanelKey = ("test.tabs".into(), "form".into());
+        from_plugin(&mut app, open_dialog_request("form", "New source"));
+        assert_eq!(
+            app.plugins.dialogs,
+            vec![(key.clone(), "New source".into())]
+        );
+        assert!(app.plugins.tabs.is_empty(), "no tab among the files");
+        assert!(app.current_file.is_none() || !is_plugin_tab(app.current_file.as_ref().unwrap()));
+        // Opened again: in front, not twice.
+        from_plugin(&mut app, open_dialog_request("other", "Other"));
+        from_plugin(&mut app, open_dialog_request("form", "New source"));
+        assert_eq!(app.plugins.dialogs.len(), 2);
+        assert_eq!(app.plugin_front_dialog(), Some(&key));
+        // It renders, and the cross closes it.
+        from_plugin(
+            &mut app,
+            Rpc::notification(
+                methods::RENDER,
+                RenderParams {
+                    panel: "form".into(),
+                    root: column([text("hello")]),
+                },
+            ),
+        );
+        assert!(app.plugins.views.contains_key(&key));
+        let _ = app.update(Message::Plugin(PluginMsg::CloseDialog(
+            "test.tabs".into(),
+            "form".into(),
+        )));
+        assert_eq!(app.plugins.dialogs.len(), 1);
+        assert!(
+            !app.plugins.views.contains_key(&key),
+            "its view is forgotten"
+        );
+        // Escape closes the one left.
+        let _ = app.update(Message::EscapePressed);
+        assert!(app.plugins.dialogs.is_empty());
+    }
+
+    #[test]
+    fn a_dialog_the_plugin_closes_goes_without_a_tab_and_stays_out_of_the_session() {
+        let mut app = app_with_plugin();
+        from_plugin(&mut app, open_dialog_request("form", "New source"));
+        assert!(app.plugins.tabs.is_empty(), "the session keeps tabs only");
+        from_plugin(
+            &mut app,
+            Rpc::notification(methods::CLOSE_TAB, serde_json::json!({"panel": "form"})),
+        );
+        assert!(app.plugins.dialogs.is_empty());
+    }
+
+    #[test]
+    fn a_secret_field_is_shown_in_clear_and_hidden_again_by_its_eye() {
+        let mut app = app_with_plugin();
+        let slot = (
+            ("test.tabs".to_string(), "form".to_string()),
+            "pw".to_string(),
+        );
+        let eye = || {
+            Message::Plugin(PluginMsg::Reveal(
+                "test.tabs".into(),
+                "form".into(),
+                "pw".into(),
+            ))
+        };
+        let _ = app.update(eye());
+        assert!(app.plugins.revealed.contains(&slot));
+        let _ = app.update(eye());
+        assert!(!app.plugins.revealed.contains(&slot));
     }
 
     #[test]
