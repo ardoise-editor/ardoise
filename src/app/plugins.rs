@@ -271,9 +271,12 @@ impl ArdoiseApp {
             frame.tabs = parts.tabs;
             frame.footer = parts.footer;
             let body = container(
-                iced::widget::scrollable(parts.body)
-                    .width(Length::Fill)
-                    .style(se_theme::Scrollbar { dark }.style()),
+                iced::widget::scrollable(container(parts.body).padding(iced::Padding {
+                    right: 14.0,
+                    ..iced::Padding::ZERO
+                }))
+                .width(Length::Fill)
+                .style(se_theme::Scrollbar { dark }.style()),
             )
             .max_height(crate::popin::MAX_BODY);
             let card = crate::popin::frame(dark, frame, body.into());

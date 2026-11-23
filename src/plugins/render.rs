@@ -70,7 +70,7 @@ pub fn dialog_parts<'a>(
             let draw_all = |nodes: &'a [Node]| -> Vec<Element<'a, Message>> {
                 nodes
                     .iter()
-                    .map(|n| draw(plugins, key, n, dark, 1))
+                    .map(|n| footer_node(plugins, key, n, dark))
                     .collect()
             };
             (Some((draw_all(start), draw_all(end))), rest)
@@ -338,7 +338,7 @@ fn draw<'a>(
             container(Space::new().height(1))
                 .width(Length::Fill)
                 .style(se_theme::popin_rule(dark)),
-            footer_bar(plugins, key, start, end, dark, depth),
+            footer_bar(plugins, key, start, end, dark),
         ]
         .into(),
         Node::Tree { id, items } => {
@@ -578,6 +578,37 @@ fn list_row<'a>(item: &'a Item, selected: bool, dark: bool, on: Message) -> Elem
         .into()
 }
 
+/// A node of a footer: a text button is the button of a popin (Cancel with a
+/// hairline, the main action in the accent, a loss in red); the rest as usual.
+fn footer_node<'a>(
+    plugins: &'a Plugins,
+    key: &PanelKey,
+    node: &'a Node,
+    dark: bool,
+) -> Element<'a, Message> {
+    use crate::popin::{action, Action};
+    match node {
+        Node::Button {
+            label,
+            action: act,
+            style,
+            enabled,
+            icon: None,
+            ..
+        } => action(
+            dark,
+            label.clone(),
+            enabled.then(|| ui(key, act, None)),
+            match style {
+                ButtonStyle::Primary => Action::Primary,
+                ButtonStyle::Danger => Action::Danger,
+                _ => Action::Cancel,
+            },
+        ),
+        other => draw(plugins, key, other, dark, 1),
+    }
+}
+
 /// A strip of tabs: the open one lit, with a line of the accent under it.
 pub fn tab_strip<'a>(
     key: &PanelKey,
@@ -648,10 +679,9 @@ pub fn footer_bar<'a>(
     start: &'a [Node],
     end: &'a [Node],
     dark: bool,
-    depth: usize,
 ) -> Element<'a, Message> {
     let draw_all = |nodes: &'a [Node]| {
-        row(nodes.iter().map(|n| draw(plugins, key, n, dark, depth + 1)))
+        row(nodes.iter().map(|n| footer_node(plugins, key, n, dark)))
             .spacing(8)
             .align_y(Alignment::Center)
     };

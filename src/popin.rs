@@ -264,7 +264,14 @@ pub fn action<'a, M: Clone + 'a>(
     .padding([7, 14])
     .on_press_maybe(on_press);
     match kind {
-        Action::Cancel => b.style(theme::Outline { dark }.style()),
+        // A hairline of the popin's own, which shows on its color.
+        Action::Cancel => b.style(
+            IconButton {
+                dark,
+                tone: IconTone::Outline,
+            }
+            .style(),
+        ),
         Action::Primary => b.style(theme::Primary { dark }.style()),
         Action::Danger => b.style(theme::Danger { dark }.style()),
     }
