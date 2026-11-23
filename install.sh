@@ -98,8 +98,8 @@ need curl
 
 info "Fetching latest release…"
 VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | grep '"tag_name"' | head -1 \
-    | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
+    | grep -o '"tag_name": *"[^"]*"' | head -1 \
+    | sed 's/.*"\([^"]*\)"$/\1/')
 
 [ -n "$VERSION" ] || err "Could not determine latest version. Check your internet connection."
 info "Latest version: ${VERSION}"
@@ -119,8 +119,8 @@ case "$OS" in
         if command -v dpkg &>/dev/null; then
             # Derive exact .deb filename from the release assets
             DEB=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-                | grep '"name"' | grep '\.deb' | head -1 \
-                | sed 's/.*"name": *"\(.*\)".*/\1/')
+                | grep -o '"name": *"[^"]*\.deb"' | head -1 \
+                | sed 's/.*"\([^"]*\)"$/\1/')
             [ -n "$DEB" ] || err "Could not find .deb asset in latest release."
 
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${DEB}"
