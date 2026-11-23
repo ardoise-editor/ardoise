@@ -1,5 +1,11 @@
 # Journal des modifications
 
+## [2.6.1] - 2026-11-23
+
+### Modifié
+- La barre latérale est plus large par défaut (360 px), pour que les panneaux des plugins montrent leurs boutons et leurs champs en entier ; une barre encore à l'ancienne largeur prend la nouvelle.
+- Rechercher partout : « Ouvrir dans Résultats » est un picto avec son infobulle, et les aides des touches passent à la ligne, celle du clic droit sur une ligne à part.
+
 ## [2.6.0] - 2026-11-23
 
 ### Modifié
