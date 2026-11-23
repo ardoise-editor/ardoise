@@ -15,7 +15,7 @@ const PER_GROUP: usize = 6;
 /// Lines listed in one tab at most.
 const MOST: usize = 120;
 /// Height of a line.
-const ROW: f32 = 30.0;
+const ROW: f32 = 32.0;
 const WIDTH: f32 = 780.0;
 const LIST_HEIGHT: f32 = 430.0;
 /// How long the typing must rest before the servers and the files are
@@ -1601,8 +1601,8 @@ impl ArdoiseApp {
         let mut tabs = row![].spacing(2).align_y(Alignment::Center);
         for tab in Tab::shown(self.config.everywhere_git) {
             tabs = tabs.push(
-                button(text(tab_label(tab)).size(12.5))
-                    .padding([4, 10])
+                button(text(tab_label(tab)).size(13))
+                    .padding([6, 12])
                     .on_press(Message::EverywhereTab(tab))
                     .style(ghost(tab == current)),
             );
@@ -1634,23 +1634,29 @@ impl ArdoiseApp {
                 .style(ghost(self.everywhere.filter_open)),
             );
         }
-        let mut export = button(text(t!("everywhere.export").to_string()).size(12))
-            .padding([4, 10])
-            .style(ghost(false));
+        let mut export = button(
+            row![
+                crate::popin::glyph("panel-bottom", 14.0)
+                    .map(Element::from)
+                    .unwrap_or_else(|| Space::new().into()),
+                text(t!("everywhere.export").to_string()).size(12.5),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        )
+        .padding([6, 12])
+        .style(
+            (se_theme::IconButton {
+                dark,
+                tone: se_theme::IconTone::Outline,
+            })
+            .style(),
+        );
         if self.everywhere_exportable() {
             export = export.on_press(Message::EverywhereExport);
         }
         header = header.push(export);
-        header = header.push(iced::widget::tooltip(
-            button(text("×").size(16).color(p.muted))
-                .padding([1, 8])
-                .on_press(Message::CloseOverlay)
-                .style(ghost(false)),
-            container(text(t!("history.close").to_string()).size(12))
-                .padding([4, 8])
-                .style(se_theme::tooltip(dark)),
-            iced::widget::tooltip::Position::Bottom,
-        ));
+        header = header.push(crate::popin::close_button(dark, Message::CloseOverlay));
 
         let placeholder = placeholder_of(current);
         let field = text_input(&placeholder, &self.everywhere.query)
@@ -1660,7 +1666,11 @@ impl ArdoiseApp {
             .size(15)
             .padding(0)
             .style((se_theme::BareField { dark }).style());
-        let mut field_row = row![field].spacing(6).align_y(Alignment::Center);
+        let search = crate::popin::glyph("search", 16.0)
+            .map(|g| g.color(se_theme::secondary(dark)))
+            .map(Element::from)
+            .unwrap_or_else(|| Space::new().into());
+        let mut field_row = row![search, field].spacing(10).align_y(Alignment::Center);
         if current == Tab::Text {
             let option = |label: &'static str, on: bool, which: u8, tip: String| {
                 iced::widget::tooltip(
@@ -1696,14 +1706,24 @@ impl ArdoiseApp {
         }
 
         let mut body = column![
-            container(header).padding([8, 10]),
-            container(Space::new().height(1))
-                .width(Length::Fill)
-                .style(se_theme::rule(dark)),
-            container(field_row)
-                .padding([0, 16])
-                .height(48)
-                .center_y(48),
+            container(header).padding([12, 14]),
+            container(
+                container(field_row)
+                    .padding([0, 14])
+                    .height(44)
+                    .center_y(44)
+                    .width(Length::Fill)
+                    .style(move |_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(p.bg)),
+                        border: iced::Border {
+                            color: p.accent,
+                            width: 1.0,
+                            radius: 8.0.into(),
+                        },
+                        ..container::Style::default()
+                    })
+            )
+            .padding([0, 14]),
         ];
         if let Some((command, abbreviation)) = &self.everywhere.abbreviating {
             let label = crate::palette::entries(
@@ -1768,11 +1788,7 @@ impl ArdoiseApp {
             }
             body = body.push(container(boxes).padding([6, 16]));
         }
-        body = body.push(
-            container(Space::new().height(1))
-                .width(Length::Fill)
-                .style(se_theme::rule(dark)),
-        );
+        body = body.push(Space::new().height(10));
         let rows: Vec<Element<Message>> = self
             .everywhere
             .rows
@@ -1790,22 +1806,68 @@ impl ArdoiseApp {
             .push(
                 container(Space::new().height(1))
                     .width(Length::Fill)
-                    .style(se_theme::rule(dark)),
+                    .style(se_theme::popin_rule(dark)),
             )
             .push(
-                container(
-                    text(t!("everywhere.keys").to_string())
-                        .size(11)
-                        .color(p.muted),
-                )
-                .padding([6, 12])
-                .width(Length::Fill),
+                container(keys_hint(dark))
+                    .padding([10, 16])
+                    .width(Length::Fill)
+                    .style(se_theme::popin_footer(dark)),
             );
         container(body)
             .width(WIDTH)
-            .style(se_theme::palette_card(dark))
+            .style(se_theme::popin_card(dark))
             .into()
     }
+}
+
+/// The hints of the keys, as the footer of the card: each key in a small
+/// frame, its words after it; the last hint (the right click) at the right.
+fn keys_hint<'a>(dark: bool) -> Element<'a, Message> {
+    let p = se_theme::palette(dark);
+    let said = t!("everywhere.keys").to_string();
+    let mut parts: Vec<&str> = said.split(" · ").collect();
+    let right = parts.pop().unwrap_or_default().to_string();
+    let mut line = row![].spacing(18).align_y(Alignment::Center);
+    for part in parts {
+        let (key, words) = part.split_once(' ').unwrap_or((part, ""));
+        let key = container(
+            text(key.to_string())
+                .size(11.5)
+                .font(se_theme::MONO)
+                .color(p.text),
+        )
+        .padding([1, 6])
+        .style(move |_: &iced::Theme| container::Style {
+            border: iced::Border {
+                color: p.border_strong,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..container::Style::default()
+        });
+        line = line.push(
+            row![
+                key,
+                text(words.to_string())
+                    .size(12)
+                    .color(se_theme::muted_strong(dark))
+                    .shaping(iced::widget::text::Shaping::Advanced),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        );
+    }
+    row![
+        line,
+        Space::new().width(Length::Fill),
+        text(right)
+            .size(12)
+            .color(se_theme::muted_strong(dark))
+            .shaping(iced::widget::text::Shaping::Advanced),
+    ]
+    .align_y(Alignment::Center)
+    .into()
 }
 
 /// What a tab is called.

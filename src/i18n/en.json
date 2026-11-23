@@ -743,5 +743,13 @@
   "welcome.plugins_hint": "A simple editor to begin with: install only what you need.",
   "welcome.later": "You will find these plugins again in Preferences › Plugins.",
   "welcome.installed": "Installed",
-  "welcome.done": "Get started"
+  "welcome.done": "Get started",
+  "about.version": "Version %{version}",
+  "popin.for_open_file": "For the open file",
+  "rename.subtitle": "Renames the symbol under the cursor",
+  "goto_line.subtitle": "In the open file",
+  "spell.languages_hint": "Language of the dictionary",
+  "projects.name_hint": "Type a name",
+  "welcome.subtitle": "A few settings and plugins",
+  "prefs.subtitle": "Settings of Ardoise"
 }

@@ -743,5 +743,13 @@
   "welcome.plugins_hint": "Un éditeur simple au départ : installez seulement ce dont vous avez besoin.",
   "welcome.later": "Vous retrouverez ces plugins dans Préférences › Plugins.",
   "welcome.installed": "Installé",
-  "welcome.done": "Terminer"
+  "welcome.done": "Terminer",
+  "about.version": "Version %{version}",
+  "popin.for_open_file": "Pour le fichier ouvert",
+  "rename.subtitle": "Renomme le symbole sous le curseur",
+  "goto_line.subtitle": "Dans le fichier ouvert",
+  "spell.languages_hint": "Langue du dictionnaire",
+  "projects.name_hint": "Saisissez un nom",
+  "welcome.subtitle": "Quelques réglages et des plugins",
+  "prefs.subtitle": "Réglages d’Ardoise"
 }

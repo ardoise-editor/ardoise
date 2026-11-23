@@ -426,7 +426,8 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            t!("spell.title").to_string(),
+            crate::popin::Head::new("spell-check", t!("spell.title").to_string())
+                .sub(found.word.clone()),
             Some(Message::CloseOverlay),
             body.into(),
             Some((
@@ -478,7 +479,8 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            t!("spell.languages").to_string(),
+            crate::popin::Head::new("languages", t!("spell.languages").to_string())
+                .sub(t!("spell.languages_hint").to_string()),
             Some(Message::CloseOverlay),
             scrollable(column(items).spacing(2))
                 .height(Length::Fixed(320.0))

@@ -2171,14 +2171,31 @@ mod look_tests {
                 };
                 let key = panel("connection");
                 app.plugins.set_view(key.clone(), node(file));
+                app.plugins.dialog_heads.insert(
+                    key.clone(),
+                    (
+                        Some("database".into()),
+                        Some("PostgreSQL, MySQL / MariaDB or SQLite".into()),
+                    ),
+                );
                 app.plugins.dialogs.push((key, title.into()));
             }
             "confirm" => {
                 let key = panel("text");
                 app.plugins.set_view(key.clone(), node("confirm.json"));
+                app.plugins.dialog_heads.insert(
+                    key.clone(),
+                    (Some("trash-2".into()), Some("This cannot be undone".into())),
+                );
                 app.plugins.dialogs.push((key, "Drop public.items?".into()));
             }
             "about" => app.overlay = ActiveOverlay::About,
+            "prefs" => app.show_preferences = true,
+            "everywhere" => {
+                let _ = app.update(Message::OpenEverywhere(crate::everywhere::Tab::Actions));
+            }
+            "language" => app.overlay = ActiveOverlay::LanguagePicker,
+            "update" => app.overlay = ActiveOverlay::UpdateUpToDate,
             "welcome" => {
                 let listed: Vec<crate::plugins::remote::Listed> =
                     serde_json::from_value(serde_json::json!([
