@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## [2.5.0] - 2026-11-23
+
+### Ajouté
+- Une popin d'accueil au tout premier lancement : la langue, le thème, la taille du texte, l'enregistrement et le retour à la ligne, puis les plugins officiels à installer en un clic. Elle ne s'affiche qu'une fois ; tout reste dans les Préférences.
+
 ## [2.4.0] - 2026-11-23
 
 ### Modifié

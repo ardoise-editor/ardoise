@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.0] - 2026-11-23
+
+### Added
+- A welcome popin on the very first launch: the language, the theme, the size of the text, saving and wrapping, then the official plugins to install in one click. It shows once; everything stays in the Preferences.
+
 ## [2.4.0] - 2026-11-23
 
 ### Changed

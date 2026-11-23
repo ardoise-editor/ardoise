@@ -158,19 +158,28 @@ impl ArdoiseApp {
 
     /// Records the running version; right after an update, opens the notes
     /// of what it brought.
-    pub(super) fn announce_new_version(&mut self) {
+    pub(super) fn announce_new_version(&mut self) -> Task<Message> {
         let current = env!("CARGO_PKG_VERSION");
         let previous = std::mem::replace(&mut self.config.last_version, current.to_string());
         if previous == current {
-            return;
+            return Task::none();
         }
         self.config_dirty = true;
-        let upgraded = !previous.is_empty()
-            && !crate::changelog::between(crate::changelog::embedded(), &previous, current)
-                .is_empty();
+        // A fresh install (no version was ever recorded): the welcome popin,
+        // with the official plugins to offer, so the list is fetched.
+        if previous.is_empty() {
+            if self.overlay == ActiveOverlay::None {
+                self.overlay = ActiveOverlay::Welcome;
+                return self.plugin_update(crate::plugins::PluginMsg::LoadRegistry);
+            }
+            return Task::none();
+        }
+        let upgraded =
+            !crate::changelog::between(crate::changelog::embedded(), &previous, current).is_empty();
         if upgraded && self.overlay == ActiveOverlay::None {
             self.overlay = ActiveOverlay::WhatsNew(previous);
         }
+        Task::none()
     }
 
     /// The changelog in a card; `since` limits it to the releases after that

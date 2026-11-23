@@ -865,6 +865,82 @@ impl PreferencesState {
     }
 }
 
+/// The few settings the welcome popin asks: language, theme, size of the
+/// text, saving, wrapping. They are the ones of the Preferences, under the
+/// same messages.
+pub(crate) fn basics<'a>(config: &Config, dark: bool) -> Element<'a, Message> {
+    let selected = LOCALES.iter().copied().find(|l| l.code == config.locale);
+    let language = pick_list(LOCALES, selected, |choice| {
+        Message::Preferences(PreferencesMessage::LocaleChanged(choice.code.to_string()))
+    })
+    .padding([6, 12])
+    .width(150)
+    .text_size(13)
+    .style(theme::Select { dark }.style())
+    .menu_style(theme::Select { dark }.menu_style());
+    let seg = |label: String, is_dark: bool| {
+        button(text(label).size(12))
+            .padding([3, 12])
+            .on_press(Message::ThemeChanged(is_dark))
+            .style(
+                (theme::Segment {
+                    dark,
+                    active: dark == is_dark,
+                    radius: theme::R_SM,
+                })
+                .style(),
+            )
+    };
+    let appearance = container(
+        row![
+            seg(t!("toolbar.dark").to_string(), true),
+            seg(t!("toolbar.light").to_string(), false)
+        ]
+        .spacing(2),
+    )
+    .padding(2)
+    .style(theme::field(dark, false, theme::R_ROW));
+    let font_size = row![
+        slider(8.0..=32.0, config.font_size, |v| {
+            Message::Preferences(PreferencesMessage::FontSizeChanged(v.round()))
+        })
+        .step(1.0_f32)
+        .width(140)
+        .style((theme::Slider { dark }).style()),
+        text(format!("{:.0} px", config.font_size))
+            .size(13)
+            .font(theme::MONO)
+            .width(48)
+            .align_x(iced::alignment::Horizontal::Right),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center);
+    card_of_rows(
+        dark,
+        vec![
+            setting_row(t!("prefs.language").to_string(), language.into()),
+            setting_row(t!("prefs.theme").to_string(), appearance.into()),
+            setting_row(t!("prefs.font_size").to_string(), font_size.into()),
+            setting_row(
+                t!("prefs.auto_save").to_string(),
+                switch(
+                    dark,
+                    config.auto_save,
+                    Message::Preferences(PreferencesMessage::AutoSaveToggled(!config.auto_save)),
+                ),
+            ),
+            setting_row(
+                t!("prefs.word_wrap").to_string(),
+                switch(
+                    dark,
+                    config.word_wrap,
+                    Message::Preferences(PreferencesMessage::WordWrapToggled(!config.word_wrap)),
+                ),
+            ),
+        ],
+    )
+}
+
 /// A label on the left, its control on the right.
 fn setting_row<'a>(label: String, control: Element<'a, Message>) -> Element<'a, Message> {
     row![text(label).size(13).width(Length::Fill), control]
@@ -875,7 +951,10 @@ fn setting_row<'a>(label: String, control: Element<'a, Message>) -> Element<'a, 
 }
 
 /// Rows on a bordered card, separated by hairlines.
-fn card_of_rows<'a>(dark: bool, rows: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+pub(crate) fn card_of_rows<'a>(
+    dark: bool,
+    rows: Vec<Element<'a, Message>>,
+) -> Element<'a, Message> {
     let mut col = column![];
     let last = rows.len().saturating_sub(1);
     for (i, row_el) in rows.into_iter().enumerate() {
