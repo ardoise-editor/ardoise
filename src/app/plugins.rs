@@ -206,8 +206,15 @@ impl ArdoiseApp {
     }
 
     /// Opens (or brings in front) a dialog of a plugin over the editor.
-    fn plugin_open_dialog(&mut self, plugin: &str, tab: String, title: String) -> Task<Message> {
+    fn plugin_open_dialog(
+        &mut self,
+        plugin: &str,
+        tab: String,
+        title: String,
+        head: (Option<String>, Option<String>),
+    ) -> Task<Message> {
         let key: PanelKey = (plugin.to_string(), tab);
+        self.plugins.dialog_heads.insert(key.clone(), head);
         match self.plugins.dialogs.iter().position(|(k, _)| *k == key) {
             Some(at) => {
                 let (k, _) = self.plugins.dialogs.remove(at);
@@ -230,6 +237,7 @@ impl ArdoiseApp {
             return false;
         };
         self.plugins.dialogs.remove(at);
+        self.plugins.dialog_heads.remove(key);
         self.plugins.views.remove(key);
         self.plugins.revealed.retain(|(k, _)| k != key);
         host::notify(
@@ -252,35 +260,55 @@ impl ArdoiseApp {
         let mut shown = base;
         for (key, title) in &self.plugins.dialogs {
             let close = || Message::Plugin(PluginMsg::CloseDialog(key.0.clone(), key.1.clone()));
-            let parts = match self.plugins.views.get(key) {
-                Some(node) => crate::plugins::render::dialog_parts(&self.plugins, key, node, dark),
-                None => crate::plugins::render::DialogParts {
-                    tabs: None,
-                    body: self.plugin_panel_body(key, dark),
-                    footer: None,
-                    form: false,
-                },
-            };
-            let mut frame = crate::popin::Frame::new(if parts.form {
-                crate::popin::WIDTH_FORM
-            } else {
-                crate::popin::WIDTH_CONFIRM
+            // Everything of a popin is made with the corners of its controls.
+            let (card, form) = se_theme::in_popin(|| {
+                let parts = match self.plugins.views.get(key) {
+                    Some(node) => {
+                        crate::plugins::render::dialog_parts(&self.plugins, key, node, dark)
+                    }
+                    None => crate::plugins::render::DialogParts {
+                        tabs: None,
+                        body: self.plugin_panel_body(key, dark),
+                        footer: None,
+                        form: false,
+                    },
+                };
+                let (icon, subtitle) = self
+                    .plugins
+                    .dialog_heads
+                    .get(key)
+                    .cloned()
+                    .unwrap_or_default();
+                let mut head =
+                    crate::popin::Head::new(icon.as_deref().unwrap_or("puzzle"), title.clone());
+                // A loss has the red tile.
+                if matches!(icon.as_deref(), Some("trash-2" | "triangle-alert")) {
+                    head = head.danger();
+                }
+                if let Some(subtitle) = subtitle {
+                    head = head.sub(subtitle);
+                }
+                let mut frame = crate::popin::Frame::new(if parts.form {
+                    crate::popin::WIDTH_FORM
+                } else {
+                    crate::popin::WIDTH_CONFIRM
+                });
+                frame.head = Some(head);
+                frame.on_close = Some(close());
+                frame.tabs = parts.tabs;
+                frame.footer = parts.footer;
+                let body = container(
+                    iced::widget::scrollable(container(parts.body).padding(iced::Padding {
+                        right: 14.0,
+                        ..iced::Padding::ZERO
+                    }))
+                    .width(Length::Fill)
+                    .style(se_theme::Scrollbar { dark }.style()),
+                )
+                .max_height(crate::popin::MAX_BODY);
+                (crate::popin::frame(dark, frame, body.into()), parts.form)
             });
-            frame.title = Some(title.clone());
-            frame.on_close = Some(close());
-            frame.tabs = parts.tabs;
-            frame.footer = parts.footer;
-            let body = container(
-                iced::widget::scrollable(container(parts.body).padding(iced::Padding {
-                    right: 14.0,
-                    ..iced::Padding::ZERO
-                }))
-                .width(Length::Fill)
-                .style(se_theme::Scrollbar { dark }.style()),
-            )
-            .max_height(crate::popin::MAX_BODY);
-            let card = crate::popin::frame(dark, frame, body.into());
-            shown = crate::floating::modal(shown, card, (!parts.form).then(close), dark, false);
+            shown = crate::floating::modal(shown, card, (!form).then(close), dark, false);
         }
         shown
     }
@@ -301,7 +329,8 @@ impl ArdoiseApp {
             return Err(t!("plugins.err_tab").to_string());
         }
         if p.dialog {
-            return Ok(self.plugin_open_dialog(plugin, p.tab, p.title.trim().to_string()));
+            let head = (p.icon, p.subtitle);
+            return Ok(self.plugin_open_dialog(plugin, p.tab, p.title.trim().to_string(), head));
         }
         let path = crate::plugins::tab_path(plugin, &p.tab, p.title.trim());
         let old = self
@@ -1599,6 +1628,7 @@ impl ArdoiseApp {
                                 self.plugins.dialogs.iter().position(|(k, _)| *k == key)
                             {
                                 self.plugins.dialogs.remove(at);
+                                self.plugins.dialog_heads.remove(&key);
                                 self.plugins.views.remove(&key);
                                 self.plugins.revealed.retain(|(k, _)| *k != key);
                                 return Task::none();
@@ -2151,7 +2181,7 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CONFIRM,
-            name,
+            crate::popin::Head::new("puzzle", name),
             Some(no.clone()),
             body.into(),
             Some((

@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.6.0] - 2026-11-23
+
+### Changed
+- Every popin has the new look: a header with a picto and a line under the title, rounded corners, a darker footer, controls with soft corners and a lighter secondary text. It covers About, Update, What's new, Preferences, Search everywhere, the confirmations, renaming, Go to line, the choices of the status bar, and the dialogs of the plugins (plugin SDK 0.14: a dialog can say its picto and its subtitle).
+
 ## [2.5.0] - 2026-11-23
 
 ### Added

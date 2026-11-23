@@ -302,6 +302,8 @@ pub struct Plugins {
     /// The dialogs of the plugins open over the editor, the last one in
     /// front: (panel, title).
     pub dialogs: Vec<(PanelKey, String)>,
+    /// The picto and the line under the title of each dialog, as it said.
+    pub dialog_heads: HashMap<PanelKey, (Option<String>, Option<String>)>,
     /// The secret fields shown in clear, until their panel changes.
     pub revealed: HashSet<(PanelKey, String)>,
     /// The text of the editors of the panels, and the value each had in the
@@ -414,6 +416,7 @@ impl Plugins {
     pub fn forget(&mut self, id: &str) {
         self.views.retain(|k, _| k.0 != id);
         self.dialogs.retain(|(k, _)| k.0 != id);
+        self.dialog_heads.retain(|k, _| k.0 != id);
         self.revealed.retain(|(k, _)| k.0 != id);
         self.inputs.retain(|k, _| k.0 .0 != id);
         self.editors.retain(|k, _| k.0 .0 != id);

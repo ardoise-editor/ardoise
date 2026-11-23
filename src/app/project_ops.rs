@@ -390,6 +390,12 @@ impl ArdoiseApp {
             dir.file_name()
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
         };
+        let icon = match &dialog.purpose {
+            NameFor::File(_) => "file-plus",
+            NameFor::Folder(_) => "folder-plus",
+            NameFor::Rename(_) => "pencil",
+            NameFor::Duplicate(_) => "copy",
+        };
         let (title, confirm) = match &dialog.purpose {
             NameFor::File(dir) => (
                 t!("projects.new_file_title", dir = folder_name(dir).as_str()).to_string(),
@@ -422,7 +428,7 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            title,
+            crate::popin::Head::new(icon, title).sub(t!("projects.name_hint").to_string()),
             Some(Message::CloseOverlay),
             field.into(),
             Some((

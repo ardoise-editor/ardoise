@@ -159,7 +159,7 @@ impl ArdoiseApp {
         )
         .width(1100)
         .height(640)
-        .style(se_theme::card(dark))
+        .style(se_theme::popin_card(dark))
         .into()
     }
 }

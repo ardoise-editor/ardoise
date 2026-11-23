@@ -30,21 +30,18 @@ impl ArdoiseApp {
     }
 
     pub(super) fn view_about_overlay(&self, dark: bool) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
         let version = env!("CARGO_PKG_VERSION");
-        let body = column![
-            text(format!("v{}", version)).size(15).color(p.text),
-            text(t!("about.tagline").to_string())
-                .size(12)
-                .color(p.muted),
-        ]
+        let body = column![text(t!("about.tagline").to_string())
+            .size(12)
+            .color(se_theme::secondary(dark)),]
         .spacing(8)
         .align_x(Alignment::Center)
         .width(Length::Fill);
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            "Ardoise",
+            crate::popin::Head::new("info", "Ardoise")
+                .sub(t!("about.version", version = version).to_string()),
             Some(Message::CloseOverlay),
             body.into(),
             Some((
@@ -53,7 +50,7 @@ impl ArdoiseApp {
                     dark,
                     t!("about.close").to_string(),
                     Some(Message::CloseOverlay),
-                    crate::popin::Action::Cancel,
+                    crate::popin::Action::Primary,
                 )],
             )),
         )
@@ -69,12 +66,12 @@ impl ArdoiseApp {
                 .shaping(iced::widget::text::Shaping::Advanced)
                 .into()
         };
-        let close = || {
+        let close_as = |kind: Action| {
             action(
                 dark,
                 t!("about.close").to_string(),
                 Some(Message::CloseOverlay),
-                Action::Cancel,
+                kind,
             )
         };
         let mut width = crate::popin::WIDTH_CARD;
@@ -89,7 +86,7 @@ impl ArdoiseApp {
                 ),
                 ActiveOverlay::UpdateUpToDate => (
                     line(t!("update.up_to_date").to_string(), p.accent),
-                    vec![close()],
+                    vec![close_as(Action::Primary)],
                     true,
                 ),
                 ActiveOverlay::UpdateAvailable(version, notes) => {
@@ -109,7 +106,7 @@ impl ArdoiseApp {
                     (
                         body.into(),
                         vec![
-                            close(),
+                            close_as(Action::Cancel),
                             action(
                                 dark,
                                 t!("update.download_install").to_string(),
@@ -140,7 +137,7 @@ impl ArdoiseApp {
                     ]
                     .spacing(8)
                     .into(),
-                    vec![close()],
+                    vec![close_as(Action::Primary)],
                     true,
                 ),
                 // Shown by their own views (`view`).
@@ -149,7 +146,8 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             width,
-            t!("update.title").to_string(),
+            crate::popin::Head::new("refresh-cw", t!("update.title").to_string())
+                .sub(format!("Ardoise {}", env!("CARGO_PKG_VERSION"))),
             closable.then_some(Message::CloseOverlay),
             body,
             (!actions.is_empty()).then(|| (vec![], actions)),
@@ -207,7 +205,8 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_FORM,
-            title,
+            crate::popin::Head::new("sparkles", title)
+                .sub(format!("Ardoise {}", env!("CARGO_PKG_VERSION"))),
             Some(Message::CloseOverlay),
             scrollable(changelog_list(dark, entries))
                 .height(Length::Fixed(380.0))
@@ -219,7 +218,7 @@ impl ArdoiseApp {
                     dark,
                     t!("about.close").to_string(),
                     Some(Message::CloseOverlay),
-                    crate::popin::Action::Cancel,
+                    crate::popin::Action::Primary,
                 )],
             )),
         )
@@ -275,7 +274,8 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            t!("rename.title").to_string(),
+            crate::popin::Head::new("pencil", t!("rename.title").to_string())
+                .sub(t!("rename.subtitle").to_string()),
             Some(Message::CloseOverlay),
             field.into(),
             Some((
@@ -310,7 +310,8 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            t!("goto_line.title").to_string(),
+            crate::popin::Head::new("hash", t!("goto_line.title").to_string())
+                .sub(t!("goto_line.subtitle").to_string()),
             Some(Message::CloseOverlay),
             field.into(),
             Some((
@@ -687,7 +688,7 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            title,
+            crate::popin::Head::new("type", title).sub(t!("popin.for_open_file").to_string()),
             Some(Message::CloseOverlay),
             scrollable(column(items).spacing(2))
                 .height(Length::Fixed(340.0))
@@ -766,7 +767,8 @@ impl ArdoiseApp {
         crate::popin::card(
             dark,
             crate::popin::WIDTH_CARD,
-            t!("language.title").to_string(),
+            crate::popin::Head::new("code-xml", t!("language.title").to_string())
+                .sub(t!("popin.for_open_file").to_string()),
             Some(Message::CloseOverlay),
             scrollable(column(items).spacing(2))
                 .height(Length::Fixed(320.0))

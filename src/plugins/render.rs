@@ -159,7 +159,7 @@ fn draw<'a>(
             let label = text(t.as_str()).shaping(iced::widget::text::Shaping::Advanced);
             match style {
                 TextStyle::Normal => label.size(13).color(p.text),
-                TextStyle::Muted => label.size(12).color(p.muted),
+                TextStyle::Muted => label.size(12).color(se_theme::secondary(dark)),
                 TextStyle::Error => label.size(12.5).color(se_theme::error_color(dark)),
                 TextStyle::Bold => label.size(13).font(se_theme::UI_SEMIBOLD).color(p.text),
                 TextStyle::Heading => label.size(15).font(se_theme::UI_BOLD).color(p.text),

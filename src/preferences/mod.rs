@@ -296,21 +296,12 @@ impl PreferencesState {
         let dark = config.dark_mode;
         let p = theme::palette(dark);
 
-        let title_row = row![
-            text(t!("prefs.window_title").to_string())
-                .size(15)
-                .font(theme::UI_SEMIBOLD)
-                .width(Length::Fill),
-            crate::popin::close_button(dark, Message::TogglePreferences),
-        ]
-        .padding(Padding {
-            top: 0.0,
-            right: 10.0,
-            bottom: 0.0,
-            left: 20.0,
-        })
-        .height(48)
-        .align_y(Alignment::Center);
+        let title_row = crate::popin::header(
+            dark,
+            crate::popin::Head::new("sliders-horizontal", t!("prefs.window_title").to_string())
+                .sub(t!("prefs.subtitle").to_string()),
+            Some(Message::TogglePreferences),
+        );
         // The window is moved by its title bar.
         let title_row = iced::widget::mouse_area(title_row)
             .on_press(Message::PrefsDragStart(PrefsGrab::Move))
@@ -367,11 +358,11 @@ impl PreferencesState {
             .height(Length::Fill)
             .style(move |_: &iced::Theme| container::Style {
                 text_color: Some(p.text),
-                background: Some(iced::Background::Color(p.surface)),
+                background: Some(iced::Background::Color(p.tabs)),
                 border: iced::Border {
                     color: iced::Color::TRANSPARENT,
                     width: 0.0,
-                    radius: iced::border::Radius::default().bottom_left(theme::R_PALETTE),
+                    radius: iced::border::Radius::default().bottom_left(theme::R_POPIN - 1.0),
                 },
                 shadow: iced::Shadow::default(),
                 ..container::Style::default()
@@ -425,24 +416,7 @@ impl PreferencesState {
                 .style(theme::popin_rule(dark)),
             row![nav, content].height(Length::Fill),
         ])
-        .style(move |_: &iced::Theme| container::Style {
-            text_color: Some(p.text),
-            background: Some(iced::Background::Color(p.elevated)),
-            border: iced::Border {
-                color: p.border_strong,
-                width: 1.0,
-                radius: theme::R_PALETTE.into(),
-            },
-            shadow: iced::Shadow {
-                color: iced::Color {
-                    a: 0.5,
-                    ..iced::Color::BLACK
-                },
-                offset: iced::Vector::new(0.0, 18.0),
-                blur_radius: 50.0,
-            },
-            ..container::Style::default()
-        })
+        .style(theme::popin_card(dark))
         .into()
     }
 

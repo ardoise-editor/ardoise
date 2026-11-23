@@ -1974,12 +1974,10 @@ impl ArdoiseApp {
         // The Preferences window floats over everything but the dialogs.
         let with_prefs: Element<Message> = if self.show_preferences {
             let (x, y, w, h) = self.prefs_rect();
-            let window = container(self.preferences.view(
-                &self.config,
-                self.capturing,
-                &self.servers,
-                &self.plugins,
-            ))
+            let window = container(se_theme::in_popin(|| {
+                self.preferences
+                    .view(&self.config, self.capturing, &self.servers, &self.plugins)
+            }))
             .width(Length::Fixed(w))
             .height(Length::Fixed(h));
             // The edges and the corner take hold of it to resize it.
@@ -2032,8 +2030,8 @@ impl ArdoiseApp {
         // The dialogs of the plugins, under the overlays of the editor.
         let with_prefs = self.plugin_dialogs_view(with_prefs, dark);
 
-        // Modal overlays
-        match &self.overlay {
+        // Modal overlays: popins, whose controls have rounded corners.
+        se_theme::in_popin(|| match &self.overlay {
             ActiveOverlay::None => with_prefs,
             ActiveOverlay::Everywhere => {
                 let card = self.view_everywhere(dark);
@@ -2207,7 +2205,7 @@ impl ArdoiseApp {
                     .then_some(Message::CloseOverlay);
                 crate::floating::modal(with_prefs, overlay, on_blur, dark, false)
             }
-        }
+        })
     }
 
     pub fn theme(&self) -> Theme {
@@ -8748,61 +8746,57 @@ fn confirm_card_kind(
     confirm: Message,
     kind: Confirm,
 ) -> Element<'static, Message> {
-    use crate::popin::{action, Action};
-    let p = se_theme::palette(dark);
-    let words = column![
-        text(title)
-            .size(15)
-            .font(se_theme::UI_SEMIBOLD)
-            .color(p.text)
-            .shaping(iced::widget::text::Shaping::Advanced),
-        text(message)
-            .size(13)
-            .color(p.muted)
-            .shaping(iced::widget::text::Shaping::Advanced),
-    ]
-    .spacing(6)
-    .width(Length::Fill);
-    let mut line = row![].spacing(14);
-    if kind == Confirm::Delete {
-        if let Some(picto) = crate::popin::glyph("trash-2", 18.0) {
-            line = line.push(
-                container(picto)
-                    .width(36)
-                    .height(36)
-                    .center_x(36)
-                    .center_y(36)
-                    .style(se_theme::popin_pastille(se_theme::error_color(dark))),
-            );
+    use crate::popin::{action, Action, Head};
+    se_theme::in_popin(|| {
+        let p = se_theme::palette(dark);
+        let (icon, danger) = match kind {
+            Confirm::Delete => ("trash-2", true),
+            Confirm::Danger => ("triangle-alert", true),
+            Confirm::Primary => ("shield-check", false),
+        };
+        let mut head = Head::new(icon, title);
+        if danger {
+            head = head.danger();
         }
-    }
-    let mut body = column![line.push(words)].spacing(14);
-    if let Some(extra) = extra {
-        body = body.push(extra);
-    }
-    let mut parts = crate::popin::Frame::new(crate::popin::WIDTH_CONFIRM);
-    parts.footer = Some((
-        vec![],
-        vec![
-            action(
-                dark,
-                t!("confirm.cancel").to_string(),
-                Some(Message::CloseOverlay),
-                Action::Cancel,
-            ),
-            action(
-                dark,
-                confirm_label,
-                Some(confirm),
-                if kind == Confirm::Primary {
-                    Action::Primary
-                } else {
-                    Action::Danger
-                },
-            ),
-        ],
-    ));
-    crate::popin::frame(dark, parts, body.into())
+        let mut body = column![text(message)
+            .size(13)
+            .color(se_theme::secondary(dark))
+            .shaping(iced::widget::text::Shaping::Advanced)]
+        .spacing(14)
+        .width(Length::Fill);
+        let _ = p;
+        if let Some(extra) = extra {
+            body = body.push(extra);
+        }
+        crate::popin::card(
+            dark,
+            crate::popin::WIDTH_CONFIRM,
+            head,
+            Some(Message::CloseOverlay),
+            body.into(),
+            Some((
+                vec![],
+                vec![
+                    action(
+                        dark,
+                        t!("confirm.cancel").to_string(),
+                        Some(Message::CloseOverlay),
+                        Action::Cancel,
+                    ),
+                    action(
+                        dark,
+                        confirm_label,
+                        Some(confirm),
+                        if kind == Confirm::Primary {
+                            Action::Primary
+                        } else {
+                            Action::Danger
+                        },
+                    ),
+                ],
+            )),
+        )
+    })
 }
 
 /// A 1px horizontal hairline.

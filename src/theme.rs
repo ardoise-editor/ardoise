@@ -21,6 +21,10 @@ pub const R_ROW: f32 = 0.0;
 pub const R_SM: f32 = 0.0;
 pub const R_MENU_TITLE: f32 = 0.0;
 pub const R_PILL: f32 = 0.0;
+/// The corners of a popin: the only rounded surfaces of the editor.
+pub const R_POPIN: f32 = 10.0;
+/// The corners of what is inside a popin: buttons, fields, tiles.
+pub const R_POPIN_CONTROL: f32 = 6.0;
 
 // Fonts. The files are embedded and registered at startup (see `main.rs`).
 pub const UI: Font = Font::with_name("Instrument Sans");
@@ -174,6 +178,59 @@ pub struct Palette {
     pub scrim: Color,
     /// The bar of the tabs, behind the ones that are not open.
     pub tabs: Color,
+}
+
+thread_local! {
+    /// Set while the widgets of a popin are made: they take rounded corners.
+    static IN_POPIN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Makes the widgets of `build` as the ones of a popin: their styles, taken
+/// while it runs, have the corners of the controls of a popin.
+pub fn in_popin<T>(build: impl FnOnce() -> T) -> T {
+    let before = IN_POPIN.with(|c| c.replace(true));
+    let built = build();
+    IN_POPIN.with(|c| c.set(before));
+    built
+}
+
+/// The corner of a control: rounded in a popin, sharp elsewhere.
+fn r_control() -> f32 {
+    if IN_POPIN.with(|c| c.get()) {
+        R_POPIN_CONTROL
+    } else {
+        R_ROW
+    }
+}
+
+/// `style` with the corner of the controls of the place it was made in.
+fn rounded(mut style: button::Style, radius: f32) -> button::Style {
+    if radius > 0.0 {
+        style.border.radius = radius.into();
+    }
+    style
+}
+
+/// The text that sits on a popin: lighter than `muted`, which is short of
+/// contrast on the color of a popin (4.5:1 wanted).
+pub fn muted_strong(dark: bool) -> Color {
+    if high_contrast() {
+        return palette(dark).muted;
+    }
+    if dark {
+        rgb(0xA3, 0xAA, 0xC0)
+    } else {
+        rgb(0x59, 0x61, 0x77)
+    }
+}
+
+/// The secondary text: `muted`, or the lighter one inside a popin.
+pub fn secondary(dark: bool) -> Color {
+    if IN_POPIN.with(|c| c.get()) {
+        muted_strong(dark)
+    } else {
+        palette(dark).muted
+    }
 }
 
 /// The high contrast themes are on: pure black or white, bright accents and
@@ -713,11 +770,17 @@ impl GhostButton {
 
 impl GhostButton {
     pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
-        move |_theme, status| match status {
-            button::Status::Active => self.active(),
-            button::Status::Hovered => self.hovered(),
-            button::Status::Pressed => self.pressed(),
-            button::Status::Disabled => dimmed(self.active()),
+        let r = r_control();
+        move |_theme, status| {
+            rounded(
+                match status {
+                    button::Status::Active => self.active(),
+                    button::Status::Hovered => self.hovered(),
+                    button::Status::Pressed => self.pressed(),
+                    button::Status::Disabled => dimmed(self.active()),
+                },
+                r,
+            )
         }
     }
 
@@ -901,11 +964,17 @@ pub struct Outline {
 
 impl Outline {
     pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
-        move |_theme, status| match status {
-            button::Status::Active => self.active(),
-            button::Status::Hovered => self.hovered(),
-            button::Status::Pressed => self.pressed(),
-            button::Status::Disabled => self.disabled(),
+        let r = r_control();
+        move |_theme, status| {
+            rounded(
+                match status {
+                    button::Status::Active => self.active(),
+                    button::Status::Hovered => self.hovered(),
+                    button::Status::Pressed => self.pressed(),
+                    button::Status::Disabled => self.disabled(),
+                },
+                r,
+            )
         }
     }
 
@@ -936,11 +1005,17 @@ pub struct Primary {
 
 impl Primary {
     pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
-        move |_theme, status| match status {
-            button::Status::Active => self.active(),
-            button::Status::Hovered => self.hovered(),
-            button::Status::Pressed => self.pressed(),
-            button::Status::Disabled => dimmed(self.active()),
+        let r = r_control();
+        move |_theme, status| {
+            rounded(
+                match status {
+                    button::Status::Active => self.active(),
+                    button::Status::Hovered => self.hovered(),
+                    button::Status::Pressed => self.pressed(),
+                    button::Status::Disabled => dimmed(self.active()),
+                },
+                r,
+            )
         }
     }
 
@@ -1013,6 +1088,7 @@ pub struct Tile {
 
 impl Tile {
     pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
+        let r = r_control();
         move |_theme, status| {
             let p = palette(self.dark);
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1023,7 +1099,7 @@ impl Tile {
             } else {
                 (Some(p.bg), p.border_strong, p.muted)
             };
-            button_appearance(background, ink, border(line, 1.0, R_ROW))
+            button_appearance(background, ink, border(line, 1.0, r))
         }
     }
 }
@@ -1035,6 +1111,7 @@ pub struct Danger {
 
 impl Danger {
     pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
+        let r = r_control();
         move |_theme, status| {
             let p = palette(self.dark);
             let fill = error_color(self.dark);
@@ -1047,6 +1124,7 @@ impl Danger {
                 p.accent_ink,
                 border(Color::TRANSPARENT, 0.0, R_ROW),
             );
+            let look = rounded(look, r);
             if status == button::Status::Disabled {
                 dimmed(look)
             } else {
@@ -1082,11 +1160,17 @@ impl SidebarRow {
 
 impl SidebarRow {
     pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
-        move |_theme, status| match status {
-            button::Status::Active => self.active(),
-            button::Status::Hovered => self.hovered(),
-            button::Status::Pressed => self.pressed(),
-            button::Status::Disabled => dimmed(self.active()),
+        let r = r_control();
+        move |_theme, status| {
+            rounded(
+                match status {
+                    button::Status::Active => self.active(),
+                    button::Status::Hovered => self.hovered(),
+                    button::Status::Pressed => self.pressed(),
+                    button::Status::Disabled => dimmed(self.active()),
+                },
+                r,
+            )
         }
     }
 
@@ -1163,7 +1247,7 @@ impl Field {
         Self {
             dark,
             accent: false,
-            radius: R_ROW,
+            radius: r_control(),
         }
     }
 }
@@ -1264,6 +1348,7 @@ pub struct Select {
 
 impl Select {
     pub fn style(self) -> impl Fn(&Theme, pick_list::Status) -> pick_list::Style {
+        let r = r_control();
         move |_theme, status| {
             let p = palette(self.dark);
             let line = match status {
@@ -1275,7 +1360,7 @@ impl Select {
                 placeholder_color: p.muted,
                 handle_color: p.muted,
                 background: Background::Color(p.bg),
-                border: border(line, 1.0, R_ROW),
+                border: border(line, 1.0, r),
             }
         }
     }
@@ -1295,22 +1380,57 @@ impl Select {
     }
 }
 
+/// The card of a popin: the elevated color, a hairline, rounded corners.
+pub fn popin_card(dark: bool) -> impl Fn(&Theme) -> container::Style {
+    let p = palette(dark);
+    move |_theme: &Theme| container::Style {
+        text_color: Some(p.text),
+        background: Some(Background::Color(p.elevated)),
+        border: border(p.border_strong, 1.0, R_POPIN),
+        shadow: float_shadow(dark),
+        ..container::Style::default()
+    }
+}
+
+/// The tile of the picto of a header: a soft wash of the accent, or of red
+/// for a loss.
+pub fn popin_tile(dark: bool, danger: bool) -> impl Fn(&Theme) -> container::Style {
+    let p = palette(dark);
+    let color = if danger { error_color(dark) } else { p.accent };
+    move |_theme: &Theme| container::Style {
+        text_color: Some(color),
+        background: Some(Background::Color(if danger {
+            Color { a: 0.14, ..color }
+        } else {
+            p.accent_soft
+        })),
+        border: border(Color::TRANSPARENT, 0.0, 8.0),
+        ..container::Style::default()
+    }
+}
+
+/// The footer of a popin: a darker band, rounded at the bottom like the card.
+pub fn popin_footer(dark: bool) -> impl Fn(&Theme) -> container::Style {
+    let p = palette(dark);
+    move |_theme: &Theme| container::Style {
+        background: Some(Background::Color(p.tabs)),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: iced::border::Radius::default()
+                .bottom_left(R_POPIN - 1.0)
+                .bottom_right(R_POPIN - 1.0),
+        },
+        ..container::Style::default()
+    }
+}
+
 /// A 1px hairline inside a popin (its own color is the popin's, so the
 /// plain rule would vanish): under the header, over the footer.
 pub fn popin_rule(dark: bool) -> impl Fn(&Theme) -> container::Style {
     let p = palette(dark);
     move |_theme| container::Style {
         background: Some(Background::Color(p.border_strong)),
-        ..container::Style::default()
-    }
-}
-
-/// The square pastille behind the picto of a confirmation: a soft wash of
-/// `color`.
-pub fn popin_pastille(color: Color) -> impl Fn(&Theme) -> container::Style {
-    move |_theme| container::Style {
-        text_color: Some(color),
-        background: Some(Background::Color(Color { a: 0.14, ..color })),
         ..container::Style::default()
     }
 }
@@ -1336,6 +1456,7 @@ pub struct IconButton {
 
 impl IconButton {
     pub fn style(self) -> impl Fn(&Theme, button::Status) -> button::Style {
+        let r = r_control();
         move |_theme, status| {
             let p = palette(self.dark);
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1355,7 +1476,7 @@ impl IconButton {
             } else {
                 border(Color::TRANSPARENT, 0.0, R_ROW)
             };
-            let look = button_appearance(hovered.then_some(p.hover), ink, line);
+            let look = rounded(button_appearance(hovered.then_some(p.hover), ink, line), r);
             if status == button::Status::Disabled {
                 dimmed(look)
             } else {

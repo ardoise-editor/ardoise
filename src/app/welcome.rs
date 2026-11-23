@@ -13,7 +13,7 @@ use crate::theme as se_theme;
 impl ArdoiseApp {
     pub(super) fn view_welcome_overlay(&self, dark: bool) -> Element<'_, Message> {
         let p = se_theme::palette(dark);
-        let note = move |said: String| text(said).size(12).color(p.muted);
+        let note = move |said: String| text(said).size(12).color(se_theme::muted_strong(dark));
         let heading = move |said: String| {
             text(said)
                 .size(13)
@@ -36,7 +36,8 @@ impl ArdoiseApp {
         popin::card(
             dark,
             popin::WIDTH_FORM,
-            t!("welcome.title").to_string(),
+            popin::Head::new("sparkles", t!("welcome.title").to_string())
+                .sub(t!("welcome.subtitle").to_string()),
             Some(Message::CloseOverlay),
             container(
                 scrollable(container(body).padding(iced::Padding {
@@ -61,8 +62,7 @@ impl ArdoiseApp {
 
     /// The official plugins, each with its button.
     fn welcome_plugins(&self, dark: bool) -> Element<'_, Message> {
-        let p = se_theme::palette(dark);
-        let note = move |said: String| text(said).size(12).color(p.muted);
+        let note = move |said: String| text(said).size(12).color(se_theme::muted_strong(dark));
         let locale = rust_i18n::locale();
         match &self.plugins.registry {
             Registry::Unknown | Registry::Loading => {

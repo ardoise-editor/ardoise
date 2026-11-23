@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## [2.6.0] - 2026-11-23
+
+### Modifié
+- Toutes les popins ont le nouveau design : un en-tête avec un picto et une ligne sous le titre, des coins arrondis, un pied plus sombre, des contrôles aux coins doux et un texte secondaire plus lisible. Cela concerne À propos, Mise à jour, Nouveautés, Préférences, Rechercher partout, les confirmations, le renommage, Aller à la ligne, les choix de la barre d'état et les popins des plugins (SDK des plugins 0.14 : une popin peut dire son picto et son sous-titre).
+
 ## [2.5.0] - 2026-11-23
 
 ### Ajouté
