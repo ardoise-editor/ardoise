@@ -799,6 +799,18 @@ pub fn entries(
 /// always on).
 fn available(command: PaletteCommand, ed: &crate::menus::EditorState) -> bool {
     match command {
+        PaletteCommand::SaveFile
+        | PaletteCommand::SaveFileAs
+        | PaletteCommand::CloseFile
+        | PaletteCommand::RevertFile
+        | PaletteCommand::GotoLine
+        | PaletteCommand::ToggleBookmark => ed.has_file,
+        PaletteCommand::SaveAll => ed.any_modified,
+        PaletteCommand::CloseAllTabs => ed.has_tabs,
+        PaletteCommand::SplitRight | PaletteCommand::SplitDown => ed.can_split,
+        PaletteCommand::Line(_) | PaletteCommand::Case(_) | PaletteCommand::ConvertIndent(_) => {
+            ed.can_edit
+        }
         PaletteCommand::ReopenTab => ed.can_reopen,
         PaletteCommand::CloseOtherTabs => ed.several_tabs,
         PaletteCommand::NavBack => ed.can_back,
@@ -877,6 +889,14 @@ mod tests {
             PaletteCommand::ToggleFold,
             PaletteCommand::FoldAll,
             PaletteCommand::UnfoldAll,
+            PaletteCommand::SaveFile,
+            PaletteCommand::SaveFileAs,
+            PaletteCommand::SaveAll,
+            PaletteCommand::CloseFile,
+            PaletteCommand::CloseAllTabs,
+            PaletteCommand::GotoLine,
+            PaletteCommand::ToggleBookmark,
+            PaletteCommand::SplitRight,
         ] {
             assert_eq!(state_of(&fresh, command), Some(false), "{command:?}");
         }
@@ -887,6 +907,21 @@ mod tests {
             ..fresh
         };
         assert_eq!(state_of(&woken, PaletteCommand::ReopenTab), Some(true));
+        let with_file = crate::menus::EditorState {
+            has_file: true,
+            can_split: true,
+            any_modified: true,
+            ..fresh
+        };
+        for command in [
+            PaletteCommand::SaveFile,
+            PaletteCommand::CloseFile,
+            PaletteCommand::GotoLine,
+            PaletteCommand::SplitRight,
+            PaletteCommand::SaveAll,
+        ] {
+            assert_eq!(state_of(&with_file, command), Some(true), "{command:?}");
+        }
         assert_eq!(state_of(&woken, PaletteCommand::Complete), Some(true));
     }
 

@@ -67,7 +67,7 @@ async fn newest_versions(list: Vec<(String, String)>) -> Vec<(String, Result<Str
     out
 }
 
-fn open_url(url: &str) {
+pub(super) fn open_url(url: &str) {
     let program = if cfg!(target_os = "macos") {
         "open"
     } else {

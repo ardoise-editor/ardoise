@@ -83,7 +83,7 @@ pub struct ShortcutConfig {
 }
 
 impl ShortcutConfig {
-    fn ctrl(key: &str) -> Self {
+    pub fn ctrl(key: &str) -> Self {
         Self {
             ctrl: true,
             shift: false,
