@@ -1977,6 +1977,62 @@ mod behavior_tests {
 }
 
 #[cfg(test)]
+mod menu_state_tests {
+    use super::*;
+
+    fn fresh() -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        app
+    }
+
+    #[test]
+    fn a_fresh_editor_has_nothing_to_undo_go_back_to_check_or_fold() {
+        let app = fresh();
+        let s = app.menu_editor();
+        assert!(!s.can_undo && !s.can_redo);
+        assert!(!s.can_back && !s.can_forward);
+        assert!(!s.can_check && !s.has_problems);
+        assert!(!s.fold.here && !s.fold.any && !s.fold.folded);
+        assert!(!s.can_reopen);
+    }
+
+    #[test]
+    fn typing_wakes_undo_up_and_undoing_wakes_redo_up() {
+        let mut app = fresh();
+        let _ = app.update(Message::EditorAction(text_editor::Action::Edit(
+            text_editor::Edit::Insert('x'),
+        )));
+        assert!(app.menu_editor().can_undo);
+        let _ = app.update(Message::Undo);
+        let s = app.menu_editor();
+        assert!(s.can_redo, "something was undone, it can be done again");
+    }
+
+    #[test]
+    fn a_block_around_the_cursor_wakes_the_fold_entries_up() {
+        let mut app = fresh();
+        app.editor.language = Some("rs".into());
+        let _ = app.update(Message::TabRead(Ok(Loaded {
+            path: PathBuf::from("/tmp/menu-state/a.rs"),
+            text: "fn main() {\n    let a = 1;\n    let b = 2;\n}\n".into(),
+            format: TextFormat::default(),
+            stamp: None,
+        })));
+        let _ = app.update(Message::EditorAction(text_editor::Action::Move(
+            text_editor::Motion::DocumentStart,
+        )));
+        let s = app.menu_editor();
+        assert!(s.fold.any && s.fold.here, "{s:?}");
+        assert!(!s.fold.folded);
+        let _ = app.update(Message::FoldAll);
+        assert!(app.menu_editor().fold.folded);
+        let _ = app.update(Message::UnfoldAll);
+        assert!(!app.menu_editor().fold.folded);
+    }
+}
+
+#[cfg(test)]
 mod welcome_tests {
     use super::*;
 

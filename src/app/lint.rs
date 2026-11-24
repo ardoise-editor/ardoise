@@ -66,6 +66,11 @@ fn ext_of(path: &Path) -> String {
 
 impl ArdoiseApp {
     /// The text the problems are about: a real file, as it is now.
+    /// A file kept on disk is in front: it can be checked.
+    pub(super) fn lint_can_check(&self) -> bool {
+        self.lint_key().is_some()
+    }
+
     fn lint_key(&self) -> Option<Key> {
         let path = self
             .current_file

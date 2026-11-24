@@ -1972,6 +1972,33 @@ impl ArdoiseApp {
         self.plugin_update(PluginMsg::ToggleSettings(id.to_string()))
     }
 
+    /// The panels of the installed plugins, for the View › Panel menu:
+    /// (title, what shows it). Git and the terminal have entries of their own
+    /// (with their shortcut), so they are not here twice.
+    pub(super) fn menu_panels(&self) -> Vec<(String, Message)> {
+        let locale = rust_i18n::locale();
+        [Location::Sidebar, Location::Bottom]
+            .into_iter()
+            .flat_map(|location| self.plugins.panels(location))
+            .filter(|(plugin, _)| {
+                ![
+                    crate::plugins::migrate::GIT,
+                    crate::plugins::migrate::TERMINAL,
+                ]
+                .contains(&plugin.id())
+            })
+            .map(|(plugin, panel)| {
+                (
+                    panel.title.get(&locale).to_string(),
+                    plugin_msg(PluginMsg::TogglePanel(
+                        plugin.id().to_string(),
+                        panel.id.clone(),
+                    )),
+                )
+            })
+            .collect()
+    }
+
     pub(super) fn plugin_tools(&self, location: Location) -> Vec<(String, bool, String, Message)> {
         let open = match location {
             Location::Sidebar => self.plugins.sidebar.as_ref().filter(|_| self.show_sidebar),
@@ -2534,6 +2561,54 @@ mod tab_tests {
             methods::OPEN_TAB,
             serde_json::json!({"tab": tab, "title": title, "dialog": true}),
         )
+    }
+
+    fn install(app: &mut ArdoiseApp, json: &str) {
+        let manifest = ardoise_plugin::manifest::Manifest::parse(json).unwrap();
+        app.plugins.installed.push(Installed {
+            manifest,
+            dir: PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+    }
+
+    #[test]
+    fn the_panel_menu_lists_the_panels_of_every_plugin_installed_and_only_those() {
+        let mut app = app_with_plugin();
+        // The plugin of the tests has no panel: nothing for it.
+        assert!(app.menu_panels().is_empty());
+        install(
+            &mut app,
+            r#"{"id": "acme.api", "name": "API", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"panels": [
+                    {"id": "api", "title": {"en": "API", "fr": "API"}, "location": "sidebar"},
+                    {"id": "log", "title": "Log", "location": "bottom"},
+                    {"id": "prefs", "title": "Settings", "location": "settings"}
+                ]}}"#,
+        );
+        let titles: Vec<String> = app.menu_panels().into_iter().map(|(t, _)| t).collect();
+        assert_eq!(titles, vec!["API".to_string(), "Log".to_string()]);
+        // Git and the terminal have entries of their own: not twice.
+        install(
+            &mut app,
+            r#"{"id": "ardoise.git", "name": "Git", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "git", "title": "Git", "location": "sidebar"}]}}"#,
+        );
+        assert_eq!(app.menu_panels().len(), 2);
+        // Another plugin comes: its panel shows at once.
+        install(
+            &mut app,
+            r#"{"id": "acme.db", "name": "DB", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "db", "title": "Database", "location": "sidebar"}]}}"#,
+        );
+        let titles: Vec<String> = app.menu_panels().into_iter().map(|(t, _)| t).collect();
+        assert!(titles.contains(&"Database".to_string()));
+        // What an entry does: shows its panel.
+        let (_, message) = &app.menu_panels()[0];
+        assert!(matches!(
+            message,
+            Message::Plugin(PluginMsg::TogglePanel(plugin, panel)) if plugin == "acme.api" && panel == "api"
+        ));
     }
 
     #[test]

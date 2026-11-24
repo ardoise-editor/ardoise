@@ -181,6 +181,17 @@ pub struct FoldPaint {
     pub tooltip_border: Color,
 }
 
+/// What can be folded in a text (see `Content::fold_state`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FoldState {
+    /// A block surrounds the cursor.
+    pub here: bool,
+    /// The text has blocks.
+    pub any: bool,
+    /// Some block is folded.
+    pub folded: bool,
+}
+
 /// What the app can ask of the folds of a [`Content`].
 #[derive(Debug, Clone, Copy)]
 pub enum FoldCommand {
@@ -2207,6 +2218,20 @@ impl Content {
         internal.refresh_folds(kind);
         internal.step_out_of_folds(usize::MAX);
         internal.refresh_folds(kind);
+    }
+
+    /// What can be folded now, for the menus: whether there is a block
+    /// around the cursor, whether the text has blocks at all, whether
+    /// something is folded.
+    pub fn fold_state(&self, kind: Kind) -> FoldState {
+        let mut internal = self.0.borrow_mut();
+        internal.refresh_folds(kind);
+        let line = internal.editor.cursor().position.line;
+        FoldState {
+            here: internal.regions.innermost(line).is_some(),
+            any: !internal.regions.is_empty(),
+            folded: !internal.folds.is_empty(),
+        }
     }
 
     /// The lines folded away now.

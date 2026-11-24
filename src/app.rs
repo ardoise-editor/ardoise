@@ -1321,6 +1321,8 @@ impl ArdoiseApp {
             bookmarks: self.bookmark_state(),
             tools: self.plugins.tools(),
             split: self.split.is_some(),
+            panels: self.menu_panels(),
+            editor: self.menu_editor(),
         };
         let signature = state.signature();
         if signature != self.native_menu_state {
@@ -1874,6 +1876,8 @@ impl ArdoiseApp {
                     bookmarks: self.bookmark_state(),
                     tools: self.plugins.tools(),
                     split: self.split.is_some(),
+                    panels: self.menu_panels(),
+                    editor: self.menu_editor(),
                 },
                 self.open_submenu,
             );
@@ -5841,6 +5845,22 @@ impl ArdoiseApp {
         self.current_file
             .as_deref()
             .map_or(&[], |path| self.bookmarks.lines(path))
+    }
+
+    /// What the menus need to know of the editor to switch entries on or off.
+    fn menu_editor(&self) -> crate::menus::EditorState {
+        let kind = crate::folding::Kind::of(self.editor.language.as_deref());
+        crate::menus::EditorState {
+            can_undo: !self.undo_stack.is_empty(),
+            can_redo: !self.redo_stack.is_empty(),
+            can_back: !self.nav_back.is_empty(),
+            can_forward: !self.nav_forward.is_empty(),
+            can_reopen: !self.closed_tabs.is_empty(),
+            several_tabs: self.sidebar.files().len() > 1,
+            can_check: self.config.lint_enabled && self.lint_can_check(),
+            has_problems: !self.visible_problems().is_empty(),
+            fold: self.editor.content.fold_state(kind),
+        }
     }
 
     fn bookmark_state(&self) -> crate::menu_bar::BookmarkState {

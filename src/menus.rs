@@ -42,6 +42,25 @@ pub enum Entry {
     },
 }
 
+/// What the entries of the menus need to be on: an entry that cannot do
+/// anything now is off, and wakes up when it can.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EditorState {
+    pub can_undo: bool,
+    pub can_redo: bool,
+    pub can_back: bool,
+    pub can_forward: bool,
+    /// A tab was closed, and can be brought back.
+    pub can_reopen: bool,
+    /// More than one tab is open.
+    pub several_tabs: bool,
+    /// The file in front can be checked for problems.
+    pub can_check: bool,
+    /// The file in front has problems shown.
+    pub has_problems: bool,
+    pub fold: crate::code_editor::FoldState,
+}
+
 /// What the menus depend on.
 pub struct MenuState<'a> {
     pub config: &'a Config,
@@ -51,6 +70,9 @@ pub struct MenuState<'a> {
     pub tools: crate::plugins::Tools,
     /// The editor is split: there is a pane to close.
     pub split: bool,
+    /// The panels of the other plugins installed: (title, what shows it).
+    pub panels: Vec<(String, Message)>,
+    pub editor: EditorState,
 }
 
 fn item(label: impl Into<String>, shortcut: Option<&ShortcutConfig>, message: Message) -> Entry {
@@ -106,6 +128,7 @@ pub fn entries(menu: TopMenu, state: &MenuState, native: bool) -> Vec<Entry> {
 
 fn file(state: &MenuState, native: bool) -> Vec<Entry> {
     let sh = &state.config.shortcuts;
+    let ed = state.editor;
     let recents: Vec<PathBuf> = state
         .config
         .recent_files
@@ -127,7 +150,8 @@ fn file(state: &MenuState, native: bool) -> Vec<Entry> {
         item(t!("menu.file_new"), Some(&sh.new_file), Message::NewFile),
         item(t!("menu.file_open"), Some(&sh.open_file), Message::OpenFile),
         item(t!("menu.file_add_project"), None, Message::AddProject),
-        item(
+        item_if(
+            ed.can_reopen,
             t!("shortcuts.reopen_tab"),
             Some(&sh.reopen_tab),
             Message::ReopenTab,
@@ -151,7 +175,12 @@ fn file(state: &MenuState, native: bool) -> Vec<Entry> {
             Some(&sh.close_file),
             Message::CloseFile,
         ),
-        item(t!("menu.file_close_others"), None, Message::CloseOtherTabs),
+        item_if(
+            ed.several_tabs,
+            t!("menu.file_close_others"),
+            None,
+            Message::CloseOtherTabs,
+        ),
         item(t!("menu.file_close_all"), None, Message::CloseTabs(None)),
     ];
     if !native {
@@ -168,6 +197,7 @@ fn file(state: &MenuState, native: bool) -> Vec<Entry> {
 
 fn edit(state: &MenuState) -> Vec<Entry> {
     let sh = &state.config.shortcuts;
+    let ed = state.editor;
     let marks = state.bookmarks;
     let find = sub(
         SubMenu::EditFind,
@@ -226,10 +256,25 @@ fn edit(state: &MenuState) -> Vec<Entry> {
         SubMenu::EditProblems,
         t!("menu.sub_problems"),
         vec![
-            item(t!("menu.lint_check"), None, Message::LintNow),
-            item(t!("menu.lint_fix"), None, Message::LintFixAll),
-            item(t!("menu.lint_next"), None, Message::LintNext(true)),
-            item(t!("menu.lint_prev"), None, Message::LintNext(false)),
+            item_if(ed.can_check, t!("menu.lint_check"), None, Message::LintNow),
+            item_if(
+                ed.can_check && ed.has_problems,
+                t!("menu.lint_fix"),
+                None,
+                Message::LintFixAll,
+            ),
+            item_if(
+                ed.has_problems,
+                t!("menu.lint_next"),
+                None,
+                Message::LintNext(true),
+            ),
+            item_if(
+                ed.has_problems,
+                t!("menu.lint_prev"),
+                None,
+                Message::LintNext(false),
+            ),
         ],
     );
     let toggle = if marks.on_line {
@@ -266,18 +311,34 @@ fn edit(state: &MenuState) -> Vec<Entry> {
         SubMenu::EditFold,
         t!("menu.sub_fold"),
         vec![
-            item(
+            item_if(
+                ed.fold.here,
                 t!("menu.fold_toggle"),
                 Some(&sh.toggle_fold),
                 Message::ToggleFold,
             ),
-            item(t!("menu.fold_all"), None, Message::FoldAll),
-            item(t!("menu.unfold_all"), None, Message::UnfoldAll),
+            item_if(ed.fold.any, t!("menu.fold_all"), None, Message::FoldAll),
+            item_if(
+                ed.fold.folded,
+                t!("menu.unfold_all"),
+                None,
+                Message::UnfoldAll,
+            ),
         ],
     );
     vec![
-        item(t!("menu.edit_undo"), Some(&sh.undo), Message::Undo),
-        item(t!("menu.edit_redo"), Some(&sh.redo), Message::Redo),
+        item_if(
+            ed.can_undo,
+            t!("menu.edit_undo"),
+            Some(&sh.undo),
+            Message::Undo,
+        ),
+        item_if(
+            ed.can_redo,
+            t!("menu.edit_redo"),
+            Some(&sh.redo),
+            Message::Redo,
+        ),
         Entry::Separator,
         item(
             t!("menu.edit_select_all"),
@@ -296,8 +357,14 @@ fn edit(state: &MenuState) -> Vec<Entry> {
         bookmarks,
         fold,
         Entry::Separator,
-        item(t!("menu.nav_back"), Some(&sh.nav_back), Message::NavBack),
-        item(
+        item_if(
+            ed.can_back,
+            t!("menu.nav_back"),
+            Some(&sh.nav_back),
+            Message::NavBack,
+        ),
+        item_if(
+            ed.can_forward,
             t!("menu.nav_forward"),
             Some(&sh.nav_forward),
             Message::NavForward,
@@ -331,7 +398,7 @@ fn view(state: &MenuState) -> Vec<Entry> {
         Message::ToggleSidebar,
     )];
     // The panels of the plugins, once the plugin is installed.
-    if state.tools.git || state.tools.terminal {
+    if state.tools.git || state.tools.terminal || !state.panels.is_empty() {
         panel.push(Entry::Separator);
     }
     if state.tools.git {
@@ -347,6 +414,10 @@ fn view(state: &MenuState) -> Vec<Entry> {
             Some(&sh.toggle_terminal),
             Message::ToggleTerminal,
         ));
+    }
+    // The panels of every other plugin installed, as soon as it is there.
+    for (title, message) in &state.panels {
+        panel.push(item(title.clone(), None, message.clone()));
     }
     let numbers = if config.show_line_numbers {
         t!("menu.view_line_numbers_hide")
@@ -424,6 +495,8 @@ mod tests {
             bookmarks: BookmarkState::default(),
             tools: crate::plugins::Tools::default(),
             split: false,
+            panels: Vec::new(),
+            editor: EditorState::default(),
         }
     }
 
@@ -544,6 +617,88 @@ mod tests {
         assert!(some.iter().all(|(_, on)| *on));
     }
 
+    /// Whether the entry with this label is on, wherever it is in the menu.
+    fn is_on(entries: &[Entry], label: &str) -> Option<bool> {
+        entries.iter().find_map(|e| match e {
+            Entry::Item {
+                label: l, enabled, ..
+            } if l == label => Some(*enabled),
+            Entry::Sub {
+                entries: inner,
+                label: l,
+                ..
+            } => {
+                if l == label {
+                    None
+                } else {
+                    is_on(inner, label)
+                }
+            }
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn an_entry_that_cannot_do_anything_yet_is_off_and_wakes_up_when_it_can() {
+        let config = Config::default();
+        let all = |s: &MenuState| -> Vec<Entry> {
+            let mut all = entries(TopMenu::File, s, false);
+            all.extend(entries(TopMenu::Edit, s, false));
+            all
+        };
+        // A fresh editor: nothing to undo, to go back to, to check, to fold.
+        let fresh = state(&config);
+        let shown = all(&fresh);
+        for key in [
+            "menu.edit_undo",
+            "menu.edit_redo",
+            "menu.nav_back",
+            "menu.nav_forward",
+            "menu.lint_check",
+            "menu.lint_fix",
+            "menu.lint_next",
+            "menu.lint_prev",
+            "menu.fold_toggle",
+            "menu.fold_all",
+            "menu.unfold_all",
+            "menu.file_close_others",
+            "shortcuts.reopen_tab",
+        ] {
+            let label = t!(key).to_string();
+            assert_eq!(
+                is_on(&shown, &label),
+                Some(false),
+                "{key} is off at the start"
+            );
+        }
+        // What always works stays on.
+        assert_eq!(is_on(&shown, &t!("menu.edit_select_all")), Some(true));
+        // Each wakes up with what it needs.
+        let wake = |key: &str, edit: fn(&mut EditorState)| {
+            let mut s = state(&config);
+            edit(&mut s.editor);
+            assert_eq!(is_on(&all(&s), &t!(key)), Some(true), "{key}");
+        };
+        wake("menu.edit_undo", |e| e.can_undo = true);
+        wake("menu.edit_redo", |e| e.can_redo = true);
+        wake("menu.nav_back", |e| e.can_back = true);
+        wake("menu.nav_forward", |e| e.can_forward = true);
+        wake("shortcuts.reopen_tab", |e| e.can_reopen = true);
+        wake("menu.file_close_others", |e| e.several_tabs = true);
+        wake("menu.lint_check", |e| e.can_check = true);
+        wake("menu.lint_next", |e| e.has_problems = true);
+        wake("menu.lint_prev", |e| e.has_problems = true);
+        wake("menu.fold_toggle", |e| e.fold.here = true);
+        wake("menu.fold_all", |e| e.fold.any = true);
+        wake("menu.unfold_all", |e| e.fold.folded = true);
+        // Fixing needs a file that can be checked and problems to fix.
+        let mut fix = state(&config);
+        fix.editor.has_problems = true;
+        assert_eq!(is_on(&all(&fix), &t!("menu.lint_fix")), Some(false));
+        fix.editor.can_check = true;
+        assert_eq!(is_on(&all(&fix), &t!("menu.lint_fix")), Some(true));
+    }
+
     #[test]
     fn the_view_menu_has_the_panel_and_split_submenus_and_no_theme_switch() {
         let config = Config::default();
@@ -580,6 +735,17 @@ mod tests {
                     if label.as_str() == &*t!("menu.view_split_close"))
             })
         };
+        // The panels of the plugins installed are in Panel, after the ones
+        // with a shortcut.
+        let mut with_panels = state(&config);
+        with_panels.panels = vec![
+            ("API".to_string(), Message::ToggleSidebar),
+            ("Database".to_string(), Message::ToggleSidebar),
+        ];
+        let view_with = entries(TopMenu::View, &with_panels, false);
+        let shown = labels(submenu(&view_with, SubMenu::ViewPanel));
+        assert_eq!(shown.last().map(String::as_str), Some("Database"));
+        assert!(shown.contains(&"API".to_string()));
         let mut split = state(&config);
         assert!(!on(&split));
         split.split = true;
