@@ -555,12 +555,6 @@ fn view(state: &MenuState) -> Vec<Entry> {
                 !config.show_line_numbers,
             )),
         ),
-        item_if(
-            state.lang_picker_enabled,
-            t!("menu.view_language"),
-            None,
-            Message::OpenLanguagePicker,
-        ),
         toggle_entry(
             config.word_wrap,
             t!("menu.view_wrap_off"),
@@ -584,6 +578,13 @@ fn view(state: &MenuState) -> Vec<Entry> {
             t!("menu.view_indent_guides_hide"),
             t!("menu.view_indent_guides_show"),
             PreferencesMessage::ShowIndentGuidesToggled(!config.show_indent_guides),
+        ),
+        Entry::Separator,
+        item_if(
+            state.lang_picker_enabled,
+            t!("menu.view_language"),
+            None,
+            Message::OpenLanguagePicker,
         ),
     ]
 }

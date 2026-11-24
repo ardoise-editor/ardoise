@@ -1670,14 +1670,22 @@ impl ArdoiseApp {
                 .style(se_theme::Field::new(dark).style());
             let dir_row = row![
                 field,
-                button(text("▾").size(12))
-                    .padding([3, 8])
-                    .on_press(Message::FindMenu(Some(Menu::Dirs)))
-                    .style(ghost(f.menu == Some(Menu::Dirs))),
-                button(text("…").size(12))
-                    .padding([3, 8])
-                    .on_press(Message::FindPickDir)
-                    .style(ghost(false)),
+                crate::theme::with_tip(
+                    dark,
+                    button(text("▾").size(12))
+                        .padding([3, 8])
+                        .on_press(Message::FindMenu(Some(Menu::Dirs)))
+                        .style(ghost(f.menu == Some(Menu::Dirs))),
+                    t!("findrep.dirs_tip").to_string()
+                ),
+                crate::theme::with_tip(
+                    dark,
+                    button(text("…").size(12))
+                        .padding([3, 8])
+                        .on_press(Message::FindPickDir)
+                        .style(ghost(false)),
+                    t!("findrep.browse_tip").to_string()
+                ),
             ]
             .spacing(6)
             .align_y(Alignment::Center);

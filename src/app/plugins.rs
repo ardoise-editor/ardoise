@@ -2069,18 +2069,22 @@ impl ArdoiseApp {
             .color(p.muted)]
         .align_y(Alignment::Center);
         if let Some(close) = close {
-            header = header.push(Space::new().width(Length::Fill)).push(
-                button(text("×").size(16).color(p.muted))
-                    .padding([2, 6])
-                    .on_press(close)
-                    .style(
-                        (se_theme::GhostButton {
-                            dark,
-                            active: false,
-                        })
-                        .style(),
-                    ),
-            );
+            header = header
+                .push(Space::new().width(Length::Fill))
+                .push(crate::theme::with_tip(
+                    dark,
+                    button(text("×").size(16).color(p.muted))
+                        .padding([2, 6])
+                        .on_press(close)
+                        .style(
+                            (se_theme::GhostButton {
+                                dark,
+                                active: false,
+                            })
+                            .style(),
+                        ),
+                    t!("popin.close").to_string(),
+                ));
         }
         header.into()
     }

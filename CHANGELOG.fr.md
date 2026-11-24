@@ -1,5 +1,19 @@
 # Journal des modifications
 
+## [2.7.1] - 2026-11-24
+
+### Ajouté
+- Préférences › Snippets : une page dédiée qui explique leur fonctionnement et comment en créer ; chaque snippet peut être activé, désactivé ou supprimé ; deux exemples sont fournis à l’installation.
+- Clic droit sur la zone vide du panneau Fichiers (Nouveau fichier, Ouvrir un fichier, Ajouter un projet, Tout enregistrer, Tout fermer) et du panneau Projets (Ajouter un projet, Tout replier, Actualiser, Masquer/Afficher ce que Git ignore).
+- Préférences › Plugins : une recherche, et les plugins installés séparés de ceux qui sont disponibles.
+- Des infobulles sur les boutons qui n’étaient qu’un signe (fermer, masquer le panneau, dossiers récents, parcourir…).
+
+### Modifié
+- La police du texte se choisit dans la liste des polices à chasse fixe installées (c’était un champ à saisir).
+- Les dictionnaires du correcteur sont listés sur la page Orthographe dès son affichage, avec la façon d’en installer d’autres.
+- Menu Affichage : « Langage du fichier… » est tout en bas, à part.
+- L’infobulle du panneau Fichiers affiche « Fichiers ».
+
 ## [2.7.0] - 2026-11-24
 
 ### Ajouté

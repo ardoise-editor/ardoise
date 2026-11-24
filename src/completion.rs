@@ -639,7 +639,9 @@ pub fn snippet_items(
     let list: Vec<Value> = snippets
         .iter()
         .filter(|s| {
-            s.languages.is_empty() || s.languages.iter().any(|l| l.eq_ignore_ascii_case(ext))
+            s.enabled
+                && (s.languages.is_empty()
+                    || s.languages.iter().any(|l| l.eq_ignore_ascii_case(ext)))
         })
         .filter(|s| !s.trigger.is_empty() && s.trigger.to_lowercase().starts_with(&wanted))
         .map(|s| {

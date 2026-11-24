@@ -230,10 +230,14 @@ impl ArdoiseApp {
                 .font(se_theme::UI_SEMIBOLD)
                 .color(p.text),
             Space::new().width(Length::Fill),
-            button(text("—").size(12))
-                .padding([1, 8])
-                .on_press(Message::ToggleBookmarkPanel)
-                .style(ghost(false)),
+            crate::theme::with_tip(
+                dark,
+                button(text("—").size(12))
+                    .padding([1, 8])
+                    .on_press(Message::ToggleBookmarkPanel)
+                    .style(ghost(false)),
+                t!("panel.hide").to_string()
+            ),
         ]
         .align_y(Alignment::Center);
 

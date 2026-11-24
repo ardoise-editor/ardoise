@@ -375,10 +375,14 @@ impl ArdoiseApp {
             .menu_style(se_theme::Select { dark }.menu_style()),
             create,
             Space::new().width(Length::Fill),
-            button(text("—").size(12))
-                .padding([1, 8])
-                .on_press(Message::ToggleScratch)
-                .style(ghost(false)),
+            crate::theme::with_tip(
+                dark,
+                button(text("—").size(12))
+                    .padding([1, 8])
+                    .on_press(Message::ToggleScratch)
+                    .style(ghost(false)),
+                t!("panel.hide").to_string()
+            ),
         ]
         .spacing(6)
         .align_y(Alignment::Center);
@@ -1242,7 +1246,8 @@ impl ArdoiseApp {
                         container(Space::new().width(6).height(6)).style(se_theme::dot(p.accent)),
                     );
                 }
-                label = label.push(
+                label = label.push(crate::theme::with_tip(
+                    dark,
                     button(text("×").size(13).color(p.muted))
                         .padding([0, 4])
                         .on_press(Message::Sidebar(SidebarMessage::RemoveFile(path.clone())))
@@ -1253,7 +1258,8 @@ impl ArdoiseApp {
                             })
                             .style(),
                         ),
-                );
+                    t!("sidebar.close").to_string(),
+                ));
                 let tab = button(container(label).center_y(Length::Fixed(TAB_HEIGHT)))
                     .padding([0, 12])
                     .on_press(Message::Sidebar(SidebarMessage::OpenFile(path.clone())))

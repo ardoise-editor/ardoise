@@ -65,6 +65,7 @@ impl Group {
         Some(match self {
             Group::Completion => PrefsPage::Servers,
             Group::Appearance => PrefsPage::Appearance,
+            Group::Snippets => PrefsPage::Snippets,
             Group::Git | Group::Spelling => return None,
             _ => PrefsPage::Editor,
         })
@@ -184,32 +185,30 @@ pub fn all<'a>(state: &'a PreferencesState, ctx: &Context<'_>) -> Vec<Setting<'a
         label.clone(),
         setting_row(label, font_size.into()),
     );
-    let family = row![
-        text_input("JetBrains Mono", &state.font_draft)
-            .on_input(|v| msg(PreferencesMessage::FontFamilyTyped(v)))
-            .on_submit(msg(PreferencesMessage::FontFamilySet(
-                state.font_draft.clone()
-            )))
-            .padding([6, 10])
-            .size(13)
-            .width(180)
-            .style(theme::Field::new(dark).style()),
-        small_button(
-            dark,
-            t!("prefs.apply").to_string(),
-            Some(msg(PreferencesMessage::FontFamilySet(
-                state.font_draft.clone()
-            ))),
-        ),
-        small_button(
-            dark,
-            t!("prefs.scratch_reset").to_string(),
-            (!config.font_family.is_empty())
-                .then(|| msg(PreferencesMessage::FontFamilySet(String::new()))),
-        ),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
+    // The fixed-width fonts installed, to choose from (the bundled one first).
+    let default = t!("prefs.font_default").to_string();
+    let mut fonts = vec![default.clone()];
+    fonts.extend(theme::installed_mono_fonts().iter().cloned());
+    let chosen = if config.font_family.is_empty() {
+        default.clone()
+    } else {
+        config.font_family.clone()
+    };
+    if !fonts.contains(&chosen) {
+        fonts.push(chosen.clone());
+    }
+    let family = pick_list(fonts, Some(chosen), move |picked| {
+        msg(PreferencesMessage::FontFamilySet(if picked == default {
+            String::new()
+        } else {
+            picked
+        }))
+    })
+    .padding([6, 12])
+    .width(220)
+    .text_size(13)
+    .style(theme::Select { dark }.style())
+    .menu_style(theme::Select { dark }.menu_style());
     let label = t!("prefs.font_family").to_string();
     add(
         Group::Display,
@@ -639,16 +638,23 @@ pub fn all<'a>(state: &'a PreferencesState, ctx: &Context<'_>) -> Vec<Setting<'a
         } else {
             format!("{}  ({})", snippet.trigger, snippet.languages.join(", "))
         };
+        let muted = if snippet.enabled {
+            theme::muted_strong(dark)
+        } else {
+            theme::muted_strong(dark).scale_alpha(0.5)
+        };
         add(
             Group::Snippets,
             format!("{} {}", snippet.trigger, first_line),
             setting_row(
                 shown,
                 row![
-                    text(first_line)
-                        .size(12)
-                        .font(theme::MONO)
-                        .color(theme::muted_strong(dark)),
+                    text(first_line).size(12).font(theme::MONO).color(muted),
+                    switch(
+                        dark,
+                        snippet.enabled,
+                        msg(PreferencesMessage::SnippetEnabled(i, !snippet.enabled)),
+                    ),
                     small_button(
                         dark,
                         t!("prefs.remove").to_string(),
@@ -849,6 +855,26 @@ pub fn all<'a>(state: &'a PreferencesState, ctx: &Context<'_>) -> Vec<Setting<'a
         label.clone(),
         setting_row(label, select.into()),
     );
+    // Where the dictionaries come from: there is nothing to add here, they are
+    // the ones of the machine.
+    let none = ctx.spell_choices.is_empty();
+    let help = if none {
+        format!(
+            "{} {}",
+            t!("prefs.spell_dictionaries_none"),
+            t!("prefs.spell_dictionaries_help")
+        )
+    } else {
+        t!("prefs.spell_dictionaries_help").to_string()
+    };
+    add(
+        Group::Spelling,
+        t!("prefs.spell_dictionaries_title").to_string(),
+        container(text(help).size(12).color(theme::muted_strong(dark)))
+            .padding([12, 16])
+            .width(Length::Fill)
+            .into(),
+    );
 
     out
 }
@@ -946,4 +972,25 @@ pub fn found<'a>(settings: Vec<Setting<'a>>, filter: &str, dark: bool) -> Elemen
         }
     }
     blocks(hits, &order, dark, true)
+}
+
+/// How snippets work and how to make one, above the list.
+pub fn snippets_help(dark: bool) -> Element<'static, Message> {
+    let body = |text_: String| text(text_).size(13).color(theme::muted_strong(dark));
+    container(
+        column![
+            text(t!("prefs.snippets_help_title").to_string())
+                .size(13)
+                .font(theme::UI_SEMIBOLD),
+            body(t!("prefs.snippets_help_what").to_string()),
+            body(t!("prefs.snippets_help_use").to_string()),
+            body(t!("prefs.snippets_help_make").to_string()),
+            body(t!("prefs.snippets_help_syntax").to_string()),
+        ]
+        .spacing(8),
+    )
+    .padding([14, 16])
+    .width(Length::Fill)
+    .style(theme::field(dark, false, theme::R_ROW))
+    .into()
 }
