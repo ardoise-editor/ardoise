@@ -49,6 +49,8 @@ pub struct MenuState<'a> {
     pub lang_picker_enabled: bool,
     pub bookmarks: BookmarkState,
     pub tools: crate::plugins::Tools,
+    /// The editor is split: there is a pane to close.
+    pub split: bool,
 }
 
 fn item(label: impl Into<String>, shortcut: Option<&ShortcutConfig>, message: Message) -> Entry {
@@ -323,14 +325,11 @@ fn edit(state: &MenuState) -> Vec<Entry> {
 fn view(state: &MenuState) -> Vec<Entry> {
     let config = state.config;
     let sh = &config.shortcuts;
-    let mut panel = vec![
-        item(
-            t!("menu.view_sidebar"),
-            Some(&sh.toggle_sidebar),
-            Message::ToggleSidebar,
-        ),
-        item(t!("menu.view_split_close"), None, Message::CloseSplit),
-    ];
+    let mut panel = vec![item(
+        t!("menu.view_sidebar"),
+        Some(&sh.toggle_sidebar),
+        Message::ToggleSidebar,
+    )];
     // The panels of the plugins, once the plugin is installed.
     if state.tools.git || state.tools.terminal {
         panel.push(Entry::Separator);
@@ -368,6 +367,13 @@ fn view(state: &MenuState) -> Vec<Entry> {
             vec![
                 item(t!("menu.view_split_right"), None, Message::Split(true)),
                 item(t!("menu.view_split_down"), None, Message::Split(false)),
+                // Only when the editor is split: else there is nothing to close.
+                item_if(
+                    state.split,
+                    t!("menu.view_split_close"),
+                    None,
+                    Message::CloseSplit,
+                ),
             ],
         ),
         Entry::Separator,
@@ -417,6 +423,7 @@ mod tests {
             lang_picker_enabled: true,
             bookmarks: BookmarkState::default(),
             tools: crate::plugins::Tools::default(),
+            split: false,
         }
     }
 
@@ -556,17 +563,27 @@ mod tests {
             labels(submenu(&view, SubMenu::ViewSplit)),
             vec![
                 t!("menu.view_split_right").to_string(),
-                t!("menu.view_split_down").to_string()
+                t!("menu.view_split_down").to_string(),
+                t!("menu.view_split_close").to_string()
             ]
         );
         assert_eq!(
             labels(submenu(&view, SubMenu::ViewPanel)),
-            vec![
-                t!("menu.view_sidebar").to_string(),
-                t!("menu.view_split_close").to_string()
-            ],
-            "no plugin, no entry of a plugin"
+            vec![t!("menu.view_sidebar").to_string()],
+            "no plugin, no entry of a plugin; closing a split is in Split"
         );
+        // Closing a split is off until the editor is split.
+        let on = |state: &MenuState| -> bool {
+            let view = entries(TopMenu::View, state, false);
+            submenu(&view, SubMenu::ViewSplit).iter().any(|e| {
+                matches!(e, Entry::Item { label, enabled: true, .. }
+                    if label.as_str() == &*t!("menu.view_split_close"))
+            })
+        };
+        let mut split = state(&config);
+        assert!(!on(&split));
+        split.split = true;
+        assert!(on(&split));
     }
 
     #[test]

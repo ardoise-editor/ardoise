@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.6.2] - 2026-11-24
+
+### Changed
+- "Close this split" is in View › Split (it was in View › Panel, where it was taken for the closing of a side panel), under that new name, and it is off until the editor is split.
+
 ## [2.6.1] - 2026-11-23
 
 ### Changed

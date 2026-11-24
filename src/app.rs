@@ -1320,6 +1320,7 @@ impl ArdoiseApp {
             lang_picker_enabled: self.language_picker_enabled(),
             bookmarks: self.bookmark_state(),
             tools: self.plugins.tools(),
+            split: self.split.is_some(),
         };
         let signature = state.signature();
         if signature != self.native_menu_state {
@@ -1872,6 +1873,7 @@ impl ArdoiseApp {
                     lang_picker_enabled: lang_override_enabled,
                     bookmarks: self.bookmark_state(),
                     tools: self.plugins.tools(),
+                    split: self.split.is_some(),
                 },
                 self.open_submenu,
             );

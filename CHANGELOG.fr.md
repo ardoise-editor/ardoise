@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## [2.6.2] - 2026-11-24
+
+### Modifié
+- « Fermer cette division » est dans Affichage › Diviser (elle était dans Affichage › Panneau, où on la prenait pour la fermeture d'un panneau latéral), sous ce nouveau nom, et elle est grisée tant que l'éditeur n'est pas divisé.
+
 ## [2.6.1] - 2026-11-23
 
 ### Modifié
