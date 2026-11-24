@@ -816,7 +816,7 @@ fn available(command: PaletteCommand, ed: &crate::menus::EditorState) -> bool {
 
 /// The lowercase base letter of `c`: "É" and "é" both give "e", so a query
 /// typed without accents finds a label that has them, and the other way round.
-fn fold(c: char) -> char {
+pub(crate) fn fold(c: char) -> char {
     match c {
         'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
         'ç' | 'ć' | 'č' | 'ĉ' | 'ċ' => 'c',

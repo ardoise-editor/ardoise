@@ -2266,6 +2266,25 @@ mod look_tests {
             }
             "about" => app.overlay = ActiveOverlay::About,
             "prefs" => app.show_preferences = true,
+            "prefs_shortcuts" => {
+                for id in ["ardoise.git", "ardoise.terminal"] {
+                    let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
+                        r#"{{"id": "{id}", "name": "{}", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#,
+                        if id.ends_with("git") { "Git" } else { "Terminal" }
+                    ))
+                    .unwrap();
+                    app.plugins.installed.push(crate::plugins::Installed {
+                        manifest,
+                        dir: PathBuf::from("/nowhere"),
+                        origin: Default::default(),
+                    });
+                }
+                app.show_preferences = true;
+                app.preferences.page = crate::preferences::PrefsPage::Shortcuts;
+                if let Ok(q) = std::env::var("SHORTCUT_FILTER") {
+                    app.preferences.shortcut_filter = q;
+                }
+            }
             "prefs_git" => {
                 for id in ["ardoise.git", "ardoise.spell"] {
                     let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(

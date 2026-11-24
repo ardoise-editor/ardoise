@@ -259,10 +259,7 @@
   "prefs.nav_editor": "Editor",
   "prefs.nav_appearance": "Appearance",
   "prefs.nav_shortcuts": "Shortcuts",
-  "prefs.nav_updates": "Updates",
   "prefs.theme": "Theme",
-  "prefs.current_version": "Current version",
-  "prefs.updates": "Updates",
   "prefs.highlight_current_line": "Highlight current line",
   "prefs.auto_save": "Save files automatically",
   "prefs.show_page_guide": "Show page guide",
@@ -757,5 +754,16 @@
   "prefs.group_typing": "Typing",
   "prefs.group_completion": "Completion",
   "prefs.group_files": "Files",
-  "prefs.group_search": "Search everywhere"
+  "prefs.group_search": "Search everywhere",
+  "prefs.group_language": "Language",
+  "prefs.sc_files": "Files",
+  "prefs.sc_edit": "Edit",
+  "prefs.sc_cursors": "Multiple cursors",
+  "prefs.sc_code": "Code",
+  "prefs.sc_navigation": "Search and navigation",
+  "prefs.sc_bookmarks": "Bookmarks",
+  "prefs.sc_view": "View",
+  "prefs.sc_other": "Other",
+  "prefs.shortcut_search": "Search a shortcut or a key…",
+  "prefs.shortcut_none": "No shortcut matches."
 }

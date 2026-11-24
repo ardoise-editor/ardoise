@@ -33,6 +33,8 @@ pub enum PreferencesMessage {
     /// The page of the settings of a plugin (its id).
     PluginPageSelected(String),
     ExcludeTyped(String),
+    /// The search of the shortcuts, as typed.
+    ShortcutFilter(String),
     FontSizeChanged(f32),
     TabWidthChanged(usize),
     UseSpacesToggled(bool),
@@ -71,26 +73,22 @@ pub enum PrefsPage {
     Editor,
     Appearance,
     Shortcuts,
-    Language,
     Lint,
     Servers,
     /// The settings of a plugin: which one is `PreferencesState::plugin_page`.
     /// Not in the list of the pages: each plugin has its own entry.
     PluginSettings,
     Plugins,
-    Updates,
 }
 
 impl PrefsPage {
-    pub(crate) const ALL: [PrefsPage; 8] = [
+    pub(crate) const ALL: [PrefsPage; 6] = [
         PrefsPage::Editor,
         PrefsPage::Appearance,
         PrefsPage::Shortcuts,
-        PrefsPage::Language,
         PrefsPage::Lint,
         PrefsPage::Servers,
         PrefsPage::Plugins,
-        PrefsPage::Updates,
     ];
 
     pub(crate) fn label(self) -> String {
@@ -98,11 +96,9 @@ impl PrefsPage {
             PrefsPage::Editor => t!("prefs.nav_editor"),
             PrefsPage::Appearance => t!("prefs.nav_appearance"),
             PrefsPage::Shortcuts => t!("prefs.nav_shortcuts"),
-            PrefsPage::Language => t!("prefs.language"),
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
             PrefsPage::PluginSettings | PrefsPage::Plugins => t!("prefs.nav_plugins"),
-            PrefsPage::Updates => t!("prefs.nav_updates"),
         }
         .to_string()
     }
@@ -166,6 +162,8 @@ pub struct PreferencesState {
     pub scratch_draft: String,
     /// The names left out of the trees, as typed.
     pub exclude_draft: String,
+    /// What the search of the shortcuts looks for.
+    pub shortcut_filter: String,
 }
 
 impl PreferencesState {
@@ -175,6 +173,7 @@ impl PreferencesState {
             plugin_page: None,
             scratch_draft: config.scratch_dir.clone(),
             exclude_draft: config.projects_exclude.join(", "),
+            shortcut_filter: String::new(),
         }
     }
 
@@ -184,6 +183,10 @@ impl PreferencesState {
         match msg {
             PreferencesMessage::ExcludeTyped(v) => {
                 self.exclude_draft = v;
+                return false;
+            }
+            PreferencesMessage::ShortcutFilter(v) => {
+                self.shortcut_filter = v;
                 return false;
             }
             PreferencesMessage::PageSelected(page) => {
@@ -377,8 +380,9 @@ impl PreferencesState {
             .spacing(14)
             .into(),
             PrefsPage::Appearance => self.appearance_card(dark),
-            PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing, plugin_state.tools()),
-            PrefsPage::Language => self.language_card(config, dark),
+            PrefsPage::Shortcuts => {
+                shortcuts_list(dark, config, capturing, plugin_state, &self.shortcut_filter)
+            }
             PrefsPage::Lint => lint_page(config, dark, plugin_state),
             PrefsPage::Servers => self.servers_page(dark, servers),
             PrefsPage::PluginSettings => match current_plugin {
@@ -396,7 +400,6 @@ impl PreferencesState {
                 None => Space::new().into(),
             },
             PrefsPage::Plugins => plugins::page(plugin_state, dark),
-            PrefsPage::Updates => self.updates_card(dark),
         };
 
         let page_title = match (shown, current_plugin) {
@@ -668,6 +671,10 @@ impl PreferencesState {
             group(t!("prefs.group_completion").to_string(), completion),
             group(t!("prefs.group_files").to_string(), files),
             group(t!("prefs.group_search").to_string(), search),
+            group(
+                t!("prefs.group_language").to_string(),
+                vec![language_row(config, dark)],
+            ),
         ]
         .spacing(22)
         .into()
@@ -778,23 +785,6 @@ impl PreferencesState {
         )
     }
 
-    fn language_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let selected = LOCALES.iter().copied().find(|l| l.code == config.locale);
-        let select = pick_list(LOCALES, selected, |choice| {
-            Message::Preferences(PreferencesMessage::LocaleChanged(choice.code.to_string()))
-        })
-        .padding([6, 12])
-        .width(150)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-
-        card_of_rows(
-            dark,
-            vec![setting_row(t!("prefs.language").to_string(), select.into())],
-        )
-    }
-
     /// The language servers: installed ones give exact answers to Ctrl+click
     /// on a name; without one the editor searches by patterns.
     fn servers_page(&self, dark: bool, status: &ServerStatus) -> Element<'_, Message> {
@@ -846,24 +836,20 @@ impl PreferencesState {
         .spacing(12)
         .into()
     }
+}
 
-    fn updates_card(&self, dark: bool) -> Element<'_, Message> {
-        let version = text(format!("v{}", env!("CARGO_PKG_VERSION")))
-            .size(13)
-            .font(theme::MONO);
-        let check = button(text(t!("menu.help_check_updates").to_string()).size(12))
-            .padding([6, 12])
-            .on_press(Message::CheckForUpdate)
-            .style((theme::Outline { dark }).style());
-
-        card_of_rows(
-            dark,
-            vec![
-                setting_row(t!("prefs.current_version").to_string(), version.into()),
-                setting_row(t!("prefs.updates").to_string(), check.into()),
-            ],
-        )
-    }
+/// The row of the language of the interface.
+fn language_row(config: &Config, dark: bool) -> Element<'static, Message> {
+    let selected = LOCALES.iter().copied().find(|l| l.code == config.locale);
+    let select = pick_list(LOCALES, selected, |choice| {
+        Message::Preferences(PreferencesMessage::LocaleChanged(choice.code.to_string()))
+    })
+    .padding([6, 12])
+    .width(150)
+    .text_size(13)
+    .style(theme::Select { dark }.style())
+    .menu_style(theme::Select { dark }.menu_style());
+    setting_row(t!("prefs.language").to_string(), select.into())
 }
 
 /// The few settings the welcome popin asks: language, theme, size of the
@@ -988,30 +974,18 @@ pub fn switch(dark: bool, on: bool, message: Message) -> Element<'static, Messag
 
 /// The configurable shortcuts: one row per action, click a key to rebind it.
 /// Used by the Preferences page and by Help > Configure shortcuts.
-/// Whether a shortcut is listed: the ones of Git and of the terminal only
-/// once their plugin is installed.
-pub(crate) fn shortcut_shown(target: ShortcutTarget, tools: crate::plugins::Tools) -> bool {
-    match target {
-        ShortcutTarget::ToggleGit
-        | ShortcutTarget::GitCommit
-        | ShortcutTarget::GitPush
-        | ShortcutTarget::GitPull
-        | ShortcutTarget::GitBranches => tools.git,
-        ShortcutTarget::ToggleTerminal => tools.terminal,
-        _ => true,
-    }
+/// Whether a shortcut is listed: the ones of a plugin only once it is
+/// installed.
+pub(crate) fn shortcut_shown(target: ShortcutTarget, plugins: &crate::plugins::Plugins) -> bool {
+    PLUGIN_SHORTCUTS
+        .iter()
+        .find(|(_, targets)| targets.contains(&target))
+        .is_none_or(|(id, _)| plugins.get(id).is_some())
 }
 
-pub fn shortcuts_list(
-    dark: bool,
-    config: &Config,
-    capturing: Option<ShortcutTarget>,
-    tools: crate::plugins::Tools,
-) -> Element<'static, Message> {
-    let p = theme::palette(dark);
-    let sc = &config.shortcuts;
-
-    let entries: Vec<(ShortcutTarget, String, String)> = vec![
+/// Every shortcut that can be rebound: the action, its label, its keys.
+fn shortcut_entries(sc: &crate::config::Shortcuts) -> Vec<(ShortcutTarget, String, String)> {
+    vec![
         (
             ShortcutTarget::Undo,
             t!("shortcuts.undo").to_string(),
@@ -1247,12 +1221,128 @@ pub fn shortcuts_list(
             t!("shortcuts.quit").to_string(),
             sc.quit.display(),
         ),
-    ];
+    ]
+}
 
-    let rows: Vec<Element<'static, Message>> = entries
-        .into_iter()
-        .filter(|(target, ..)| shortcut_shown(*target, tools))
-        .map(|(target, label, key)| {
+/// The groups of the shortcuts of the editor, by theme.
+fn editor_groups() -> Vec<(String, Vec<ShortcutTarget>)> {
+    use ShortcutTarget as T;
+    vec![
+        (
+            t!("prefs.sc_files").to_string(),
+            vec![
+                T::NewFile,
+                T::OpenFile,
+                T::SaveFile,
+                T::SaveAs,
+                T::CloseFile,
+                T::ReopenTab,
+                T::Quit,
+            ],
+        ),
+        (
+            t!("prefs.sc_edit").to_string(),
+            vec![
+                T::Undo,
+                T::Redo,
+                T::SelectAll,
+                T::DuplicateLine,
+                T::MoveLineUp,
+                T::MoveLineDown,
+                T::DeleteLine,
+                T::ToggleComment,
+                T::FormatCode,
+                T::RenameSymbol,
+            ],
+        ),
+        (
+            t!("prefs.sc_cursors").to_string(),
+            vec![
+                T::AddNextOccurrence,
+                T::SelectAllOccurrences,
+                T::AddCursorAbove,
+                T::AddCursorBelow,
+            ],
+        ),
+        (
+            t!("prefs.sc_code").to_string(),
+            vec![T::Complete, T::ParameterInfo, T::ToggleFold],
+        ),
+        (
+            t!("prefs.sc_navigation").to_string(),
+            vec![
+                T::Find,
+                T::FindInFiles,
+                T::ReplaceInFiles,
+                T::GotoFile,
+                T::GotoClass,
+                T::GotoSymbol,
+                T::GotoLine,
+                T::NavBack,
+                T::NavForward,
+            ],
+        ),
+        (
+            t!("prefs.sc_bookmarks").to_string(),
+            vec![
+                T::ToggleBookmark,
+                T::NextBookmark,
+                T::PrevBookmark,
+                T::BookmarkPanel,
+            ],
+        ),
+        (
+            t!("prefs.sc_view").to_string(),
+            vec![T::CommandPalette, T::ToggleSidebar],
+        ),
+    ]
+}
+
+pub fn shortcuts_list(
+    dark: bool,
+    config: &Config,
+    capturing: Option<ShortcutTarget>,
+    plugins: &crate::plugins::Plugins,
+    filter: &str,
+) -> Element<'static, Message> {
+    let p = theme::palette(dark);
+    let sc = &config.shortcuts;
+
+    let entries = shortcut_entries(sc);
+
+    // Each shortcut is in one group; the ones of the plugins come after, one
+    // group per plugin installed.
+    let editor_groups = editor_groups();
+    let mut groups = editor_groups;
+    for (id, targets) in PLUGIN_SHORTCUTS {
+        if let Some(plugin) = plugins.get(id) {
+            groups.push((plugin.name(), targets.to_vec()));
+        }
+    }
+    // Whatever no group names is kept, at the end: no shortcut is lost.
+    let named: Vec<ShortcutTarget> = groups.iter().flat_map(|(_, t)| t.clone()).collect();
+    let left: Vec<ShortcutTarget> = entries
+        .iter()
+        .map(|(target, ..)| *target)
+        .filter(|t| !named.contains(t) && shortcut_shown(*t, plugins))
+        .collect();
+    if !left.is_empty() {
+        groups.push((t!("prefs.sc_other").to_string(), left));
+    }
+
+    // The search: every word must be in the label or in the keys.
+    let words: Vec<String> = filter
+        .split(|c: char| c.is_whitespace() || c == '+')
+        .filter(|w| !w.is_empty())
+        .map(plain)
+        .collect();
+    let matches = |label: &str, key: &str| {
+        let hay = format!("{} {}", plain(label), plain(key));
+        words.iter().all(|w| hay.contains(w.as_str()))
+    };
+
+    let row_of =
+        |target: ShortcutTarget, label: String, key: String| -> Element<'static, Message> {
             let is_capturing = capturing == Some(target);
             let key_label = if is_capturing {
                 t!("shortcuts.capturing").to_string()
@@ -1276,21 +1366,85 @@ pub fn shortcuts_list(
                 .style(),
             );
             setting_row(label, key_button.into())
-        })
-        .collect();
+        };
 
-    column![
-        card_of_rows(dark, rows),
+    let search = text_input(&t!("prefs.shortcut_search"), filter)
+        .on_input(|v| Message::Preferences(PreferencesMessage::ShortcutFilter(v)))
+        .padding([8, 12])
+        .size(13)
+        .style(theme::Field::new(dark).style());
+
+    let mut page = column![search].spacing(22);
+    let mut any = false;
+    for (title, targets) in groups {
+        let rows: Vec<Element<'static, Message>> = targets
+            .into_iter()
+            .filter_map(|target| {
+                let (_, label, key) = entries.iter().find(|(t, ..)| *t == target)?;
+                matches(label, key).then(|| row_of(target, label.clone(), key.clone()))
+            })
+            .collect();
+        if rows.is_empty() {
+            continue;
+        }
+        any = true;
+        page = page.push(
+            column![
+                text(title)
+                    .size(12)
+                    .font(theme::UI_SEMIBOLD)
+                    .color(theme::muted_strong(dark)),
+                card_of_rows(dark, rows),
+            ]
+            .spacing(8),
+        );
+    }
+    if !any {
+        page = page.push(
+            text(t!("prefs.shortcut_none").to_string())
+                .size(13)
+                .color(theme::muted_strong(dark)),
+        );
+    }
+    page.push(
         text(if capturing.is_some() {
             t!("shortcuts.capturing").to_string()
         } else {
             t!("shortcuts.click_to_rebind").to_string()
         })
         .size(11.5)
-        .color(p.muted),
-    ]
-    .spacing(10)
+        .color(theme::muted_strong(dark)),
+    )
     .into()
+}
+
+/// The shortcuts of the plugins, by plugin: its group shows once it is
+/// installed.
+const PLUGIN_SHORTCUTS: [(&str, &[ShortcutTarget]); 4] = [
+    (
+        crate::plugins::migrate::GIT,
+        &[
+            ShortcutTarget::ToggleGit,
+            ShortcutTarget::GitCommit,
+            ShortcutTarget::GitPush,
+            ShortcutTarget::GitPull,
+            ShortcutTarget::GitBranches,
+        ],
+    ),
+    (
+        crate::plugins::migrate::TERMINAL,
+        &[ShortcutTarget::ToggleTerminal],
+    ),
+    (crate::plugins::migrate::SPELL, &[ShortcutTarget::SpellFix]),
+    (crate::plugins::migrate::TASKS, &[ShortcutTarget::RunTask]),
+];
+
+/// A text as the search compares it: lowercase, without accents.
+fn plain(text: &str) -> String {
+    text.chars()
+        .flat_map(char::to_lowercase)
+        .map(crate::palette::fold)
+        .collect()
 }
 
 /// The Lint page, there once the Lint plugin is installed: whether and how
@@ -1529,6 +1683,80 @@ mod tests {
         let pages = plugins.settings_pages();
         assert_eq!(pages.len(), 1);
         assert_eq!(pages[0].0, "ardoise.spell");
+    }
+
+    #[test]
+    fn every_shortcut_is_in_exactly_one_group() {
+        let entries = shortcut_entries(&Config::default().shortcuts);
+        let mut named: Vec<ShortcutTarget> = editor_groups()
+            .into_iter()
+            .flat_map(|(_, targets)| targets)
+            .collect();
+        named.extend(
+            PLUGIN_SHORTCUTS
+                .iter()
+                .flat_map(|(_, targets)| targets.to_vec()),
+        );
+        for (target, ..) in &entries {
+            let count = named.iter().filter(|t| *t == target).count();
+            assert_eq!(count, 1, "{target:?} is in {count} groups");
+        }
+        assert_eq!(named.len(), entries.len(), "a group names something else");
+    }
+
+    #[test]
+    fn the_search_of_the_shortcuts_looks_at_the_label_and_the_keys_without_accents() {
+        // What a row matches: the same test as the page applies.
+        let hit = |label: &str, key: &str, typed: &str| {
+            let words: Vec<String> = typed
+                .split(|c: char| c.is_whitespace() || c == '+')
+                .filter(|w| !w.is_empty())
+                .map(plain)
+                .collect();
+            let hay = format!("{} {}", plain(label), plain(key));
+            words.iter().all(|w| hay.contains(w.as_str()))
+        };
+        assert!(
+            hit("Dupliquer la ligne", "Ctrl+D", "dupli"),
+            "a part of the label"
+        );
+        assert!(
+            hit("Rétablir", "Ctrl+Maj+Z", "retablir"),
+            "accents do not matter"
+        );
+        assert!(hit("Rétablir", "Ctrl+Maj+Z", "ctrl+maj+z"), "the keys");
+        assert!(hit("Rétablir", "Ctrl+Maj+Z", "maj z"), "words in any place");
+        assert!(
+            hit("Annuler", "Ctrl+Z", "ANNULER"),
+            "capitals do not matter"
+        );
+        assert!(!hit("Annuler", "Ctrl+Z", "dupli"));
+        assert!(!hit("Annuler", "Ctrl+Z", "ctrl+y"));
+        assert!(hit("Annuler", "Ctrl+Z", ""), "nothing typed: everything");
+    }
+
+    #[test]
+    fn the_shortcuts_of_a_plugin_show_once_it_is_installed() {
+        let mut plugins = crate::plugins::Plugins::default();
+        assert!(!shortcut_shown(ShortcutTarget::GitCommit, &plugins));
+        assert!(!shortcut_shown(ShortcutTarget::SpellFix, &plugins));
+        assert!(!shortcut_shown(ShortcutTarget::RunTask, &plugins));
+        assert!(shortcut_shown(ShortcutTarget::Undo, &plugins));
+        for id in ["ardoise.git", "ardoise.spell", "ardoise.tasks"] {
+            let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
+                r#"{{"id": "{id}", "name": "{id}", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
+            ))
+            .unwrap();
+            plugins.installed.push(crate::plugins::Installed {
+                manifest,
+                dir: std::path::PathBuf::from("/nowhere"),
+                origin: Default::default(),
+            });
+        }
+        assert!(shortcut_shown(ShortcutTarget::GitCommit, &plugins));
+        assert!(shortcut_shown(ShortcutTarget::SpellFix, &plugins));
+        assert!(shortcut_shown(ShortcutTarget::RunTask, &plugins));
+        assert!(!shortcut_shown(ShortcutTarget::ToggleTerminal, &plugins));
     }
 
     #[test]

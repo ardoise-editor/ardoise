@@ -259,10 +259,7 @@
   "prefs.nav_editor": "Éditeur",
   "prefs.nav_appearance": "Apparence",
   "prefs.nav_shortcuts": "Raccourcis",
-  "prefs.nav_updates": "Mises à jour",
   "prefs.theme": "Thème",
-  "prefs.current_version": "Version actuelle",
-  "prefs.updates": "Mises à jour",
   "prefs.highlight_current_line": "Surligner la ligne courante",
   "prefs.auto_save": "Enregistrer les fichiers automatiquement",
   "prefs.show_page_guide": "Afficher le guide de page",
@@ -757,5 +754,16 @@
   "prefs.group_typing": "Saisie",
   "prefs.group_completion": "Complétion",
   "prefs.group_files": "Fichiers",
-  "prefs.group_search": "Rechercher partout"
+  "prefs.group_search": "Rechercher partout",
+  "prefs.group_language": "Langue",
+  "prefs.sc_files": "Fichiers",
+  "prefs.sc_edit": "Édition",
+  "prefs.sc_cursors": "Multi-curseurs",
+  "prefs.sc_code": "Code",
+  "prefs.sc_navigation": "Recherche et navigation",
+  "prefs.sc_bookmarks": "Marque-pages",
+  "prefs.sc_view": "Affichage",
+  "prefs.sc_other": "Autres",
+  "prefs.shortcut_search": "Rechercher un raccourci ou une touche…",
+  "prefs.shortcut_none": "Aucun raccourci ne correspond."
 }
