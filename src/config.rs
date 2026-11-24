@@ -553,6 +553,16 @@ pub struct Config {
     pub show_minimap: bool,
     /// Modified files are written to disk by themselves, a moment after the last edit.
     pub auto_save: bool,
+    /// Takes the blanks at the end of the lines off when a file is saved.
+    pub trim_trailing_whitespace: bool,
+    /// A file saved ends with a line break, whatever it had.
+    pub final_newline_on_save: bool,
+    /// How a new file is stored: the label of an encoding (empty: UTF-8) and
+    /// `"CRLF"` for Windows line endings (empty: LF).
+    pub default_encoding: String,
+    pub default_line_ending: String,
+    /// The font of the text (empty: the one bundled, JetBrains Mono).
+    pub font_family: String,
     /// Long lines wrap at the edge; off, they run past it (faster on huge lines).
     pub word_wrap: bool,
     pub locale: String,
@@ -690,6 +700,11 @@ impl Default for Config {
             page_guide_column: 80,
             show_minimap: true,
             word_wrap: true,
+            trim_trailing_whitespace: false,
+            final_newline_on_save: false,
+            default_encoding: String::new(),
+            default_line_ending: String::new(),
+            font_family: String::new(),
             auto_save: true,
             locale: "en".to_string(),
             show_sidebar: true,
@@ -834,6 +849,25 @@ fn detect_system_locale() -> String {
         "fr".to_string()
     } else {
         "en".to_string()
+    }
+}
+
+impl Config {
+    /// How a new file is stored: what the settings say.
+    pub fn new_file_format(&self) -> crate::tabs::TextFormat {
+        crate::tabs::TextFormat {
+            ending: if self.default_line_ending.eq_ignore_ascii_case("crlf") {
+                crate::tabs::LineEnding::Crlf
+            } else {
+                crate::tabs::LineEnding::Lf
+            },
+            encoding: crate::tabs::Encoding::ALL
+                .iter()
+                .copied()
+                .find(|e| e.label() == self.default_encoding)
+                .unwrap_or_default(),
+            ..crate::tabs::TextFormat::default()
+        }
     }
 }
 

@@ -1983,8 +1983,13 @@ impl ArdoiseApp {
         let with_prefs: Element<Message> = if self.show_preferences {
             let (x, y, w, h) = self.prefs_rect();
             let window = container(se_theme::in_popin(|| {
-                self.preferences
-                    .view(&self.config, self.capturing, &self.servers, &self.plugins)
+                self.preferences.view(
+                    &self.config,
+                    self.capturing,
+                    &self.servers,
+                    &self.plugins,
+                    &self.spell.choices,
+                )
             }))
             .width(Length::Fixed(w))
             .height(Length::Fixed(h));
@@ -2427,7 +2432,10 @@ impl ArdoiseApp {
                 self.stash_current();
                 self.untitled_counter += 1;
                 let path = untitled_path(self.untitled_counter);
-                self.load_buffer(path, CachedBuffer::blank());
+                let mut blank = CachedBuffer::blank();
+                // Stored as the settings say (encoding, line ending).
+                blank.format = self.config.new_file_format();
+                self.load_buffer(path, blank);
                 self.set_status(t!("status.new_file"), false);
                 Task::none()
             }
@@ -2523,6 +2531,7 @@ impl ArdoiseApp {
                     return self.handle(Message::FormatFile);
                 }
                 self.fix_before_save();
+                self.trim_before_save();
                 if let Some(path) = self.current_file.clone() {
                     if self.changed_on_disk(&path) {
                         self.overlay = ActiveOverlay::ConfirmOverwrite(path);
@@ -2532,9 +2541,10 @@ impl ArdoiseApp {
                 let content = crate::editor::buffer_text(&self.editor.content);
                 let origin = self.current_file.clone();
                 match origin.clone() {
-                    Some(path) if !is_untitled(&path) => {
-                        save_command(origin, save_file(path, content, self.format))
-                    }
+                    Some(path) if !is_untitled(&path) => save_command(
+                        origin,
+                        save_file(path, content, self.save_format(self.format)),
+                    ),
                     Some(_) => self.start_save_as(origin),
                     None => Task::none(),
                 }
@@ -2599,7 +2609,7 @@ impl ArdoiseApp {
                             .map(|c| c.format)
                             .unwrap_or_default()
                     };
-                    save_command(origin, save_file(path, content, format))
+                    save_command(origin, save_file(path, content, self.save_format(format)))
                 }
                 Err(e) if e == CANCELLED => Task::none(),
                 Err(e) => {
@@ -4000,7 +4010,11 @@ impl ArdoiseApp {
             Message::Preferences(msg) => {
                 // A language's completion setting: its servers start again
                 // with it.
-                if let PreferencesMessage::CompletionOption(..) = &msg {
+                if matches!(
+                    &msg,
+                    PreferencesMessage::CompletionOption(..)
+                        | PreferencesMessage::ResetGroup(crate::preferences::Group::Completion)
+                ) {
                     let _ = self.preferences.update(msg, &mut self.config);
                     self.config_dirty = true;
                     crate::lsp::set_completion_options(&self.config.completion_options);
@@ -6734,6 +6748,30 @@ impl ArdoiseApp {
     /// the last edit (never over a file that changed under us).
     /// Writes the tabs that hold their text aside and have unsaved changes
     /// (a file changed on the disk meanwhile is left alone).
+    /// How a file is written: as it is stored, with the final line break the
+    /// settings ask for.
+    fn save_format(&self, format: TextFormat) -> TextFormat {
+        TextFormat {
+            final_newline: format.final_newline || self.config.final_newline_on_save,
+            ..format
+        }
+    }
+
+    /// Takes the blanks at the end of the lines off before a save, when the
+    /// settings ask for it (not at an automatic save: the space just typed
+    /// would vanish under the cursor).
+    fn trim_before_save(&mut self) {
+        if !self.config.trim_trailing_whitespace {
+            return;
+        }
+        let old = crate::editor::buffer_text(&self.editor.content);
+        let new = crate::text_ops::trim_trailing_whitespace(&old);
+        if new != old {
+            let (line, col) = self.editor.content.cursor_position();
+            let _ = self.apply_text_edit(new, line, col, None);
+        }
+    }
+
     fn save_cached_tabs(&self) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
         for (path, entry) in &self.file_cache {
@@ -6746,7 +6784,7 @@ impl ArdoiseApp {
                 if let Some(content) = entry.text() {
                     tasks.push(save_command(
                         Some(path.clone()),
-                        save_file(path.clone(), content, entry.format),
+                        save_file(path.clone(), content, self.save_format(entry.format)),
                     ));
                 }
             }
@@ -6771,7 +6809,7 @@ impl ArdoiseApp {
                 let content = crate::editor::buffer_text(&self.editor.content);
                 tasks.push(save_command(
                     Some(path.clone()),
-                    save_file(path, content, self.format),
+                    save_file(path, content, self.save_format(self.format)),
                 ));
             }
         }
@@ -7205,7 +7243,10 @@ impl ArdoiseApp {
         }
         let content = crate::editor::buffer_text(&self.editor.content);
         self.autosaving = 1;
-        save_command(Some(path.clone()), save_file(path, content, self.format))
+        save_command(
+            Some(path.clone()),
+            save_file(path, content, self.save_format(self.format)),
+        )
     }
 
     /// Writes the scratch file in front if it was typed in: they are saved by

@@ -30,6 +30,30 @@ pub const R_POPIN_CONTROL: f32 = 6.0;
 pub const UI: Font = Font::with_name("Instrument Sans");
 pub const MONO: Font = Font::with_name("JetBrains Mono");
 
+/// The font of the text of the editor: the family the settings name (it must
+/// be installed; one that is not falls back to the default font), else the
+/// bundled one. A name is kept for the life of the app: a font names itself
+/// with a `&'static str`.
+pub fn editor_font(family: &str) -> Font {
+    static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let family = family.trim();
+    if family.is_empty() {
+        return MONO;
+    }
+    let Ok(mut names) = NAMES.lock() else {
+        return MONO;
+    };
+    let name = match names.iter().find(|n| **n == family) {
+        Some(name) => *name,
+        None => {
+            let name: &'static str = Box::leak(family.to_string().into_boxed_str());
+            names.push(name);
+            name
+        }
+    };
+    Font::with_name(name)
+}
+
 pub const UI_MEDIUM: Font = Font {
     weight: font::Weight::Medium,
     ..UI

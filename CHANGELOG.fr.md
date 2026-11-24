@@ -1,5 +1,15 @@
 # Journal des modifications
 
+## [2.7.0] - 2026-11-24
+
+### Ajouté
+- Préférences › Éditeur : la police du texte, « Supprimer les espaces en fin de ligne à l’enregistrement », « Terminer les fichiers par un saut de ligne à l’enregistrement », et l’encodage et les fins de ligne des nouveaux fichiers.
+- Préférences › Éditeur : les listes conservées jusqu’ici sans écran — les snippets (en écrire, en retirer), les dossiers de confiance (retirer la confiance), les abréviations données aux actions (en retirer), les panneaux latéraux (fichiers, projets) — et « Effacer » pour les fichiers récents, l’historique des recherches et des remplacements et les machines distantes récentes.
+- Une barre de recherche en haut des Préférences (par libellé ou par bloc, sans tenir compte des accents ni des majuscules), et « Réinitialiser » sur chaque bloc de réglages qui a des valeurs par défaut (Affichage, Indentation, Saisie, Complétion, Fichiers, Recherche partout).
+
+### Modifié
+- « Masquer ce que Git ignore » est sur la page Git (dans Projets quand Git n’est pas installé) ; le contraste élevé est dans Apparence ; le bloc Complétion est sur la page Serveurs de langage ; la langue du dictionnaire est sur la page Orthographe ; les blocs Projets et Fichiers temporaires ont leur titre.
+
 ## [2.6.2] - 2026-11-24
 
 ### Modifié
