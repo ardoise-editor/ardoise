@@ -5850,6 +5850,7 @@ impl ArdoiseApp {
     /// What the menus need to know of the editor to switch entries on or off.
     fn menu_editor(&self) -> crate::menus::EditorState {
         let kind = crate::folding::Kind::of(self.editor.language.as_deref());
+        let has_text = self.editor.content.has_text();
         crate::menus::EditorState {
             can_undo: !self.undo_stack.is_empty(),
             can_redo: !self.redo_stack.is_empty(),
@@ -5860,6 +5861,9 @@ impl ArdoiseApp {
             can_check: self.config.lint_enabled && self.lint_can_check(),
             has_problems: !self.visible_problems().is_empty(),
             fold: self.editor.content.fold_state(kind),
+            can_complete: self.config.completion_enabled
+                && (self.plugins.editor_focus.is_some() || has_text),
+            can_hint: self.config.completion_enabled && has_text && self.has_language_server(),
         }
     }
 

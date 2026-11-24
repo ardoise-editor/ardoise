@@ -59,6 +59,10 @@ pub struct EditorState {
     /// The file in front has problems shown.
     pub has_problems: bool,
     pub fold: crate::code_editor::FoldState,
+    /// There is code to complete (or a panel editor asking the plugin).
+    pub can_complete: bool,
+    /// There is code, and a language server to ask about the parameters.
+    pub can_hint: bool,
 }
 
 /// What the menus depend on.
@@ -370,12 +374,14 @@ fn edit(state: &MenuState) -> Vec<Entry> {
             Message::NavForward,
         ),
         Entry::Separator,
-        item(
+        item_if(
+            ed.can_complete,
             t!("shortcuts.complete"),
             Some(&sh.complete),
             Message::CompletionInvoke,
         ),
-        item(
+        item_if(
+            ed.can_hint,
             t!("shortcuts.parameter_info"),
             Some(&sh.parameter_info),
             Message::HintInvoke,
@@ -661,6 +667,8 @@ mod tests {
             "menu.fold_toggle",
             "menu.fold_all",
             "menu.unfold_all",
+            "shortcuts.complete",
+            "shortcuts.parameter_info",
             "menu.file_close_others",
             "shortcuts.reopen_tab",
         ] {
@@ -691,6 +699,8 @@ mod tests {
         wake("menu.fold_toggle", |e| e.fold.here = true);
         wake("menu.fold_all", |e| e.fold.any = true);
         wake("menu.unfold_all", |e| e.fold.folded = true);
+        wake("shortcuts.complete", |e| e.can_complete = true);
+        wake("shortcuts.parameter_info", |e| e.can_hint = true);
         // Fixing needs a file that can be checked and problems to fix.
         let mut fix = state(&config);
         fix.editor.has_problems = true;

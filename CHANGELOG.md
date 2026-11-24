@@ -3,7 +3,7 @@
 ## [2.6.2] - 2026-11-24
 
 ### Changed
-- The menus switch their entries off when they cannot do anything yet — Undo and Redo, Back and Forward, Reopen the closed tab, Close other tabs, the Problems (check, fix, next, previous) and the folding of the block, all or none — and on again as soon as they can. The panels of every plugin installed are listed in View › Panel (not Git and the terminal only).
+- The menus and the actions of Search everywhere switch their entries off when they cannot do anything yet — Undo and Redo, Back and Forward, Complete the code, Parameter info, Reopen the closed tab, Close other tabs, the Problems (check, fix, next, previous) and the folding of the block, all or none — and on again as soon as they can. The panels of every plugin installed are listed in View › Panel (not Git and the terminal only).
 - "Close this split" is in View › Split (it was in View › Panel, where it was taken for the closing of a side panel), under that new name, and it is off until the editor is split.
 
 ## [2.6.1] - 2026-11-23

@@ -1995,6 +1995,25 @@ mod menu_state_tests {
         assert!(!s.can_check && !s.has_problems);
         assert!(!s.fold.here && !s.fold.any && !s.fold.folded);
         assert!(!s.can_reopen);
+        assert!(
+            !s.can_complete && !s.can_hint,
+            "no code: nothing to complete or to ask about"
+        );
+    }
+
+    #[test]
+    fn completion_wakes_up_with_code_and_parameter_info_needs_a_server_too() {
+        let mut app = fresh();
+        assert!(!app.menu_editor().can_complete);
+        let _ = app.update(Message::EditorAction(text_editor::Action::Edit(
+            text_editor::Edit::Insert('x'),
+        )));
+        let s = app.menu_editor();
+        assert!(s.can_complete, "words of the buffer can be completed");
+        assert!(!s.can_hint, "an untitled text has no language server");
+        // Off in the settings: off in the menu.
+        app.config.completion_enabled = false;
+        assert!(!app.menu_editor().can_complete);
     }
 
     #[test]

@@ -765,7 +765,7 @@ mod tests {
         let offered = |app: &ArdoiseApp| {
             let tools = app.plugins.tools();
             let palette: Vec<PaletteCommand> =
-                crate::palette::entries(&app.config, true, true, tools)
+                crate::palette::entries(&app.config, true, true, tools, &Default::default())
                     .into_iter()
                     .map(|e| e.command)
                     .collect();

@@ -2220,6 +2220,17 @@ impl Content {
         internal.refresh_folds(kind);
     }
 
+    /// Whether there is any text at all (a line with something other than
+    /// blanks, or more than one line).
+    pub fn has_text(&self) -> bool {
+        let internal = self.0.borrow();
+        internal.editor.line_count() > 1
+            || internal
+                .editor
+                .line(0)
+                .is_some_and(|line| !line.text.trim().is_empty())
+    }
+
     /// What can be folded now, for the menus: whether there is a block
     /// around the cursor, whether the text has blocks at all, whether
     /// something is folded.
