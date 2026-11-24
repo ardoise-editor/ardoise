@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.7.2] - 2026-11-24
+
+### Added
+- Tab right after the exact trigger of a snippet inserts it (no need to open the list first).
+
+### Fixed
+- The list of completions (and the snippets in it) stayed invisible when the word being typed began at the very start of a line.
+
 ## [2.7.1] - 2026-11-24
 
 ### Added

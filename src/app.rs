@@ -4663,6 +4663,12 @@ impl ArdoiseApp {
                 if key == "Tab" && !ctrl && !alt && !shift && self.snippet_next() {
                     return Task::none();
                 }
+                // Tab after the trigger of a snippet: the snippet.
+                if key == "Tab" && !ctrl && !alt && !shift && self.overlay == ActiveOverlay::None {
+                    if let Some(task) = self.snippet_expand_trigger() {
+                        return task;
+                    }
+                }
                 // Search everywhere: its keys; the shortcut of a tab goes to
                 // that tab (again: beyond the project).
                 if self.overlay == ActiveOverlay::Everywhere {

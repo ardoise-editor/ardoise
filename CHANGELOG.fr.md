@@ -1,5 +1,13 @@
 # Journal des modifications
 
+## [2.7.2] - 2026-11-24
+
+### Ajouté
+- Tab juste après le déclencheur exact d’un snippet l’insère (inutile d’ouvrir la liste avant).
+
+### Corrigé
+- La liste de complétion (et les snippets qu’elle contient) restait invisible quand le mot tapé commençait tout au début d’une ligne.
+
 ## [2.7.1] - 2026-11-24
 
 ### Ajouté
