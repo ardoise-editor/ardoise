@@ -4,6 +4,7 @@
 
 ### Modifié
 - Les menus et les actions de Rechercher partout grisent leurs entrées tant qu'elles ne peuvent rien faire — Annuler et Rétablir, Précédent et Suivant, Compléter le code, Infos sur les paramètres, Rouvrir l'onglet fermé, Fermer les autres onglets, les Problèmes (rechercher, corriger, suivant, précédent) et le repli du bloc, de tout ou rien — et les réactivent dès qu'elles le peuvent. Les panneaux de tous les plugins installés sont listés dans Affichage › Panneau (et pas seulement Git et Terminal).
+- Préférences › Éditeur est rangé par thème (Affichage, Indentation, Saisie, Complétion, Fichiers, Rechercher partout) ; les réglages qui dépendent d'un plugin sont sur sa page : l'onglet Plugins de Rechercher partout sur Git, la vérification orthographique sur Orthographe.
 - « Fermer cette division » est dans Affichage › Diviser (elle était dans Affichage › Panneau, où on la prenait pour la fermeture d'un panneau latéral), sous ce nouveau nom, et elle est grisée tant que l'éditeur n'est pas divisé.
 
 ## [2.6.1] - 2026-11-23

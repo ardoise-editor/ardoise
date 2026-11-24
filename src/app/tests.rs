@@ -2266,6 +2266,25 @@ mod look_tests {
             }
             "about" => app.overlay = ActiveOverlay::About,
             "prefs" => app.show_preferences = true,
+            "prefs_git" => {
+                for id in ["ardoise.git", "ardoise.spell"] {
+                    let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
+                        r#"{{"id": "{id}", "name": "{id}", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
+                    ))
+                    .unwrap();
+                    app.plugins.installed.push(crate::plugins::Installed {
+                        manifest,
+                        dir: PathBuf::from("/nowhere"),
+                        origin: Default::default(),
+                    });
+                }
+                app.show_preferences = true;
+                let _ = app.update(Message::Preferences(
+                    crate::preferences::PreferencesMessage::PluginPageSelected(
+                        "ardoise.git".into(),
+                    ),
+                ));
+            }
             "everywhere" => {
                 let _ = app.update(Message::OpenEverywhere(crate::everywhere::Tab::Actions));
             }

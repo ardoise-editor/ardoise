@@ -751,5 +751,11 @@
   "spell.languages_hint": "Langue du dictionnaire",
   "projects.name_hint": "Saisissez un nom",
   "welcome.subtitle": "Quelques réglages et des plugins",
-  "prefs.subtitle": "Réglages d’Ardoise"
+  "prefs.subtitle": "Réglages d’Ardoise",
+  "prefs.group_display": "Affichage",
+  "prefs.group_indentation": "Indentation",
+  "prefs.group_typing": "Saisie",
+  "prefs.group_completion": "Complétion",
+  "prefs.group_files": "Fichiers",
+  "prefs.group_search": "Rechercher partout"
 }

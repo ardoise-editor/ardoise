@@ -382,8 +382,17 @@ impl PreferencesState {
             PrefsPage::Lint => lint_page(config, dark, plugin_state),
             PrefsPage::Servers => self.servers_page(dark, servers),
             PrefsPage::PluginSettings => match current_plugin {
-                Some((id, _)) => plugin_settings_body(plugin_state, id, dark)
-                    .unwrap_or_else(|| Space::new().into()),
+                // What the editor keeps for the plugin, then the plugin's own.
+                Some((id, _)) => {
+                    let mut page = column![].spacing(18);
+                    if let Some(own) = host_plugin_rows(id, config, dark) {
+                        page = page.push(own);
+                    }
+                    if let Some(body) = plugin_settings_body(plugin_state, id, dark) {
+                        page = page.push(body);
+                    }
+                    page.into()
+                }
                 None => Space::new().into(),
             },
             PrefsPage::Plugins => plugins::page(plugin_state, dark),
@@ -521,43 +530,25 @@ impl PreferencesState {
             ),
         ];
 
-        let mut rows: Vec<Element<Message>> = vec![
+        // Grouped by what they are for, one block each.
+        let group =
+            |title: String, rows: Vec<Element<'static, Message>>| -> Element<'static, Message> {
+                column![
+                    text(title)
+                        .size(12)
+                        .font(theme::UI_SEMIBOLD)
+                        .color(theme::muted_strong(dark)),
+                    card_of_rows(dark, rows),
+                ]
+                .spacing(8)
+                .into()
+            };
+        let display = vec![
             setting_row(t!("prefs.font_size").to_string(), font_size.into()),
-            setting_row(t!("prefs.tab_width").to_string(), tab_width.into()),
-            toggle(
-                t!("prefs.use_spaces").to_string(),
-                config.use_spaces,
-                PreferencesMessage::UseSpacesToggled,
-            ),
             toggle(
                 t!("prefs.show_line_numbers").to_string(),
                 config.show_line_numbers,
                 PreferencesMessage::ShowLineNumbersToggled,
-            ),
-            toggle(
-                t!("prefs.auto_indent").to_string(),
-                config.auto_indent,
-                PreferencesMessage::AutoIndentToggled,
-            ),
-            toggle(
-                t!("prefs.completion").to_string(),
-                config.completion_enabled,
-                PreferencesMessage::CompletionToggled,
-            ),
-            toggle(
-                t!("prefs.completion_auto").to_string(),
-                config.completion_auto,
-                PreferencesMessage::CompletionAutoToggled,
-            ),
-            toggle(
-                t!("prefs.autocomplete_brackets").to_string(),
-                config.autocomplete_brackets,
-                PreferencesMessage::AutocompleteBracketsToggled,
-            ),
-            toggle(
-                t!("prefs.autocomplete_quotes").to_string(),
-                config.autocomplete_quotes,
-                PreferencesMessage::AutocompleteQuotesToggled,
             ),
             toggle(
                 t!("prefs.highlight_current_line").to_string(),
@@ -565,34 +556,18 @@ impl PreferencesState {
                 PreferencesMessage::HighlightCurrentLineToggled,
             ),
             toggle(
-                t!("prefs.auto_save").to_string(),
-                config.auto_save,
-                PreferencesMessage::AutoSaveToggled,
+                t!("prefs.show_minimap").to_string(),
+                config.show_minimap,
+                PreferencesMessage::ShowMinimapToggled,
             ),
             toggle(
                 t!("prefs.show_page_guide").to_string(),
                 config.show_page_guide,
                 PreferencesMessage::ShowPageGuideToggled,
             ),
-            toggle(
-                t!("prefs.high_contrast").to_string(),
-                config.high_contrast,
-                PreferencesMessage::HighContrastToggled,
-            ),
-            toggle(
-                t!("prefs.spell_check").to_string(),
-                config.spell_check,
-                PreferencesMessage::SpellCheckToggled,
-            ),
-            toggle(
-                t!("prefs.format_on_save").to_string(),
-                config.format_on_save,
-                PreferencesMessage::FormatOnSaveToggled,
-            ),
-            toggle(
-                t!("prefs.detect_indent").to_string(),
-                config.detect_indent,
-                PreferencesMessage::DetectIndentToggled,
+            setting_row(
+                t!("prefs.page_guide_column").to_string(),
+                guide_column.into(),
             ),
             toggle(
                 t!("prefs.show_indent_guides").to_string(),
@@ -605,45 +580,97 @@ impl PreferencesState {
                 PreferencesMessage::ShowWhitespaceToggled,
             ),
             toggle(
-                t!("prefs.highlight_word").to_string(),
-                config.highlight_word,
-                PreferencesMessage::HighlightWordToggled,
+                t!("prefs.word_wrap").to_string(),
+                config.word_wrap,
+                PreferencesMessage::WordWrapToggled,
+            ),
+            toggle(
+                t!("prefs.high_contrast").to_string(),
+                config.high_contrast,
+                PreferencesMessage::HighContrastToggled,
+            ),
+        ];
+        let indentation = vec![
+            setting_row(t!("prefs.tab_width").to_string(), tab_width.into()),
+            toggle(
+                t!("prefs.use_spaces").to_string(),
+                config.use_spaces,
+                PreferencesMessage::UseSpacesToggled,
+            ),
+            toggle(
+                t!("prefs.auto_indent").to_string(),
+                config.auto_indent,
+                PreferencesMessage::AutoIndentToggled,
+            ),
+            toggle(
+                t!("prefs.detect_indent").to_string(),
+                config.detect_indent,
+                PreferencesMessage::DetectIndentToggled,
+            ),
+        ];
+        let typing = vec![
+            toggle(
+                t!("prefs.autocomplete_brackets").to_string(),
+                config.autocomplete_brackets,
+                PreferencesMessage::AutocompleteBracketsToggled,
+            ),
+            toggle(
+                t!("prefs.autocomplete_quotes").to_string(),
+                config.autocomplete_quotes,
+                PreferencesMessage::AutocompleteQuotesToggled,
             ),
             toggle(
                 t!("prefs.match_brackets").to_string(),
                 config.match_brackets,
                 PreferencesMessage::MatchBracketsToggled,
             ),
-            setting_row(
-                t!("prefs.page_guide_column").to_string(),
-                guide_column.into(),
-            ),
             toggle(
-                t!("prefs.show_minimap").to_string(),
-                config.show_minimap,
-                PreferencesMessage::ShowMinimapToggled,
-            ),
-            toggle(
-                t!("prefs.word_wrap").to_string(),
-                config.word_wrap,
-                PreferencesMessage::WordWrapToggled,
-            ),
-            toggle(
-                t!("prefs.everywhere_text").to_string(),
-                config.everywhere_text,
-                PreferencesMessage::EverywhereTextToggled,
-            ),
-            toggle(
-                t!("prefs.everywhere_plugins").to_string(),
-                config.everywhere_git,
-                PreferencesMessage::EverywhereGitToggled,
+                t!("prefs.highlight_word").to_string(),
+                config.highlight_word,
+                PreferencesMessage::HighlightWordToggled,
             ),
         ];
-        // The languages' settings come under the completion switches.
-        let after = rows.len().min(7);
-        rows.splice(after..after, completion_options);
-
-        card_of_rows(dark, rows)
+        // The switches of the completion, then what each language proposes.
+        let mut completion = vec![
+            toggle(
+                t!("prefs.completion").to_string(),
+                config.completion_enabled,
+                PreferencesMessage::CompletionToggled,
+            ),
+            toggle(
+                t!("prefs.completion_auto").to_string(),
+                config.completion_auto,
+                PreferencesMessage::CompletionAutoToggled,
+            ),
+        ];
+        completion.extend(completion_options);
+        let files = vec![
+            toggle(
+                t!("prefs.auto_save").to_string(),
+                config.auto_save,
+                PreferencesMessage::AutoSaveToggled,
+            ),
+            toggle(
+                t!("prefs.format_on_save").to_string(),
+                config.format_on_save,
+                PreferencesMessage::FormatOnSaveToggled,
+            ),
+        ];
+        let search = vec![toggle(
+            t!("prefs.everywhere_text").to_string(),
+            config.everywhere_text,
+            PreferencesMessage::EverywhereTextToggled,
+        )];
+        column![
+            group(t!("prefs.group_display").to_string(), display),
+            group(t!("prefs.group_indentation").to_string(), indentation),
+            group(t!("prefs.group_typing").to_string(), typing),
+            group(t!("prefs.group_completion").to_string(), completion),
+            group(t!("prefs.group_files").to_string(), files),
+            group(t!("prefs.group_search").to_string(), search),
+        ]
+        .spacing(22)
+        .into()
     }
 
     fn appearance_card(&self, dark: bool) -> Element<'_, Message> {
@@ -1429,6 +1456,27 @@ fn lint_page<'a>(
 }
 
 /// The settings of a plugin, as it draws them (a note while it is starting).
+/// The settings the editor keeps for a plugin, on the page of that plugin.
+fn host_plugin_rows(id: &str, config: &Config, dark: bool) -> Option<Element<'static, Message>> {
+    let row_of = |label: String, on: bool, message: fn(bool) -> PreferencesMessage| {
+        setting_row(label, switch(dark, on, Message::Preferences(message(!on))))
+    };
+    let rows = match id {
+        crate::plugins::migrate::GIT => vec![row_of(
+            t!("prefs.everywhere_plugins").to_string(),
+            config.everywhere_git,
+            PreferencesMessage::EverywhereGitToggled,
+        )],
+        crate::plugins::migrate::SPELL => vec![row_of(
+            t!("prefs.spell_check").to_string(),
+            config.spell_check,
+            PreferencesMessage::SpellCheckToggled,
+        )],
+        _ => return None,
+    };
+    Some(card_of_rows(dark, rows))
+}
+
 fn plugin_settings_body<'a>(
     plugins: &'a crate::plugins::Plugins,
     id: &str,
@@ -1448,6 +1496,40 @@ fn plugin_settings_body<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_the_editor_keeps_for_a_plugin_is_on_the_page_of_that_plugin() {
+        let config = Config::default();
+        assert!(host_plugin_rows(crate::plugins::migrate::GIT, &config, true).is_some());
+        assert!(host_plugin_rows(crate::plugins::migrate::SPELL, &config, true).is_some());
+        assert!(host_plugin_rows("acme.other", &config, true).is_none());
+        // Those two plugins have a page even without a panel of settings.
+        assert!(crate::plugins::has_host_settings(
+            crate::plugins::migrate::GIT
+        ));
+        assert!(crate::plugins::has_host_settings(
+            crate::plugins::migrate::SPELL
+        ));
+        assert!(!crate::plugins::has_host_settings("acme.other"));
+    }
+
+    #[test]
+    fn the_spelling_plugin_has_a_page_of_settings_once_installed() {
+        let mut plugins = crate::plugins::Plugins::default();
+        assert!(plugins.settings_pages().is_empty());
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
+            r#"{"id": "ardoise.spell", "name": "Spelling", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
+        )
+        .unwrap();
+        plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: std::path::PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+        let pages = plugins.settings_pages();
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].0, "ardoise.spell");
+    }
 
     #[test]
     fn preferences_from_default_config() {

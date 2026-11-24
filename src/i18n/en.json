@@ -751,5 +751,11 @@
   "spell.languages_hint": "Language of the dictionary",
   "projects.name_hint": "Type a name",
   "welcome.subtitle": "A few settings and plugins",
-  "prefs.subtitle": "Settings of Ardoise"
+  "prefs.subtitle": "Settings of Ardoise",
+  "prefs.group_display": "Display",
+  "prefs.group_indentation": "Indentation",
+  "prefs.group_typing": "Typing",
+  "prefs.group_completion": "Completion",
+  "prefs.group_files": "Files",
+  "prefs.group_search": "Search everywhere"
 }
