@@ -379,6 +379,7 @@ impl EditorState {
                 anchor: floating.list,
                 hint: floating.hint,
                 area: floating.area,
+                placed: floating.placed,
                 on_anchor: Box::new(Message::CompletionAnchor),
             });
         }

@@ -367,6 +367,9 @@ pub struct CompletionHook<'a, Message> {
     /// The list's own area in the window: a click there leaves the focus in
     /// the editor.
     pub area: Option<Rectangle>,
+    /// The app knows where the list is: when it does not (a list just
+    /// opened), the position is told again even if it did not move.
+    pub placed: bool,
     pub on_anchor: AnchorHeard<'a, Message>,
 }
 
@@ -1120,6 +1123,12 @@ where
                 let x = run
                     .highlight(Cursor_::new(line, col), Cursor_::new(line, col))
                     .map(|(x, _)| x)
+                    .or_else(|| {
+                        // A cursor with no width has no box: the left edge of
+                        // the letter it is before (a word at the start of the
+                        // line, whose anchor is column 0).
+                        run.glyphs.iter().find(|g| g.start >= col).map(|g| g.x)
+                    })
                     .or_else(|| {
                         // An empty stretch has no box: the end of the run.
                         let end = run.glyphs.last()?;
@@ -2487,6 +2496,8 @@ struct State<Highlighter: text::Highlighter> {
     /// Where the list of completions and the help on parameters were last
     /// said to be.
     completion_anchor: Option<(Spot, Spot)>,
+    /// The position was told again for a list the app had not placed: once.
+    anchor_retold: bool,
     highlighter: RefCell<Highlighter>,
     highlighter_settings: Highlighter::Settings,
     highlighter_format_address: usize,
@@ -2536,6 +2547,7 @@ where
             symbol_since: None,
             symbol_shown: false,
             completion_anchor: None,
+            anchor_retold: false,
             highlighter: RefCell::new(Highlighter::new(&self.highlighter_settings)),
             highlighter_settings: self.highlighter_settings.clone(),
             highlighter_format_address: self.highlighter_format as usize,
@@ -2645,7 +2657,11 @@ where
                 at.and_then(|at| self.anchor_point(at, layout.bounds(), padding, renderer))
             };
             let spots = (spot(hook.anchor), spot(hook.hint));
-            if state.completion_anchor != Some(spots) {
+            // A list just opened at the place the last one was: the app does
+            // not know where it is yet, tell it once more.
+            let retell = !hook.placed && !state.anchor_retold;
+            state.anchor_retold = !hook.placed;
+            if state.completion_anchor != Some(spots) || retell {
                 state.completion_anchor = Some(spots);
                 shell.publish((hook.on_anchor)(spots.0, spots.1));
             }
@@ -4442,6 +4458,7 @@ mod tests {
             hovered_note: None,
             note_since: std::cell::Cell::new(None),
             completion_anchor: None,
+            anchor_retold: false,
             hovered_diag: None,
             diag_since: None,
             diag_shown: false,

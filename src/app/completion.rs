@@ -84,6 +84,8 @@ pub struct Floating {
     pub list: Option<(usize, usize)>,
     pub hint: Option<(usize, usize)>,
     pub area: Option<iced::Rectangle>,
+    /// The position of the list is known (and of the help, when there is one).
+    pub placed: bool,
 }
 
 /// The help on the parameters of the call being typed.
@@ -1003,6 +1005,65 @@ impl ArdoiseApp {
         run.text = followed.text;
     }
 
+    /// Tab after the exact trigger of a snippet: the snippet takes the
+    /// place of the word, without opening the list. `None` when the word
+    /// before the cursor is no trigger (Tab then does what it always does).
+    pub(super) fn snippet_expand_trigger(&mut self) -> Option<Task<Message>> {
+        if self.plugins.editor_focus.is_some()
+            || self.completion.session.is_some()
+            || self.editor.content.selection().is_some()
+        {
+            return None;
+        }
+        let path = self.current_file.clone()?;
+        let text = crate::editor::buffer_text(&self.editor.content);
+        let origin = self.editor.content.cursor_position();
+        let base = Base {
+            text: text.clone(),
+            origin,
+        };
+        let start = base.word_start();
+        let prefix = text
+            .lines()
+            .nth(origin.0)
+            .and_then(|l| l.get(start..origin.1.min(l.len())))
+            .unwrap_or_default()
+            .to_string();
+        if prefix.is_empty() {
+            return None;
+        }
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        let items: Vec<_> = cmp::snippet_items(&self.config.snippets, &ext, &prefix)
+            .into_iter()
+            .filter(|i| i.label == prefix)
+            .collect();
+        if items.is_empty() {
+            return None;
+        }
+        self.completion.session = Some(Session {
+            by_name: false,
+            path,
+            ext: String::new(),
+            base,
+            items,
+            ranked: Vec::new(),
+            selected: 0,
+            top: 0,
+            incomplete: false,
+            busy: false,
+            manual: true,
+            items_of: 0,
+            anchor: (origin.0, start),
+            anchor_at: None,
+            resolving: HashSet::new(),
+        });
+        self.completion_refilter();
+        Some(self.completion_accept(0, false))
+    }
+
     /// Tab in a snippet: the next place, selected. False when there is none.
     pub(super) fn snippet_next(&mut self) -> bool {
         let Some(run) = self.completion.snippet.as_mut() else {
@@ -1102,6 +1163,16 @@ impl ArdoiseApp {
             list,
             hint,
             area: self.completion_geometry().map(|g| g.area()),
+            placed: self
+                .completion
+                .session
+                .as_ref()
+                .is_none_or(|s| list.is_none() || s.anchor_at.is_some())
+                && self
+                    .completion
+                    .hint
+                    .as_ref()
+                    .is_none_or(|h| hint.is_none() || h.anchor_at.is_some()),
         })
     }
 
@@ -1856,6 +1927,54 @@ mod tests {
         let items = cmp::snippet_items(&app.config.snippets, "rs", "fn");
         assert!(items.is_empty());
         assert_eq!(cmp::snippet_items(&app.config.snippets, "XYZ", "").len(), 1);
+    }
+
+    #[test]
+    fn a_snippet_for_every_file_is_offered_for_the_start_of_its_trigger() {
+        for name in ["a.txt", "a.md"] {
+            let (mut app, _path, _dir) = app_with("te\n", name);
+            app.completion.installed.insert("txt".into(), false);
+            app.completion.installed.insert("md".into(), false);
+            app.config.snippets = vec![crate::config::UserSnippet {
+                trigger: "test".into(),
+                body: "un test".into(),
+                languages: vec![],
+                enabled: true,
+            }];
+            app.editor.content.select_bytes(0, 2, 0);
+            let _ = app.update(Message::CompletionInvoke);
+            assert_eq!(shown(&app), vec!["test".to_string()], "{name}");
+        }
+    }
+
+    #[test]
+    fn tab_after_the_exact_trigger_expands_the_snippet_and_elsewhere_does_nothing() {
+        let (mut app, _path, _dir) = app_with("test\n", "a.txt");
+        app.completion.installed.insert("txt".into(), false);
+        app.config.snippets = vec![crate::config::UserSnippet {
+            trigger: "test".into(),
+            body: "it(${1:name})$0".into(),
+            languages: vec![],
+            enabled: true,
+        }];
+        // Part of the trigger: nothing.
+        app.editor.content.select_bytes(0, 2, 0);
+        assert!(app.snippet_expand_trigger().is_none());
+        // The whole trigger: it becomes the snippet, its first place selected.
+        app.editor.content.select_bytes(0, 4, 0);
+        assert!(app.snippet_expand_trigger().is_some());
+        assert_eq!(text_of(&app), "it(name)\n");
+        assert_eq!(app.editor.content.selection().as_deref(), Some("name"));
+        // Off, the snippet is not expanded.
+        let (mut app, _path, _dir) = app_with("test\n", "a.txt");
+        app.config.snippets = vec![crate::config::UserSnippet {
+            trigger: "test".into(),
+            body: "x".into(),
+            languages: vec![],
+            enabled: false,
+        }];
+        app.editor.content.select_bytes(0, 4, 0);
+        assert!(app.snippet_expand_trigger().is_none());
     }
 
     #[test]
