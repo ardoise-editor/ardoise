@@ -315,6 +315,19 @@ impl ArdoiseApp {
             self.set_status(t!("spell.plugin_missing"), true);
             return Task::none();
         };
+        Self::ask_spell_languages(id, Message::SpellLanguagesLoaded)
+    }
+
+    /// The dictionaries are asked for (the Preferences show them without
+    /// opening the picker). Nothing when no plugin checks the spelling.
+    pub(super) fn load_spell_choices(&mut self) -> Task<Message> {
+        match self.speller() {
+            Some(id) => Self::ask_spell_languages(id, Message::SpellChoices),
+            None => Task::none(),
+        }
+    }
+
+    fn ask_spell_languages(id: String, then: fn(Vec<String>) -> Message) -> Task<Message> {
         Task::perform(
             async move {
                 crate::plugins::host::request(
@@ -331,7 +344,7 @@ impl ArdoiseApp {
                 .map(|l| l.code)
                 .collect()
             },
-            Message::SpellLanguagesLoaded,
+            then,
         )
     }
 

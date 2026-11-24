@@ -549,12 +549,14 @@ impl ArdoiseApp {
                 .size(13)
                 .on_toggle(|_| Message::Results(ResultsMsg::NewTab)),
         );
-        header = header.push(
+        header = header.push(crate::theme::with_tip(
+            dark,
             button(text("—").size(12))
                 .padding([1, 8])
                 .on_press(Message::Results(ResultsMsg::Hide))
                 .style(ghost(false)),
-        );
+            t!("panel.hide").to_string(),
+        ));
 
         let mut list = column![].spacing(0);
         if let Some(t) = tab {

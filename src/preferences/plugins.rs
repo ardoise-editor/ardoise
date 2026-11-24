@@ -5,7 +5,7 @@
 use iced::widget::{button, column, container, row, text, text_input, Space};
 use iced::{Alignment, Element, Length};
 
-use super::{card_of_rows, setting_row};
+use super::{card_of_rows, plain, setting_row, PreferencesMessage};
 use crate::app::Message;
 use crate::plugins::{PluginMsg, Plugins, Registry};
 use crate::theme;
@@ -43,33 +43,52 @@ fn entry<'a>(
         .into()
 }
 
-pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message> {
+/// Whether a plugin has every word of the search in its id, name or
+/// description (accents and capitals apart); nothing typed: all of them.
+fn matches(filter: &str, texts: &[&str]) -> bool {
+    let hay = plain(&texts.join(" "));
+    filter
+        .split_whitespace()
+        .map(plain)
+        .all(|word| hay.contains(word.as_str()))
+}
+
+pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool, filter: &str) -> Element<'a, Message> {
     let p = theme::palette(dark);
     let note = move |label: String| text(label).size(12).color(p.muted);
     let error = move |label: String| text(label).size(12).color(theme::error_color(dark));
     let locale = rust_i18n::locale();
 
     // ── The official plugins ──────────────────────────────────────────
-    let official: Element<Message> = match &plugins.registry {
+    // The ones installed and the ones that are not, apart.
+    let mut official_installed: Vec<Element<Message>> = Vec::new();
+    let mut official_available: Vec<Element<Message>> = Vec::new();
+    let official: Option<Element<Message>> = match &plugins.registry {
         Registry::Unknown | Registry::Loading => {
-            note(t!("plugins.loading_list").to_string()).into()
+            Some(note(t!("plugins.loading_list").to_string()).into())
         }
-        Registry::Failed(e) => row![
-            error(t!("plugins.err_list", error = e.as_str()).to_string()),
-            Space::new().width(Length::Fill),
-            small_button(
-                t!("plugins.retry").to_string(),
-                Some(msg(PluginMsg::LoadRegistry)),
-                dark,
-                false
-            ),
-        ]
-        .align_y(Alignment::Center)
-        .into(),
-        Registry::Loaded(list) => card_of_rows(
-            dark,
-            list.iter()
-                .map(|listed| {
+        Registry::Failed(e) => Some(
+            row![
+                error(t!("plugins.err_list", error = e.as_str()).to_string()),
+                Space::new().width(Length::Fill),
+                small_button(
+                    t!("plugins.retry").to_string(),
+                    Some(msg(PluginMsg::LoadRegistry)),
+                    dark,
+                    false
+                ),
+            ]
+            .align_y(Alignment::Center)
+            .into(),
+        ),
+        Registry::Loaded(list) => {
+            for listed in list.iter().filter(|l| {
+                matches(
+                    filter,
+                    &[&l.id, l.name.get(&locale), l.description.get(&locale)],
+                )
+            }) {
+                let element = {
                     let installed = plugins.get(&listed.id);
                     let busy = plugins.busy.contains(&listed.id);
                     let control: Element<Message> = if busy {
@@ -114,9 +133,15 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
                         label = label.push(error(e.clone()));
                     }
                     entry(label, control)
-                })
-                .collect(),
-        ),
+                };
+                if plugins.get(&listed.id).is_some() {
+                    official_installed.push(element);
+                } else {
+                    official_available.push(element);
+                }
+            }
+            None
+        }
     };
 
     // ── The other plugins installed ───────────────────────────────────
@@ -128,6 +153,7 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
         .installed
         .iter()
         .filter(|i| !(i.origin.official && listed(i.id())))
+        .filter(|i| matches(filter, &[i.id(), &i.name(), &i.description()]))
         .map(|installed| {
             let id = installed.id().to_string();
             let source = if let Some(folder) = &installed.origin.linked {
@@ -175,12 +201,18 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
             }
             entry(label, control.into())
         })
-        .chain(plugins.broken.iter().map(|(name, why)| {
-            setting_row(
-                name.clone(),
-                error(why.clone()).width(Length::FillPortion(2)).into(),
-            )
-        }))
+        .chain(
+            plugins
+                .broken
+                .iter()
+                .filter(|(name, _)| matches(filter, &[name]))
+                .map(|(name, why)| {
+                    setting_row(
+                        name.clone(),
+                        error(why.clone()).width(Length::FillPortion(2)).into(),
+                    )
+                }),
+        )
         .collect();
 
     // ── A plugin of someone else ──────────────────────────────────────
@@ -303,17 +335,33 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
     }
 
     let heading = |label: String| text(label).size(13).font(theme::UI_SEMIBOLD);
-    let mut page = column![
-        note(t!("plugins.intro").to_string()),
-        tools,
-        heading(t!("plugins.official").to_string()),
-        official,
-    ]
-    .spacing(12);
-    if !others.is_empty() {
+    let search = text_input(&t!("plugins.search_placeholder"), filter)
+        .on_input(|v| Message::Preferences(PreferencesMessage::PluginFilter(v)))
+        .padding([7, 10])
+        .size(13)
+        .width(Length::Fill)
+        .style(theme::Field::new(dark).style());
+    let mut page = column![note(t!("plugins.intro").to_string()), tools, search].spacing(12);
+    // What the official list says (loading, failed) before the plugins.
+    if let Some(state) = official {
+        page = page.push(state);
+    }
+    // Installed: the official ones, then the others and the broken ones.
+    let mut installed = official_installed;
+    installed.extend(others);
+    let none_found = installed.is_empty() && official_available.is_empty();
+    if !installed.is_empty() {
         page = page
-            .push(heading(t!("plugins.others").to_string()))
-            .push(card_of_rows(dark, others));
+            .push(heading(t!("plugins.section_installed").to_string()))
+            .push(card_of_rows(dark, installed));
+    }
+    if !official_available.is_empty() {
+        page = page
+            .push(heading(t!("plugins.section_available").to_string()))
+            .push(card_of_rows(dark, official_available));
+    }
+    if !filter.trim().is_empty() && none_found {
+        page = page.push(note(t!("plugins.search_none").to_string()));
     }
     page.push(heading(t!("plugins.add_other").to_string()))
         .push(
@@ -322,4 +370,20 @@ pub(super) fn page<'a>(plugins: &'a Plugins, dark: bool) -> Element<'a, Message>
                 .style(theme::settings_card(dark)),
         )
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches;
+
+    #[test]
+    fn the_search_of_the_plugins_wants_every_word_in_the_id_the_name_or_the_description() {
+        let git = ["acme.git", "Git", "Branches et commits"];
+        assert!(matches("", &git), "nothing typed: every plugin");
+        assert!(matches("GIT", &git));
+        assert!(matches("branche commit", &git));
+        assert!(matches("acme", &git));
+        assert!(!matches("terminal", &git));
+        assert!(!matches("git terminal", &git), "every word must be there");
+    }
 }

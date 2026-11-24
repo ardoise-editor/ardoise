@@ -67,8 +67,7 @@ pub enum PreferencesMessage {
     LocaleChanged(String),
     /// The scratch folder being typed (applied on Enter).
     ScratchDirTyped(String),
-    /// The font family being typed, and the one that is set (empty: default).
-    FontFamilyTyped(String),
+    /// The font family chosen (empty: the bundled one).
     FontFamilySet(String),
     TrimTrailingToggled(bool),
     FinalNewlineToggled(bool),
@@ -83,11 +82,15 @@ pub enum PreferencesMessage {
     SnippetBody(iced::widget::text_editor::Action),
     SnippetAdd,
     SnippetRemove(usize),
+    /// A snippet switched on or off: its place in the list, and the new state.
+    SnippetEnabled(usize, bool),
     /// A folder whose programs may run, no longer trusted.
     UntrustFolder(String),
     ClearHistory(HistoryKind),
     /// What the search of the settings looks for.
     SettingsSearch(String),
+    /// What the search of the plugins looks for.
+    PluginFilter(String),
 }
 
 /// The pages of the navigation column.
@@ -95,6 +98,7 @@ pub enum PreferencesMessage {
 pub enum PrefsPage {
     Editor,
     Appearance,
+    Snippets,
     Shortcuts,
     Lint,
     Servers,
@@ -105,9 +109,10 @@ pub enum PrefsPage {
 }
 
 impl PrefsPage {
-    pub(crate) const ALL: [PrefsPage; 6] = [
+    pub(crate) const ALL: [PrefsPage; 7] = [
         PrefsPage::Editor,
         PrefsPage::Appearance,
+        PrefsPage::Snippets,
         PrefsPage::Shortcuts,
         PrefsPage::Lint,
         PrefsPage::Servers,
@@ -118,6 +123,7 @@ impl PrefsPage {
         match self {
             PrefsPage::Editor => t!("prefs.nav_editor"),
             PrefsPage::Appearance => t!("prefs.nav_appearance"),
+            PrefsPage::Snippets => t!("prefs.group_snippets"),
             PrefsPage::Shortcuts => t!("prefs.nav_shortcuts"),
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
@@ -189,8 +195,8 @@ pub struct PreferencesState {
     pub shortcut_filter: String,
     /// What the search of the settings looks for.
     pub settings_filter: String,
-    /// The font family being typed.
-    pub font_draft: String,
+    /// What the search of the plugins looks for.
+    pub plugin_filter: String,
     /// The snippet being written.
     pub snippet_trigger: String,
     pub snippet_languages: String,
@@ -206,7 +212,7 @@ impl PreferencesState {
             exclude_draft: config.projects_exclude.join(", "),
             shortcut_filter: String::new(),
             settings_filter: String::new(),
-            font_draft: config.font_family.clone(),
+            plugin_filter: String::new(),
             snippet_trigger: String::new(),
             snippet_languages: String::new(),
             snippet_body: iced::widget::text_editor::Content::new(),
@@ -316,13 +322,8 @@ impl PreferencesState {
                 self.scratch_draft = v;
                 return false;
             }
-            PreferencesMessage::FontFamilyTyped(v) => {
-                self.font_draft = v;
-                return false;
-            }
             PreferencesMessage::FontFamilySet(v) => {
                 config.font_family = v.trim().to_string();
-                self.font_draft = config.font_family.clone();
             }
             PreferencesMessage::TrimTrailingToggled(v) => {
                 config.trim_trailing_whitespace = v;
@@ -346,7 +347,6 @@ impl PreferencesState {
                     Group::Display => {
                         config.font_size = d.font_size;
                         config.font_family = d.font_family;
-                        self.font_draft = config.font_family.clone();
                         config.show_line_numbers = d.show_line_numbers;
                         config.highlight_current_line = d.highlight_current_line;
                         config.show_minimap = d.show_minimap;
@@ -424,10 +424,16 @@ impl PreferencesState {
                     trigger,
                     body,
                     languages,
+                    enabled: true,
                 });
                 self.snippet_trigger.clear();
                 self.snippet_languages.clear();
                 self.snippet_body = iced::widget::text_editor::Content::new();
+            }
+            PreferencesMessage::SnippetEnabled(i, on) => {
+                if let Some(snippet) = config.snippets.get_mut(i) {
+                    snippet.enabled = on;
+                }
             }
             PreferencesMessage::SnippetRemove(i) => {
                 if i < config.snippets.len() {
@@ -444,6 +450,10 @@ impl PreferencesState {
                 HistoryKind::Replace => config.replace_history.clear(),
                 HistoryKind::RemoteHosts => config.remote_hosts.clear(),
             },
+            PreferencesMessage::PluginFilter(v) => {
+                self.plugin_filter = v;
+                return false;
+            }
             PreferencesMessage::SettingsSearch(v) => {
                 self.settings_filter = v;
                 return false;
@@ -572,7 +582,6 @@ impl PreferencesState {
                         Group::Panels,
                         Group::Projects,
                         Group::Scratch,
-                        Group::Snippets,
                         Group::Trust,
                         Group::History,
                         Group::Language,
@@ -583,6 +592,12 @@ impl PreferencesState {
                 PrefsPage::Appearance => {
                     groups::blocks(settings, &[Group::Appearance], dark, false)
                 }
+                PrefsPage::Snippets => column![
+                    groups::snippets_help(dark),
+                    groups::blocks(settings, &[Group::Snippets], dark, false),
+                ]
+                .spacing(22)
+                .into(),
                 PrefsPage::Shortcuts => {
                     shortcuts_list(dark, config, capturing, plugin_state, &self.shortcut_filter)
                 }
@@ -612,7 +627,7 @@ impl PreferencesState {
                     }
                     None => Space::new().into(),
                 },
-                PrefsPage::Plugins => plugins::page(plugin_state, dark),
+                PrefsPage::Plugins => plugins::page(plugin_state, dark, &self.plugin_filter),
             }
         };
 
@@ -1668,12 +1683,26 @@ mod tests {
         );
         state.snippet_body = iced::widget::text_editor::Content::with_text("fn $1() {}");
         assert!(state.update(PreferencesMessage::SnippetAdd, &mut config));
-        assert_eq!(config.snippets.len(), 1);
-        assert_eq!(config.snippets[0].trigger, "fn");
-        assert_eq!(config.snippets[0].languages, vec!["rs", "py"]);
+        // The two examples of a fresh install are there too.
+        assert_eq!(config.snippets.len(), 3);
+        assert_eq!(config.snippets[2].languages, vec!["rs", "py"]);
         assert!(state.snippet_trigger.is_empty(), "the form is empty again");
-        state.update(PreferencesMessage::SnippetRemove(0), &mut config);
-        assert!(config.snippets.is_empty());
+        let added = config.snippets.len() - 1;
+        assert_eq!(config.snippets[added].trigger, "fn");
+        // Switched off, a snippet is no longer offered; on, it is again.
+        let offer =
+            |config: &Config| crate::completion::snippet_items(&config.snippets, "rs", "fn");
+        assert!(offer(&config).iter().any(|i| i.label == "fn"));
+        state.update(
+            PreferencesMessage::SnippetEnabled(added, false),
+            &mut config,
+        );
+        assert!(!config.snippets[added].enabled);
+        assert!(!offer(&config).iter().any(|i| i.label == "fn"));
+        state.update(PreferencesMessage::SnippetEnabled(added, true), &mut config);
+        assert!(offer(&config).iter().any(|i| i.label == "fn"));
+        state.update(PreferencesMessage::SnippetRemove(added), &mut config);
+        assert!(!config.snippets.iter().any(|s| s.trigger == "fn"));
         // A trusted folder: no longer trusted.
         config.trusted_folders = vec!["/a".into(), "/b".into()];
         crate::trust::set_all(&config.trusted_folders);
@@ -1746,12 +1775,7 @@ mod tests {
             &mut config,
         );
         assert!(config.default_line_ending.is_empty() && config.default_encoding.is_empty());
-        // The font: typed, then set; empty is the bundled one.
-        state.update(
-            PreferencesMessage::FontFamilyTyped(" Fira Code ".into()),
-            &mut config,
-        );
-        assert!(config.font_family.is_empty(), "typing does not apply it");
+        // The font: chosen; empty is the bundled one.
         state.update(
             PreferencesMessage::FontFamilySet(" Fira Code ".into()),
             &mut config,

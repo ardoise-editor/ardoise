@@ -498,6 +498,31 @@ pub struct UserSnippet {
     /// The file extensions it is for (`rs`, `py`…); empty: every file.
     #[serde(default)]
     pub languages: Vec<String>,
+    /// A snippet that is off stays in the list but is never offered.
+    #[serde(default = "snippet_on")]
+    pub enabled: bool,
+}
+
+fn snippet_on() -> bool {
+    true
+}
+
+/// The two snippets a fresh install comes with, to show how they are made.
+fn example_snippets() -> Vec<UserSnippet> {
+    vec![
+        UserSnippet {
+            trigger: "fnmain".into(),
+            body: "fn main() {\n\t$0\n}".into(),
+            languages: vec!["rs".into()],
+            enabled: true,
+        },
+        UserSnippet {
+            trigger: "log".into(),
+            body: "console.log(${1:value});$0".into(),
+            languages: vec!["js".into(), "ts".into()],
+            enabled: true,
+        },
+    ]
 }
 
 /// Every field has a default, so a config written by an older version (or
@@ -696,7 +721,7 @@ impl Default for Config {
             show_whitespace: false,
             match_brackets: true,
             highlight_word: true,
-            snippets: Vec::new(),
+            snippets: example_snippets(),
             page_guide_column: 80,
             show_minimap: true,
             word_wrap: true,
@@ -1031,11 +1056,17 @@ mod tests {
         assert_eq!(config.snippets.len(), 2);
         assert_eq!(config.snippets[0].languages, vec!["rs".to_string()]);
         assert!(config.snippets[1].languages.is_empty());
-        // Without any, the file of an older version still reads.
-        assert!(serde_json::from_str::<Config>("{}")
-            .unwrap()
-            .snippets
-            .is_empty());
+        // A snippet is on unless the file says it is off.
+        assert!(config.snippets.iter().all(|s| s.enabled));
+        let off: Config = serde_json::from_str(
+            r#"{"snippets": [{"trigger": "a", "body": "b", "enabled": false}]}"#,
+        )
+        .unwrap();
+        assert!(!off.snippets[0].enabled);
+        // A fresh install has two examples; a list the user emptied stays empty.
+        assert_eq!(Config::default().snippets.len(), 2);
+        let none: Config = serde_json::from_str(r#"{"snippets": []}"#).unwrap();
+        assert!(none.snippets.is_empty());
     }
 
     use super::*;

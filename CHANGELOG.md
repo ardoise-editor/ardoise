@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.7.1] - 2026-11-24
+
+### Added
+- Preferences › Snippets: a page of their own that explains how they work and how to make one; each snippet can be turned on or off, or deleted; two examples come with a fresh install.
+- Right click on the empty room of the Files panel (New file, Open file, Add project, Save all, Close all) and of the Projects panel (Add project, Collapse all, Refresh, Hide/Show what Git ignores).
+- Preferences › Plugins: a search box, and the plugins installed apart from the ones available.
+- Tooltips on the buttons that were only a sign (close, hide the panel, recent folders, browse…).
+
+### Changed
+- The text font is chosen in a list of the fixed-width fonts installed (it was a field to type in).
+- The dictionaries of the speller are listed on the Spelling page as soon as it is shown, with how to install more.
+- View menu: "File language…" is at the bottom, apart.
+- The tooltip of the Files panel reads "Files".
+
 ## [2.7.0] - 2026-11-24
 
 ### Added

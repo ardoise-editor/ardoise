@@ -411,16 +411,20 @@ impl ArdoiseApp {
                 .style()
             ),
             Space::new().width(Length::Fill),
-            button(text("×").size(14).color(p.muted))
-                .padding([0, 8])
-                .on_press(Message::ClosePane(id))
-                .style(
-                    (se_theme::GhostButton {
-                        dark,
-                        active: false
-                    })
-                    .style()
-                ),
+            crate::theme::with_tip(
+                dark,
+                button(text("×").size(14).color(p.muted))
+                    .padding([0, 8])
+                    .on_press(Message::ClosePane(id))
+                    .style(
+                        (se_theme::GhostButton {
+                            dark,
+                            active: false
+                        })
+                        .style()
+                    ),
+                t!("menu.view_split_close").to_string()
+            ),
         ]
         .padding([2, 6])
         .align_y(Alignment::Center);

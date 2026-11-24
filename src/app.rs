@@ -307,6 +307,8 @@ pub enum Message {
     SpellLearned(Option<String>),
     /// The dictionaries of the speller.
     SpellLanguagesLoaded(Vec<String>),
+    /// The dictionaries, for the Preferences (no picker).
+    SpellChoices(Vec<String>),
     SpellReplace(String),
     SpellAdd,
     SpellIgnore,
@@ -1712,16 +1714,20 @@ impl ArdoiseApp {
                         .font(se_theme::UI_MEDIUM)
                         .color(se_theme::muted_text(dark)),
                     Space::new().width(Length::Fill),
-                    button(text("×").size(16).color(se_theme::muted_text(dark)))
-                        .padding([2, 6])
-                        .on_press(Message::CloseErrorPanel)
-                        .style(
-                            (se_theme::GhostButton {
-                                dark,
-                                active: false,
-                            })
-                            .style()
-                        ),
+                    crate::theme::with_tip(
+                        dark,
+                        button(text("×").size(16).color(se_theme::muted_text(dark)))
+                            .padding([2, 6])
+                            .on_press(Message::CloseErrorPanel)
+                            .style(
+                                (se_theme::GhostButton {
+                                    dark,
+                                    active: false,
+                                })
+                                .style()
+                            ),
+                        t!("popin.close").to_string()
+                    ),
                 ]
                 .padding([4, 14])
                 .align_y(Alignment::Center);
@@ -3286,6 +3292,10 @@ impl ArdoiseApp {
                 Task::none()
             }
             Message::SpellLearned(error) => self.spell_learned(error),
+            Message::SpellChoices(codes) => {
+                self.spell.choices = codes;
+                Task::none()
+            }
             Message::SpellLanguagesLoaded(codes) => {
                 self.spell_languages_loaded(codes);
                 Task::none()
@@ -4033,7 +4043,16 @@ impl ArdoiseApp {
                 if let PreferencesMessage::PluginPageSelected(id) = &msg {
                     let id = id.clone();
                     let _ = self.preferences.update(msg, &mut self.config);
-                    return self.plugin_settings_show(&id);
+                    let spelling = self
+                        .plugins
+                        .get(&id)
+                        .is_some_and(|p| p.manifest.contributes.speller.is_some());
+                    let dictionaries = if spelling {
+                        self.load_spell_choices()
+                    } else {
+                        Task::none()
+                    };
+                    return Task::batch([self.plugin_settings_show(&id), dictionaries]);
                 }
                 let servers_page = matches!(
                     msg,

@@ -30,6 +30,27 @@ pub const R_POPIN_CONTROL: f32 = 6.0;
 pub const UI: Font = Font::with_name("Instrument Sans");
 pub const MONO: Font = Font::with_name("JetBrains Mono");
 
+/// The families of the fixed-width fonts installed, sorted (read once).
+pub fn installed_mono_fonts() -> &'static [String] {
+    static FONTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    FONTS.get_or_init(|| {
+        let system = iced::advanced::graphics::text::font_system();
+        let Ok(mut system) = system.write() else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = system
+            .raw()
+            .db()
+            .faces()
+            .filter(|face| face.monospaced)
+            .filter_map(|face| face.families.first().map(|(name, _)| name.clone()))
+            .collect();
+        names.sort_unstable_by_key(|n| n.to_lowercase());
+        names.dedup();
+        names
+    })
+}
+
 /// The font of the text of the editor: the family the settings name (it must
 /// be installed; one that is not falls back to the default font), else the
 /// bundled one. A name is kept for the life of the app: a font names itself
@@ -563,6 +584,24 @@ pub fn palette_card(dark: bool) -> impl Fn(&Theme) -> container::Style {
         shadow: float_shadow(dark),
         ..container::Style::default()
     }
+}
+
+/// A control with its tooltip below it: the name of a button that is only a
+/// picto or a sign.
+pub fn with_tip<'a, M: 'a>(
+    dark: bool,
+    content: impl Into<iced::Element<'a, M>>,
+    label: String,
+) -> iced::Element<'a, M> {
+    iced::widget::tooltip(
+        content,
+        container(iced::widget::text(label).size(12))
+            .padding([4, 8])
+            .style(tooltip(dark)),
+        iced::widget::tooltip::Position::Bottom,
+    )
+    .gap(4)
+    .into()
 }
 
 /// A tooltip bubble.

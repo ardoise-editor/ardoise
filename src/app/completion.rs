@@ -1559,7 +1559,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(name);
         std::fs::write(&path, text).unwrap();
-        let mut app = ArdoiseApp::blank(Config::default());
+        // No snippet: the examples of a fresh install would be in the lists.
+        let mut app = ArdoiseApp::blank(Config {
+            snippets: Vec::new(),
+            ..Config::default()
+        });
         let _ = app.restore_session(crate::session::Session::default());
         let _ = app.update(Message::TabRead(Ok(Loaded {
             path: path.clone(),
@@ -1843,6 +1847,7 @@ mod tests {
             trigger: "fnmain".into(),
             body: "fn main() {\n    $0\n}".into(),
             languages: vec!["xyz".into()],
+            enabled: true,
         }];
         app.editor.content.select_bytes(0, 3, 0);
         let _ = app.update(Message::CompletionInvoke);

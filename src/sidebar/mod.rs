@@ -214,18 +214,22 @@ impl SidebarState {
                             .shaping(iced::widget::text::Shaping::Advanced)
                             .width(Length::Fill),
                         marker,
-                        button(text("×").size(14).color(ext_color))
-                            .padding([0, 5])
-                            .on_press(Message::Sidebar(SidebarMessage::CloseNow(
-                                close_now.clone()
-                            )))
-                            .style(
-                                (theme::GhostButton {
-                                    dark,
-                                    active: false
-                                })
-                                .style()
-                            ),
+                        crate::theme::with_tip(
+                            dark,
+                            button(text("×").size(14).color(ext_color))
+                                .padding([0, 5])
+                                .on_press(Message::Sidebar(SidebarMessage::CloseNow(
+                                    close_now.clone()
+                                )))
+                                .style(
+                                    (theme::GhostButton {
+                                        dark,
+                                        active: false
+                                    })
+                                    .style()
+                                ),
+                            t!("sidebar.close").to_string()
+                        ),
                     ]
                     .spacing(8)
                     .align_y(Alignment::Center),
@@ -435,19 +439,49 @@ impl SidebarState {
                 .align_y(Alignment::Center),
             );
             content = content.push(if has_projects {
-                scrollable(project_tree(
-                    projects,
-                    colors,
-                    marks,
-                    current_file,
-                    marked,
-                    tree_view,
-                    dark,
-                    &plugin_menus,
-                ))
-                .id(tree_id())
-                .on_scroll(|v| Message::TreeScrolled(v.absolute_offset().y, v.bounds().height))
-                .style(theme::Scrollbar { dark }.style())
+                // The tree, then the empty room under it: a right click there
+                // is the menu of the panel (the lines have their own).
+                column![
+                    scrollable(project_tree(
+                        projects,
+                        colors,
+                        marks,
+                        current_file,
+                        marked,
+                        tree_view,
+                        dark,
+                        &plugin_menus,
+                    ))
+                    .id(tree_id())
+                    .on_scroll(|v| Message::TreeScrolled(v.absolute_offset().y, v.bounds().height))
+                    .style(theme::Scrollbar { dark }.style())
+                    .height(Length::Shrink),
+                    panel_menu(
+                        dark,
+                        vec![
+                            (
+                                t!("sidebar.add_project").to_string(),
+                                Some(Message::AddProject),
+                            ),
+                            (
+                                t!("sidebar.collapse_all").to_string(),
+                                Some(Message::CollapseProjects),
+                            ),
+                            (
+                                t!("sidebar.refresh").to_string(),
+                                Some(Message::RefreshProjects),
+                            ),
+                            (
+                                if projects.hide_ignored {
+                                    t!("sidebar.show_ignored").to_string()
+                                } else {
+                                    t!("sidebar.hide_ignored").to_string()
+                                },
+                                Some(Message::ToggleHideIgnored),
+                            ),
+                        ],
+                    ),
+                ]
                 .height(if both {
                     Length::FillPortion(5)
                 } else {
@@ -465,6 +499,7 @@ impl SidebarState {
             });
         }
         if panels.files {
+            let has_files = !self.files.is_empty();
             content = content
                 .push(
                     container(
@@ -476,13 +511,37 @@ impl SidebarState {
                     .padding([0, 8]),
                 )
                 .push(
-                    scrollable(file_list)
-                        .style(theme::Scrollbar { dark }.style())
-                        .height(if both && has_projects {
-                            Length::FillPortion(2)
-                        } else {
-                            Length::Fill
-                        }),
+                    // The list, then the empty room under it: a right click
+                    // there is the menu of the panel (the lines have their own).
+                    column![
+                        scrollable(file_list)
+                            .style(theme::Scrollbar { dark }.style())
+                            .height(Length::Shrink),
+                        panel_menu(
+                            dark,
+                            vec![
+                                (t!("menu.file_new").to_string(), Some(Message::NewFile)),
+                                (t!("menu.file_open").to_string(), Some(Message::OpenFile)),
+                                (
+                                    t!("menu.file_add_project").to_string(),
+                                    Some(Message::AddProject),
+                                ),
+                                (
+                                    t!("menu.file_save_all").to_string(),
+                                    (!dirty.is_empty()).then_some(Message::SaveAll),
+                                ),
+                                (
+                                    t!("menu.file_close_all").to_string(),
+                                    has_files.then_some(Message::CloseTabs(None)),
+                                ),
+                            ],
+                        ),
+                    ]
+                    .height(if both && has_projects {
+                        Length::FillPortion(2)
+                    } else {
+                        Length::Fill
+                    }),
                 )
                 .push(container(text(footer).size(11.5).color(muted)).padding(8));
         }
@@ -495,6 +554,39 @@ impl SidebarState {
             .style(theme::panel(dark))
             .into()
     }
+}
+
+/// The empty room under a list: a right click opens a menu of these entries
+/// (a label, and the message it sends; none: the entry is off).
+fn panel_menu(dark: bool, entries: Vec<(String, Option<Message>)>) -> Element<'static, Message> {
+    let room = container(Space::new())
+        .width(Length::Fill)
+        .height(Length::Fill);
+    crate::pointer_area::context_menu(room, move || {
+        let items: Vec<Element<'static, Message>> = entries
+            .iter()
+            .map(|(label, message)| {
+                let mut btn = button(text(label.clone()).size(13))
+                    .padding([7, 10])
+                    .width(Length::Fixed(190.0))
+                    .style(
+                        (theme::MenuItem {
+                            dark,
+                            radius: theme::R_SM,
+                            highlighted: false,
+                        })
+                        .style(),
+                    );
+                if let Some(m) = message {
+                    btn = btn.on_press(m.clone());
+                }
+                btn.into()
+            })
+            .collect();
+        container(column(items).spacing(1).padding(6))
+            .style(theme::card(dark))
+            .into()
+    })
 }
 
 /// The tree of the projects: a line per folder or file that is shown.
@@ -620,7 +712,8 @@ fn project_tree<'a>(
                 let color = crate::projects::color_of(colors, &projects.roots, &path);
                 label =
                     label.push(container(Space::new().width(8).height(8)).style(theme::dot(color)));
-                label = label.push(
+                label = label.push(crate::theme::with_tip(
+                    dark,
                     button(text("×").size(14).color(p.muted))
                         .padding([0, 5])
                         .on_press(Message::RemoveProject(path.clone()))
@@ -631,7 +724,8 @@ fn project_tree<'a>(
                             })
                             .style(),
                         ),
-                );
+                    t!("sidebar.remove_project").to_string(),
+                ));
             }
             let press = if line.entry.is_dir {
                 Message::ToggleProjectFolder(path.clone())
