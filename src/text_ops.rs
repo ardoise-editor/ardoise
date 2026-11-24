@@ -39,6 +39,14 @@ fn join<S: AsRef<str>>(lines: &[S], final_newline: bool) -> String {
 }
 
 /// Duplicates lines `first..=last` right below themselves.
+/// The text without the blanks at the end of its lines.
+pub fn trim_trailing_whitespace(text: &str) -> String {
+    text.split('\n')
+        .map(|line| line.trim_end_matches([' ', '\t']))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub fn duplicate_lines(text: &str, first: usize, last: usize) -> String {
     let (lines, nl) = split(text);
     let last = last.min(lines.len() - 1);
@@ -222,6 +230,14 @@ pub fn spaces_to_tab_stop(before: &str, width: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_blanks_at_the_end_of_the_lines_go_and_the_rest_stays() {
+        use super::trim_trailing_whitespace as trim;
+        assert_eq!(trim("a  \n\tb\t\n  c"), "a\n\tb\n  c");
+        assert_eq!(trim("a\n\n"), "a\n\n", "the lines and the final break stay");
+        assert_eq!(trim("   "), "");
+    }
+
     use super::*;
 
     #[test]

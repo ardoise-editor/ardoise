@@ -224,6 +224,23 @@ impl ArdoiseApp {
         installed.then_some((path, ext))
     }
 
+    /// A file kept on disk is in front and its language has a server (what
+    /// `completion_target` finds, without the update of what it asked).
+    pub(super) fn has_language_server(&self) -> bool {
+        self.current_file
+            .as_deref()
+            .filter(|p| !is_untitled(p) && !is_virtual(p))
+            .and_then(Path::extension)
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .is_some_and(|ext| {
+                self.completion
+                    .installed
+                    .get(&ext)
+                    .copied()
+                    .unwrap_or_else(|| lsp::installed(&ext))
+            })
+    }
+
     /// Whether a server is installed for files of `ext` (asked once).
     pub(super) fn server_installed(&mut self, ext: &str) -> bool {
         *self

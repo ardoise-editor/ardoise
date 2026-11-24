@@ -628,6 +628,8 @@ pub enum Message {
     OpenLanguagePicker,
     SetLanguage(String),
     OpenShortcuts,
+    /// A page of the project in the browser (documentation, issues).
+    OpenUrl(&'static str),
     StartCaptureShortcut(ShortcutTarget),
     // Task palette
     OpenPalette,
@@ -1320,6 +1322,9 @@ impl ArdoiseApp {
             lang_picker_enabled: self.language_picker_enabled(),
             bookmarks: self.bookmark_state(),
             tools: self.plugins.tools(),
+            split: self.split.is_some(),
+            panels: self.menu_panels(),
+            editor: self.menu_editor(),
         };
         let signature = state.signature();
         if signature != self.native_menu_state {
@@ -1872,6 +1877,9 @@ impl ArdoiseApp {
                     lang_picker_enabled: lang_override_enabled,
                     bookmarks: self.bookmark_state(),
                     tools: self.plugins.tools(),
+                    split: self.split.is_some(),
+                    panels: self.menu_panels(),
+                    editor: self.menu_editor(),
                 },
                 self.open_submenu,
             );
@@ -1975,8 +1983,13 @@ impl ArdoiseApp {
         let with_prefs: Element<Message> = if self.show_preferences {
             let (x, y, w, h) = self.prefs_rect();
             let window = container(se_theme::in_popin(|| {
-                self.preferences
-                    .view(&self.config, self.capturing, &self.servers, &self.plugins)
+                self.preferences.view(
+                    &self.config,
+                    self.capturing,
+                    &self.servers,
+                    &self.plugins,
+                    &self.spell.choices,
+                )
             }))
             .width(Length::Fixed(w))
             .height(Length::Fixed(h));
@@ -2419,7 +2432,10 @@ impl ArdoiseApp {
                 self.stash_current();
                 self.untitled_counter += 1;
                 let path = untitled_path(self.untitled_counter);
-                self.load_buffer(path, CachedBuffer::blank());
+                let mut blank = CachedBuffer::blank();
+                // Stored as the settings say (encoding, line ending).
+                blank.format = self.config.new_file_format();
+                self.load_buffer(path, blank);
                 self.set_status(t!("status.new_file"), false);
                 Task::none()
             }
@@ -2515,6 +2531,7 @@ impl ArdoiseApp {
                     return self.handle(Message::FormatFile);
                 }
                 self.fix_before_save();
+                self.trim_before_save();
                 if let Some(path) = self.current_file.clone() {
                     if self.changed_on_disk(&path) {
                         self.overlay = ActiveOverlay::ConfirmOverwrite(path);
@@ -2524,9 +2541,10 @@ impl ArdoiseApp {
                 let content = crate::editor::buffer_text(&self.editor.content);
                 let origin = self.current_file.clone();
                 match origin.clone() {
-                    Some(path) if !is_untitled(&path) => {
-                        save_command(origin, save_file(path, content, self.format))
-                    }
+                    Some(path) if !is_untitled(&path) => save_command(
+                        origin,
+                        save_file(path, content, self.save_format(self.format)),
+                    ),
                     Some(_) => self.start_save_as(origin),
                     None => Task::none(),
                 }
@@ -2591,7 +2609,7 @@ impl ArdoiseApp {
                             .map(|c| c.format)
                             .unwrap_or_default()
                     };
-                    save_command(origin, save_file(path, content, format))
+                    save_command(origin, save_file(path, content, self.save_format(format)))
                 }
                 Err(e) if e == CANCELLED => Task::none(),
                 Err(e) => {
@@ -3992,7 +4010,11 @@ impl ArdoiseApp {
             Message::Preferences(msg) => {
                 // A language's completion setting: its servers start again
                 // with it.
-                if let PreferencesMessage::CompletionOption(..) = &msg {
+                if matches!(
+                    &msg,
+                    PreferencesMessage::CompletionOption(..)
+                        | PreferencesMessage::ResetGroup(crate::preferences::Group::Completion)
+                ) {
                     let _ = self.preferences.update(msg, &mut self.config);
                     self.config_dirty = true;
                     crate::lsp::set_completion_options(&self.config.completion_options);
@@ -4454,6 +4476,10 @@ impl ArdoiseApp {
                 Task::none()
             }
             // The shortcuts are set in the Preferences, on their page.
+            Message::OpenUrl(url) => {
+                plugins::open_url(url);
+                Task::none()
+            }
             Message::OpenShortcuts => {
                 self.capturing = None;
                 self.overlay = ActiveOverlay::None;
@@ -5841,6 +5867,39 @@ impl ArdoiseApp {
             .map_or(&[], |path| self.bookmarks.lines(path))
     }
 
+    /// What the menus need to know of the editor to switch entries on or off.
+    fn menu_editor(&self) -> crate::menus::EditorState {
+        let kind = crate::folding::Kind::of(self.editor.language.as_deref());
+        let has_text = self.editor.content.has_text();
+        // The lines a line command would touch: can they go up, or down?
+        let (first, last) = self.lines_to_edit(self.selection_span());
+        let first_line = first == 0;
+        let last_line = last + 1 >= self.editor.content.line_count();
+        crate::menus::EditorState {
+            can_undo: !self.undo_stack.is_empty(),
+            can_redo: !self.redo_stack.is_empty(),
+            can_back: !self.nav_back.is_empty(),
+            can_forward: !self.nav_forward.is_empty(),
+            can_reopen: !self.closed_tabs.is_empty(),
+            several_tabs: self.sidebar.files().len() > 1,
+            can_check: self.config.lint_enabled && self.lint_can_check(),
+            has_problems: !self.visible_problems().is_empty(),
+            fold: self.editor.content.fold_state(kind),
+            has_file: self.current_file.is_some(),
+            can_edit: !self.editing_blocked(),
+            can_comment: comment_style(self.editor.language.as_deref()).is_some(),
+            first_line,
+            last_line,
+            has_selection: self.editor.content.selection_range().is_some(),
+            any_modified: !self.dirty_files().is_empty(),
+            has_tabs: !self.sidebar.files().is_empty(),
+            can_split: self.current_file.as_deref().is_some_and(|p| !is_virtual(p)),
+            can_complete: self.config.completion_enabled
+                && (self.plugins.editor_focus.is_some() || has_text),
+            can_hint: self.config.completion_enabled && has_text && self.has_language_server(),
+        }
+    }
+
     fn bookmark_state(&self) -> crate::menu_bar::BookmarkState {
         let line = self.editor.content.cursor_position().0;
         crate::menu_bar::BookmarkState {
@@ -6689,6 +6748,30 @@ impl ArdoiseApp {
     /// the last edit (never over a file that changed under us).
     /// Writes the tabs that hold their text aside and have unsaved changes
     /// (a file changed on the disk meanwhile is left alone).
+    /// How a file is written: as it is stored, with the final line break the
+    /// settings ask for.
+    fn save_format(&self, format: TextFormat) -> TextFormat {
+        TextFormat {
+            final_newline: format.final_newline || self.config.final_newline_on_save,
+            ..format
+        }
+    }
+
+    /// Takes the blanks at the end of the lines off before a save, when the
+    /// settings ask for it (not at an automatic save: the space just typed
+    /// would vanish under the cursor).
+    fn trim_before_save(&mut self) {
+        if !self.config.trim_trailing_whitespace {
+            return;
+        }
+        let old = crate::editor::buffer_text(&self.editor.content);
+        let new = crate::text_ops::trim_trailing_whitespace(&old);
+        if new != old {
+            let (line, col) = self.editor.content.cursor_position();
+            let _ = self.apply_text_edit(new, line, col, None);
+        }
+    }
+
     fn save_cached_tabs(&self) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
         for (path, entry) in &self.file_cache {
@@ -6701,7 +6784,7 @@ impl ArdoiseApp {
                 if let Some(content) = entry.text() {
                     tasks.push(save_command(
                         Some(path.clone()),
-                        save_file(path.clone(), content, entry.format),
+                        save_file(path.clone(), content, self.save_format(entry.format)),
                     ));
                 }
             }
@@ -6726,7 +6809,7 @@ impl ArdoiseApp {
                 let content = crate::editor::buffer_text(&self.editor.content);
                 tasks.push(save_command(
                     Some(path.clone()),
-                    save_file(path, content, self.format),
+                    save_file(path, content, self.save_format(self.format)),
                 ));
             }
         }
@@ -7160,7 +7243,10 @@ impl ArdoiseApp {
         }
         let content = crate::editor::buffer_text(&self.editor.content);
         self.autosaving = 1;
-        save_command(Some(path.clone()), save_file(path, content, self.format))
+        save_command(
+            Some(path.clone()),
+            save_file(path, content, self.save_format(self.format)),
+        )
     }
 
     /// Writes the scratch file in front if it was typed in: they are saved by
@@ -8327,6 +8413,9 @@ impl ArdoiseApp {
             .map(crate::formatter::can_format)
             .unwrap_or(false);
         let has_sel_ctx = self.selection_info.is_some();
+        // What can act now: an entry that cannot is off.
+        let ed = self.menu_editor();
+        let can_rename = ed.can_edit && self.has_language_server();
         let sh_select_all = self.config.shortcuts.select_all.display();
         let sh_format_all = self.config.shortcuts.format_code.display();
         // Cut/Copy/Paste are the platform's own keys, not configurable.
@@ -8409,36 +8498,53 @@ impl ArdoiseApp {
             } else {
                 disabled_item(lbl_format_all.clone(), dark)
             };
+            // An entry that cannot act now is shown off (and does nothing).
+            let entry = |on: bool,
+                         label: &String,
+                         shortcut: Option<String>,
+                         message: Message|
+             -> Element<'static, Message> {
+                if on {
+                    item(label.clone(), shortcut, dark, message)
+                } else {
+                    disabled_item(label.clone(), dark)
+                }
+            };
             let ctx_items: Vec<Element<'static, Message>> = vec![
-                item(
-                    lbl_cut.clone(),
+                entry(
+                    ed.can_edit && ed.has_selection,
+                    &lbl_cut,
                     Some(sh_cut.clone()),
-                    dark,
                     Message::ContextCut,
                 ),
-                item(
-                    lbl_copy.clone(),
+                entry(
+                    ed.has_selection,
+                    &lbl_copy,
                     Some(sh_copy.clone()),
-                    dark,
                     Message::ContextCopy,
                 ),
-                item(
-                    lbl_paste.clone(),
+                entry(
+                    ed.can_edit,
+                    &lbl_paste,
                     Some(sh_paste.clone()),
-                    dark,
                     Message::ContextPaste,
                 ),
-                item(lbl_delete.clone(), None, dark, Message::ContextDelete),
-                item(
-                    lbl_rename.clone(),
+                entry(
+                    ed.can_edit && ed.has_selection,
+                    &lbl_delete,
+                    None,
+                    Message::ContextDelete,
+                ),
+                entry(
+                    can_rename,
+                    &lbl_rename,
                     Some(sh_rename.clone()),
-                    dark,
                     Message::RenameSymbol,
                 ),
-                item(
-                    lbl_select_all.clone(),
+                entry(
+                    ed.has_file,
+                    &lbl_select_all,
                     Some(sh_select_all.clone()),
-                    dark,
                     Message::SelectAll,
                 ),
                 separator(dark),
@@ -8471,7 +8577,7 @@ impl ArdoiseApp {
                 }
             }
             ctx_items.push(separator(dark));
-            ctx_items.push(item(lbl_lint_now.clone(), None, dark, Message::LintNow));
+            ctx_items.push(entry(ed.can_check, &lbl_lint_now, None, Message::LintNow));
             ctx_items.push(if has_problems {
                 item(lbl_lint_fix.clone(), None, dark, Message::LintFixAll)
             } else {

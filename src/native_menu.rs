@@ -25,6 +25,9 @@ pub struct State<'a> {
     pub lang_picker_enabled: bool,
     pub bookmarks: BookmarkState,
     pub tools: crate::plugins::Tools,
+    pub split: bool,
+    pub panels: Vec<(String, Message)>,
+    pub editor: crate::menus::EditorState,
 }
 
 impl State<'_> {
@@ -32,7 +35,7 @@ impl State<'_> {
     pub fn signature(&self) -> String {
         let c = self.config;
         format!(
-            "{}|{}|{}|{:?}|{}|{}|{}|{}|{:?}",
+            "{}|{}|{}|{:?}|{}|{}|{}|{}|{:?}|{}|{:?}|{:?}",
             &*rust_i18n::locale(),
             c.dark_mode,
             c.show_line_numbers,
@@ -42,6 +45,12 @@ impl State<'_> {
             self.bookmarks.on_line,
             self.bookmarks.any,
             self.tools,
+            self.split,
+            self.panels
+                .iter()
+                .map(|(title, _)| title)
+                .collect::<Vec<_>>(),
+            self.editor,
         )
     }
 }
@@ -202,6 +211,9 @@ fn menu_of(b: &mut Builder, title: String, top: TopMenu, state: &State) -> Subme
         lang_picker_enabled: state.lang_picker_enabled,
         bookmarks: state.bookmarks,
         tools: state.tools,
+        split: state.split,
+        panels: state.panels.clone(),
+        editor: state.editor,
     };
     append(b, &menu, &menus::entries(top, &shown, true));
     menu

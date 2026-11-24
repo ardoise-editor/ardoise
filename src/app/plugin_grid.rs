@@ -765,19 +765,19 @@ mod tests {
         let offered = |app: &ArdoiseApp| {
             let tools = app.plugins.tools();
             let palette: Vec<PaletteCommand> =
-                crate::palette::entries(&app.config, true, true, tools)
+                crate::palette::entries(&app.config, true, true, tools, &Default::default())
                     .into_iter()
                     .map(|e| e.command)
                     .collect();
             (
-                shortcut_shown(ShortcutTarget::GitCommit, tools),
-                shortcut_shown(ShortcutTarget::ToggleTerminal, tools),
+                shortcut_shown(ShortcutTarget::GitCommit, &app.plugins),
+                shortcut_shown(ShortcutTarget::ToggleTerminal, &app.plugins),
                 palette.contains(&PaletteCommand::ToggleGit),
                 palette.contains(&PaletteCommand::ToggleTerminal),
             )
         };
         assert_eq!(offered(&app), (false, false, false, false));
-        assert!(shortcut_shown(ShortcutTarget::Undo, app.plugins.tools()));
+        assert!(shortcut_shown(ShortcutTarget::Undo, &app.plugins));
         let manifest = ardoise_plugin::manifest::Manifest::parse(
             r#"{"id": "ardoise.git", "name": "Git", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
         )

@@ -277,6 +277,7 @@ pub fn entries(
     has_formatter: bool,
     language_enabled: bool,
     tools: crate::plugins::Tools,
+    editor: &crate::menus::EditorState,
 ) -> Vec<Entry> {
     let sh = &config.shortcuts;
     let entry = |command, label: String, shortcut: Option<String>, enabled| Entry {
@@ -786,12 +787,48 @@ pub fn entries(
             PaletteCommand::ToggleTerminal => tools.terminal,
             _ => true,
         })
+        // As in the menus, what cannot do anything now is off.
+        .map(|mut e| {
+            e.enabled &= available(e.command, editor);
+            e
+        })
         .collect()
+}
+
+/// Whether a command can do something now (the ones that need nothing are
+/// always on).
+fn available(command: PaletteCommand, ed: &crate::menus::EditorState) -> bool {
+    match command {
+        PaletteCommand::SaveFile
+        | PaletteCommand::SaveFileAs
+        | PaletteCommand::CloseFile
+        | PaletteCommand::RevertFile
+        | PaletteCommand::GotoLine
+        | PaletteCommand::ToggleBookmark => ed.has_file,
+        PaletteCommand::SaveAll => ed.any_modified,
+        PaletteCommand::CloseAllTabs => ed.has_tabs,
+        PaletteCommand::SplitRight | PaletteCommand::SplitDown => ed.can_split,
+        PaletteCommand::Line(_) | PaletteCommand::Case(_) | PaletteCommand::ConvertIndent(_) => {
+            ed.can_edit
+        }
+        PaletteCommand::ReopenTab => ed.can_reopen,
+        PaletteCommand::CloseOtherTabs => ed.several_tabs,
+        PaletteCommand::NavBack => ed.can_back,
+        PaletteCommand::NavForward => ed.can_forward,
+        PaletteCommand::Complete => ed.can_complete,
+        PaletteCommand::LintNow => ed.can_check,
+        PaletteCommand::LintFix => ed.can_check && ed.has_problems,
+        PaletteCommand::LintNext | PaletteCommand::LintPrev => ed.has_problems,
+        PaletteCommand::ToggleFold => ed.fold.here,
+        PaletteCommand::FoldAll => ed.fold.any,
+        PaletteCommand::UnfoldAll => ed.fold.folded,
+        _ => true,
+    }
 }
 
 /// The lowercase base letter of `c`: "É" and "é" both give "e", so a query
 /// typed without accents finds a label that has them, and the other way round.
-fn fold(c: char) -> char {
+pub(crate) fn fold(c: char) -> char {
     match c {
         'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
         'ç' | 'ć' | 'č' | 'ĉ' | 'ċ' => 'c',
@@ -834,6 +871,61 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_command_that_cannot_do_anything_yet_is_off_in_the_palette_as_in_the_menus() {
+        let tools = crate::plugins::Tools::default();
+        let state_of = |ed: &crate::menus::EditorState, command| {
+            entries(&Config::default(), true, true, tools, ed)
+                .into_iter()
+                .find(|e| e.command == command)
+                .map(|e| e.enabled)
+        };
+        let fresh = crate::menus::EditorState::default();
+        for command in [
+            PaletteCommand::ReopenTab,
+            PaletteCommand::NavBack,
+            PaletteCommand::NavForward,
+            PaletteCommand::Complete,
+            PaletteCommand::LintNext,
+            PaletteCommand::ToggleFold,
+            PaletteCommand::FoldAll,
+            PaletteCommand::UnfoldAll,
+            PaletteCommand::SaveFile,
+            PaletteCommand::SaveFileAs,
+            PaletteCommand::SaveAll,
+            PaletteCommand::CloseFile,
+            PaletteCommand::CloseAllTabs,
+            PaletteCommand::GotoLine,
+            PaletteCommand::ToggleBookmark,
+            PaletteCommand::SplitRight,
+        ] {
+            assert_eq!(state_of(&fresh, command), Some(false), "{command:?}");
+        }
+        assert_eq!(state_of(&fresh, PaletteCommand::NewFile), Some(true));
+        let woken = crate::menus::EditorState {
+            can_reopen: true,
+            can_complete: true,
+            ..fresh
+        };
+        assert_eq!(state_of(&woken, PaletteCommand::ReopenTab), Some(true));
+        let with_file = crate::menus::EditorState {
+            has_file: true,
+            can_split: true,
+            any_modified: true,
+            ..fresh
+        };
+        for command in [
+            PaletteCommand::SaveFile,
+            PaletteCommand::CloseFile,
+            PaletteCommand::GotoLine,
+            PaletteCommand::SplitRight,
+            PaletteCommand::SaveAll,
+        ] {
+            assert_eq!(state_of(&with_file, command), Some(true), "{command:?}");
+        }
+        assert_eq!(state_of(&woken, PaletteCommand::Complete), Some(true));
+    }
+
+    #[test]
     fn accents_are_folded() {
         assert_eq!(folded("Préférences"), "preferences");
         assert_eq!(folded("Écrire"), "ecrire");
@@ -853,7 +945,7 @@ mod tests {
             git: true,
             terminal: true,
         };
-        for entry in entries(&Config::default(), true, true, all) {
+        for entry in entries(&Config::default(), true, true, all, &Default::default()) {
             let _ = entry.command.message();
         }
     }
@@ -864,7 +956,7 @@ mod tests {
             git: true,
             terminal: true,
         };
-        let list = entries(&Config::default(), true, true, all);
+        let list = entries(&Config::default(), true, true, all, &Default::default());
         for (i, a) in list.iter().enumerate() {
             assert!(
                 list[i + 1..].iter().all(|b| b.command != a.command),

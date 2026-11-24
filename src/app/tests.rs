@@ -1977,6 +1977,81 @@ mod behavior_tests {
 }
 
 #[cfg(test)]
+mod menu_state_tests {
+    use super::*;
+
+    fn fresh() -> ArdoiseApp {
+        let mut app = ArdoiseApp::blank(Config::default());
+        let _ = app.restore_session(crate::session::Session::default());
+        app
+    }
+
+    #[test]
+    fn a_fresh_editor_has_nothing_to_undo_go_back_to_check_or_fold() {
+        let app = fresh();
+        let s = app.menu_editor();
+        assert!(!s.can_undo && !s.can_redo);
+        assert!(!s.can_back && !s.can_forward);
+        assert!(!s.can_check && !s.has_problems);
+        assert!(!s.fold.here && !s.fold.any && !s.fold.folded);
+        assert!(!s.can_reopen);
+        assert!(
+            !s.can_complete && !s.can_hint,
+            "no code: nothing to complete or to ask about"
+        );
+    }
+
+    #[test]
+    fn completion_wakes_up_with_code_and_parameter_info_needs_a_server_too() {
+        let mut app = fresh();
+        assert!(!app.menu_editor().can_complete);
+        let _ = app.update(Message::EditorAction(text_editor::Action::Edit(
+            text_editor::Edit::Insert('x'),
+        )));
+        let s = app.menu_editor();
+        assert!(s.can_complete, "words of the buffer can be completed");
+        assert!(!s.can_hint, "an untitled text has no language server");
+        // Off in the settings: off in the menu.
+        app.config.completion_enabled = false;
+        assert!(!app.menu_editor().can_complete);
+    }
+
+    #[test]
+    fn typing_wakes_undo_up_and_undoing_wakes_redo_up() {
+        let mut app = fresh();
+        let _ = app.update(Message::EditorAction(text_editor::Action::Edit(
+            text_editor::Edit::Insert('x'),
+        )));
+        assert!(app.menu_editor().can_undo);
+        let _ = app.update(Message::Undo);
+        let s = app.menu_editor();
+        assert!(s.can_redo, "something was undone, it can be done again");
+    }
+
+    #[test]
+    fn a_block_around_the_cursor_wakes_the_fold_entries_up() {
+        let mut app = fresh();
+        app.editor.language = Some("rs".into());
+        let _ = app.update(Message::TabRead(Ok(Loaded {
+            path: PathBuf::from("/tmp/menu-state/a.rs"),
+            text: "fn main() {\n    let a = 1;\n    let b = 2;\n}\n".into(),
+            format: TextFormat::default(),
+            stamp: None,
+        })));
+        let _ = app.update(Message::EditorAction(text_editor::Action::Move(
+            text_editor::Motion::DocumentStart,
+        )));
+        let s = app.menu_editor();
+        assert!(s.fold.any && s.fold.here, "{s:?}");
+        assert!(!s.fold.folded);
+        let _ = app.update(Message::FoldAll);
+        assert!(app.menu_editor().fold.folded);
+        let _ = app.update(Message::UnfoldAll);
+        assert!(!app.menu_editor().fold.folded);
+    }
+}
+
+#[cfg(test)]
 mod welcome_tests {
     use super::*;
 
@@ -2191,6 +2266,44 @@ mod look_tests {
             }
             "about" => app.overlay = ActiveOverlay::About,
             "prefs" => app.show_preferences = true,
+            "prefs_shortcuts" => {
+                for id in ["ardoise.git", "ardoise.terminal"] {
+                    let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
+                        r#"{{"id": "{id}", "name": "{}", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#,
+                        if id.ends_with("git") { "Git" } else { "Terminal" }
+                    ))
+                    .unwrap();
+                    app.plugins.installed.push(crate::plugins::Installed {
+                        manifest,
+                        dir: PathBuf::from("/nowhere"),
+                        origin: Default::default(),
+                    });
+                }
+                app.show_preferences = true;
+                app.preferences.page = crate::preferences::PrefsPage::Shortcuts;
+                if let Ok(q) = std::env::var("SHORTCUT_FILTER") {
+                    app.preferences.shortcut_filter = q;
+                }
+            }
+            "prefs_git" => {
+                for id in ["ardoise.git", "ardoise.spell"] {
+                    let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
+                        r#"{{"id": "{id}", "name": "{id}", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
+                    ))
+                    .unwrap();
+                    app.plugins.installed.push(crate::plugins::Installed {
+                        manifest,
+                        dir: PathBuf::from("/nowhere"),
+                        origin: Default::default(),
+                    });
+                }
+                app.show_preferences = true;
+                let _ = app.update(Message::Preferences(
+                    crate::preferences::PreferencesMessage::PluginPageSelected(
+                        "ardoise.git".into(),
+                    ),
+                ));
+            }
             "everywhere" => {
                 let _ = app.update(Message::OpenEverywhere(crate::everywhere::Tab::Actions));
             }

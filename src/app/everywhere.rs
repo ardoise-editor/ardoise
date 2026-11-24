@@ -805,6 +805,7 @@ impl ArdoiseApp {
             has_formatter,
             self.language_picker_enabled(),
             self.plugins.tools(),
+            &self.menu_editor(),
         );
         let mut scored: Vec<(i64, Row)> = entries
             .into_iter()
@@ -1723,6 +1724,7 @@ impl ArdoiseApp {
                     git: true,
                     terminal: true,
                 },
+                &Default::default(),
             )
             .into_iter()
             .find(|e| e.command == *command)

@@ -230,6 +230,13 @@ pub enum Registry {
     Failed(String),
 }
 
+/// The plugins whose page of the preferences also holds settings the editor
+/// keeps for them (Git: its tab in Search everywhere; spelling: whether it
+/// checks), with or without a panel of settings of their own.
+pub fn has_host_settings(id: &str) -> bool {
+    matches!(id, migrate::GIT | migrate::SPELL)
+}
+
 /// Which official plugins with entries of their own in the menus are there.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Tools {
@@ -471,7 +478,7 @@ impl Plugins {
             .installed
             .iter()
             .filter(|p| p.manifest.contributes.linter.is_none())
-            .filter(|p| self.settings_panel(p.id()).is_some())
+            .filter(|p| self.settings_panel(p.id()).is_some() || has_host_settings(p.id()))
             .map(|p| (p.id().to_string(), p.name()))
             .collect();
         pages.sort_by_key(|(_, name)| name.to_lowercase());

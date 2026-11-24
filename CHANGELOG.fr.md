@@ -1,5 +1,24 @@
 # Journal des modifications
 
+## [2.7.0] - 2026-11-24
+
+### Ajouté
+- Préférences › Éditeur : la police du texte, « Supprimer les espaces en fin de ligne à l’enregistrement », « Terminer les fichiers par un saut de ligne à l’enregistrement », et l’encodage et les fins de ligne des nouveaux fichiers.
+- Préférences › Éditeur : les listes conservées jusqu’ici sans écran — les snippets (en écrire, en retirer), les dossiers de confiance (retirer la confiance), les abréviations données aux actions (en retirer), les panneaux latéraux (fichiers, projets) — et « Effacer » pour les fichiers récents, l’historique des recherches et des remplacements et les machines distantes récentes.
+- Une barre de recherche en haut des Préférences (par libellé ou par bloc, sans tenir compte des accents ni des majuscules), et « Réinitialiser » sur chaque bloc de réglages qui a des valeurs par défaut (Affichage, Indentation, Saisie, Complétion, Fichiers, Recherche partout).
+
+### Modifié
+- « Masquer ce que Git ignore » est sur la page Git (dans Projets quand Git n’est pas installé) ; le contraste élevé est dans Apparence ; le bloc Complétion est sur la page Serveurs de langage ; la langue du dictionnaire est sur la page Orthographe ; les blocs Projets et Fichiers temporaires ont leur titre.
+
+## [2.6.2] - 2026-11-24
+
+### Modifié
+- Les menus et les actions de Rechercher partout grisent leurs entrées tant qu'elles ne peuvent rien faire — Annuler et Rétablir, Précédent et Suivant, Compléter le code, Infos sur les paramètres, Rouvrir l'onglet fermé, Fermer les autres onglets, les Problèmes (rechercher, corriger, suivant, précédent) et le repli du bloc, de tout ou rien — et les réactivent dès qu'elles le peuvent. Les panneaux de tous les plugins installés sont listés dans Affichage › Panneau (et pas seulement Git et Terminal).
+- Préférences › Éditeur est rangé par thème (Affichage, Indentation, Saisie, Complétion, Fichiers, Rechercher partout) ; les réglages qui dépendent d'un plugin sont sur sa page : l'onglet Plugins de Rechercher partout sur Git, la vérification orthographique sur Orthographe.
+- Préférences › Raccourcis est rangé par thème (Fichiers, Édition, Multi-curseurs, Code, Recherche et navigation, Marque-pages, Affichage), les raccourcis de chaque plugin installé regroupés sous son nom, avec une recherche par libellé ou par touches (accents et majuscules sans effet).
+- La page Langue des Préférences n'existe plus : la langue de l'interface est dans Éditeur. La page Mises à jour non plus : Aide › Rechercher les mises à jour fait la même chose.
+- « Fermer cette division » est dans Affichage › Diviser (elle était dans Affichage › Panneau, où on la prenait pour la fermeture d'un panneau latéral), sous ce nouveau nom, et elle est grisée tant que l'éditeur n'est pas divisé.
+
 ## [2.6.1] - 2026-11-23
 
 ### Modifié

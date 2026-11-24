@@ -229,7 +229,7 @@ impl EditorState {
         let p = crate::theme::palette(dark);
         let mut editor = crate::code_editor::CodeEditor::new(content)
             .size(config.font_size.clamp(8.0, 32.0))
-            .font(crate::theme::MONO)
+            .font(crate::theme::editor_font(&config.font_family))
             .line_height(iced::advanced::text::LineHeight::Relative(LINE_HEIGHT))
             .on_action(on_action)
             .highlight::<highlighter::Highlighter>(
@@ -291,7 +291,7 @@ impl EditorState {
 
         let mut editor = crate::code_editor::CodeEditor::new(&self.content)
             .size(config.font_size.clamp(8.0, 32.0))
-            .font(crate::theme::MONO)
+            .font(crate::theme::editor_font(&config.font_family))
             .line_height(iced::advanced::text::LineHeight::Relative(LINE_HEIGHT))
             .on_action(Message::EditorAction)
             .on_definition(|| Message::GotoDefinition)

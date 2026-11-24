@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.7.0] - 2026-11-24
+
+### Added
+- Preferences › Editor: the text font (family), "Remove trailing whitespace on save", "End files with a line break on save", and the encoding and the line endings of new files.
+- Preferences › Editor: the lists kept until now without a screen — the snippets (write one, remove one), the trusted folders (stop trusting one), the abbreviations given to actions (remove one), the side panels (files, projects) — and Clear for the recent files, the search and replace history and the recent remote machines.
+- A search box at the top of the Preferences (by label or by block, accents and capitals do not matter), and "Reset" on each block of settings that has defaults (Display, Indentation, Typing, Completion, Files, Search everywhere).
+
+### Changed
+- "Hide what Git ignores" is on the Git page (in Projects when Git is not installed); High contrast is in Appearance; the Completion block is on the Language servers page; the language of the dictionary is on the Spelling page; the Projects and Scratch files blocks have their titles.
+
+## [2.6.2] - 2026-11-24
+
+### Changed
+- The menus and the actions of Search everywhere switch their entries off when they cannot do anything yet — Undo and Redo, Back and Forward, Complete the code, Parameter info, Reopen the closed tab, Close other tabs, the Problems (check, fix, next, previous) and the folding of the block, all or none — and on again as soon as they can. The panels of every plugin installed are listed in View › Panel (not Git and the terminal only).
+- Preferences › Editor is grouped by theme (Display, Indentation, Typing, Completion, Files, Search everywhere); the settings that belong to a plugin are on its page: the Plugins tab of Search everywhere on Git, spell checking on Spelling.
+- Preferences › Shortcuts is grouped by theme (Files, Edit, Multiple cursors, Code, Search and navigation, Bookmarks, View), the shortcuts of each plugin installed grouped under its name, and has a search by label or by keys (accents and capitals do not matter).
+- The Language page of the Preferences is gone: the language of the interface is in Editor. The Updates page is gone too: Help › Check for updates does the same.
+- "Close this split" is in View › Split (it was in View › Panel, where it was taken for the closing of a side panel), under that new name, and it is off until the editor is split.
+
 ## [2.6.1] - 2026-11-23
 
 ### Changed

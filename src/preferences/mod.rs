@@ -8,6 +8,8 @@ use iced::{
     Alignment, Element, Length, Padding,
 };
 
+mod groups;
+pub use groups::{Group, HistoryKind};
 mod plugins;
 
 use crate::{
@@ -33,6 +35,8 @@ pub enum PreferencesMessage {
     /// The page of the settings of a plugin (its id).
     PluginPageSelected(String),
     ExcludeTyped(String),
+    /// The search of the shortcuts, as typed.
+    ShortcutFilter(String),
     FontSizeChanged(f32),
     TabWidthChanged(usize),
     UseSpacesToggled(bool),
@@ -63,6 +67,27 @@ pub enum PreferencesMessage {
     LocaleChanged(String),
     /// The scratch folder being typed (applied on Enter).
     ScratchDirTyped(String),
+    /// The font family being typed, and the one that is set (empty: default).
+    FontFamilyTyped(String),
+    FontFamilySet(String),
+    TrimTrailingToggled(bool),
+    FinalNewlineToggled(bool),
+    DefaultEncodingChanged(String),
+    DefaultLineEndingChanged(String),
+    /// A block of settings put back to its defaults.
+    ResetGroup(Group),
+    /// An abbreviation of an action removed: the action, the abbreviation.
+    AbbreviationRemove(String, String),
+    SnippetTrigger(String),
+    SnippetLanguages(String),
+    SnippetBody(iced::widget::text_editor::Action),
+    SnippetAdd,
+    SnippetRemove(usize),
+    /// A folder whose programs may run, no longer trusted.
+    UntrustFolder(String),
+    ClearHistory(HistoryKind),
+    /// What the search of the settings looks for.
+    SettingsSearch(String),
 }
 
 /// The pages of the navigation column.
@@ -71,26 +96,22 @@ pub enum PrefsPage {
     Editor,
     Appearance,
     Shortcuts,
-    Language,
     Lint,
     Servers,
     /// The settings of a plugin: which one is `PreferencesState::plugin_page`.
     /// Not in the list of the pages: each plugin has its own entry.
     PluginSettings,
     Plugins,
-    Updates,
 }
 
 impl PrefsPage {
-    pub(crate) const ALL: [PrefsPage; 8] = [
+    pub(crate) const ALL: [PrefsPage; 6] = [
         PrefsPage::Editor,
         PrefsPage::Appearance,
         PrefsPage::Shortcuts,
-        PrefsPage::Language,
         PrefsPage::Lint,
         PrefsPage::Servers,
         PrefsPage::Plugins,
-        PrefsPage::Updates,
     ];
 
     pub(crate) fn label(self) -> String {
@@ -98,11 +119,9 @@ impl PrefsPage {
             PrefsPage::Editor => t!("prefs.nav_editor"),
             PrefsPage::Appearance => t!("prefs.nav_appearance"),
             PrefsPage::Shortcuts => t!("prefs.nav_shortcuts"),
-            PrefsPage::Language => t!("prefs.language"),
             PrefsPage::Lint => t!("prefs.nav_lint"),
             PrefsPage::Servers => t!("prefs.nav_servers"),
             PrefsPage::PluginSettings | PrefsPage::Plugins => t!("prefs.nav_plugins"),
-            PrefsPage::Updates => t!("prefs.nav_updates"),
         }
         .to_string()
     }
@@ -166,6 +185,16 @@ pub struct PreferencesState {
     pub scratch_draft: String,
     /// The names left out of the trees, as typed.
     pub exclude_draft: String,
+    /// What the search of the shortcuts looks for.
+    pub shortcut_filter: String,
+    /// What the search of the settings looks for.
+    pub settings_filter: String,
+    /// The font family being typed.
+    pub font_draft: String,
+    /// The snippet being written.
+    pub snippet_trigger: String,
+    pub snippet_languages: String,
+    pub snippet_body: iced::widget::text_editor::Content,
 }
 
 impl PreferencesState {
@@ -175,6 +204,12 @@ impl PreferencesState {
             plugin_page: None,
             scratch_draft: config.scratch_dir.clone(),
             exclude_draft: config.projects_exclude.join(", "),
+            shortcut_filter: String::new(),
+            settings_filter: String::new(),
+            font_draft: config.font_family.clone(),
+            snippet_trigger: String::new(),
+            snippet_languages: String::new(),
+            snippet_body: iced::widget::text_editor::Content::new(),
         }
     }
 
@@ -184,6 +219,10 @@ impl PreferencesState {
         match msg {
             PreferencesMessage::ExcludeTyped(v) => {
                 self.exclude_draft = v;
+                return false;
+            }
+            PreferencesMessage::ShortcutFilter(v) => {
+                self.shortcut_filter = v;
                 return false;
             }
             PreferencesMessage::PageSelected(page) => {
@@ -277,6 +316,138 @@ impl PreferencesState {
                 self.scratch_draft = v;
                 return false;
             }
+            PreferencesMessage::FontFamilyTyped(v) => {
+                self.font_draft = v;
+                return false;
+            }
+            PreferencesMessage::FontFamilySet(v) => {
+                config.font_family = v.trim().to_string();
+                self.font_draft = config.font_family.clone();
+            }
+            PreferencesMessage::TrimTrailingToggled(v) => {
+                config.trim_trailing_whitespace = v;
+            }
+            PreferencesMessage::FinalNewlineToggled(v) => {
+                config.final_newline_on_save = v;
+            }
+            PreferencesMessage::DefaultEncodingChanged(v) => {
+                config.default_encoding = if v == crate::tabs::Encoding::Utf8.label() {
+                    String::new()
+                } else {
+                    v
+                };
+            }
+            PreferencesMessage::DefaultLineEndingChanged(v) => {
+                config.default_line_ending = if v == "LF" { String::new() } else { v };
+            }
+            PreferencesMessage::ResetGroup(group) => {
+                let d = Config::default();
+                match group {
+                    Group::Display => {
+                        config.font_size = d.font_size;
+                        config.font_family = d.font_family;
+                        self.font_draft = config.font_family.clone();
+                        config.show_line_numbers = d.show_line_numbers;
+                        config.highlight_current_line = d.highlight_current_line;
+                        config.show_minimap = d.show_minimap;
+                        config.show_page_guide = d.show_page_guide;
+                        config.page_guide_column = d.page_guide_column;
+                        config.show_indent_guides = d.show_indent_guides;
+                        config.show_whitespace = d.show_whitespace;
+                        config.word_wrap = d.word_wrap;
+                    }
+                    Group::Indentation => {
+                        config.tab_width = d.tab_width;
+                        config.use_spaces = d.use_spaces;
+                        config.auto_indent = d.auto_indent;
+                        config.detect_indent = d.detect_indent;
+                    }
+                    Group::Typing => {
+                        config.autocomplete_brackets = d.autocomplete_brackets;
+                        config.autocomplete_quotes = d.autocomplete_quotes;
+                        config.match_brackets = d.match_brackets;
+                        config.highlight_word = d.highlight_word;
+                    }
+                    Group::Completion => {
+                        config.completion_enabled = d.completion_enabled;
+                        config.completion_auto = d.completion_auto;
+                        config.completion_options = d.completion_options;
+                    }
+                    Group::Files => {
+                        config.auto_save = d.auto_save;
+                        config.format_on_save = d.format_on_save;
+                        config.trim_trailing_whitespace = d.trim_trailing_whitespace;
+                        config.final_newline_on_save = d.final_newline_on_save;
+                        config.default_encoding = d.default_encoding;
+                        config.default_line_ending = d.default_line_ending;
+                    }
+                    Group::Search => {
+                        config.everywhere_text = d.everywhere_text;
+                    }
+                    // The lists the user wrote have nothing to go back to.
+                    _ => return false,
+                }
+            }
+            PreferencesMessage::AbbreviationRemove(command, abbreviation) => {
+                if let Some(list) = config.action_abbreviations.get_mut(&command) {
+                    list.retain(|a| *a != abbreviation);
+                    if list.is_empty() {
+                        config.action_abbreviations.remove(&command);
+                    }
+                }
+            }
+            PreferencesMessage::SnippetTrigger(v) => {
+                self.snippet_trigger = v;
+                return false;
+            }
+            PreferencesMessage::SnippetLanguages(v) => {
+                self.snippet_languages = v;
+                return false;
+            }
+            PreferencesMessage::SnippetBody(action) => {
+                self.snippet_body.perform(action);
+                return false;
+            }
+            PreferencesMessage::SnippetAdd => {
+                let trigger = self.snippet_trigger.trim().to_string();
+                let body = self.snippet_body.text().trim_end().to_string();
+                if trigger.is_empty() || body.is_empty() {
+                    return false;
+                }
+                let languages = self
+                    .snippet_languages
+                    .split(|c: char| c == ',' || c.is_whitespace())
+                    .map(|l| l.trim().trim_start_matches('.').to_lowercase())
+                    .filter(|l| !l.is_empty())
+                    .collect();
+                config.snippets.push(crate::config::UserSnippet {
+                    trigger,
+                    body,
+                    languages,
+                });
+                self.snippet_trigger.clear();
+                self.snippet_languages.clear();
+                self.snippet_body = iced::widget::text_editor::Content::new();
+            }
+            PreferencesMessage::SnippetRemove(i) => {
+                if i < config.snippets.len() {
+                    config.snippets.remove(i);
+                }
+            }
+            PreferencesMessage::UntrustFolder(folder) => {
+                config.trusted_folders.retain(|f| *f != folder);
+                crate::trust::set_all(&config.trusted_folders);
+            }
+            PreferencesMessage::ClearHistory(kind) => match kind {
+                HistoryKind::RecentFiles => config.recent_files.clear(),
+                HistoryKind::Find => config.find_history.clear(),
+                HistoryKind::Replace => config.replace_history.clear(),
+                HistoryKind::RemoteHosts => config.remote_hosts.clear(),
+            },
+            PreferencesMessage::SettingsSearch(v) => {
+                self.settings_filter = v;
+                return false;
+            }
             PreferencesMessage::LocaleChanged(v) => {
                 config.locale = v.clone();
                 rust_i18n::set_locale(&v);
@@ -292,6 +463,7 @@ impl PreferencesState {
         capturing: Option<ShortcutTarget>,
         servers: &ServerStatus,
         plugin_state: &'a crate::plugins::Plugins,
+        spell_choices: &[String],
     ) -> Element<'a, Message> {
         let dark = config.dark_mode;
         let p = theme::palette(dark);
@@ -352,7 +524,12 @@ impl PreferencesState {
             ));
         }
 
-        let nav = container(column(nav_items).spacing(2))
+        let search = text_input(&t!("prefs.search_placeholder"), &self.settings_filter)
+            .on_input(|v| Message::Preferences(PreferencesMessage::SettingsSearch(v)))
+            .padding([7, 10])
+            .size(13)
+            .style(theme::Field::new(dark).style());
+        let nav = container(column![search, column(nav_items).spacing(2)].spacing(14))
             .padding([16, 10])
             .width(210)
             .height(Length::Fill)
@@ -368,31 +545,84 @@ impl PreferencesState {
                 ..container::Style::default()
             });
 
-        let page: Element<Message> = match shown {
-            PrefsPage::Editor => column![
-                self.editor_card(config, dark),
-                self.projects_card(config, dark),
-                self.scratch_card(dark),
-            ]
-            .spacing(14)
-            .into(),
-            PrefsPage::Appearance => self.appearance_card(dark),
-            PrefsPage::Shortcuts => shortcuts_list(dark, config, capturing, plugin_state.tools()),
-            PrefsPage::Language => self.language_card(config, dark),
-            PrefsPage::Lint => lint_page(config, dark, plugin_state),
-            PrefsPage::Servers => self.servers_page(dark, servers),
-            PrefsPage::PluginSettings => match current_plugin {
-                Some((id, _)) => plugin_settings_body(plugin_state, id, dark)
-                    .unwrap_or_else(|| Space::new().into()),
-                None => Space::new().into(),
+        // Every setting of the editor as a row, then the page (or the search)
+        // takes the blocks it shows.
+        let settings = groups::all(
+            self,
+            &groups::Context {
+                config,
+                dark,
+                plugins: plugin_state,
+                spell_choices,
             },
-            PrefsPage::Plugins => plugins::page(plugin_state, dark),
-            PrefsPage::Updates => self.updates_card(dark),
+        );
+        let searching = !self.settings_filter.trim().is_empty();
+        let page: Element<Message> = if searching {
+            groups::found(settings, &self.settings_filter, dark)
+        } else {
+            match shown {
+                PrefsPage::Editor => groups::blocks(
+                    settings,
+                    &[
+                        Group::Display,
+                        Group::Indentation,
+                        Group::Typing,
+                        Group::Files,
+                        Group::Search,
+                        Group::Panels,
+                        Group::Projects,
+                        Group::Scratch,
+                        Group::Snippets,
+                        Group::Trust,
+                        Group::History,
+                        Group::Language,
+                    ],
+                    dark,
+                    false,
+                ),
+                PrefsPage::Appearance => {
+                    groups::blocks(settings, &[Group::Appearance], dark, false)
+                }
+                PrefsPage::Shortcuts => {
+                    shortcuts_list(dark, config, capturing, plugin_state, &self.shortcut_filter)
+                }
+                PrefsPage::Lint => lint_page(config, dark, plugin_state),
+                PrefsPage::Servers => column![
+                    groups::blocks(settings, &[Group::Completion], dark, false),
+                    self.servers_page(dark, servers),
+                ]
+                .spacing(22)
+                .into(),
+                PrefsPage::PluginSettings => match current_plugin {
+                    // What the editor keeps for the plugin, then the plugin's own.
+                    Some((id, _)) => {
+                        let mut page = column![].spacing(18);
+                        let own: &[Group] = match id.as_str() {
+                            crate::plugins::migrate::GIT => &[Group::Git],
+                            crate::plugins::migrate::SPELL => &[Group::Spelling],
+                            _ => &[],
+                        };
+                        if !own.is_empty() {
+                            page = page.push(groups::blocks(settings, own, dark, false));
+                        }
+                        if let Some(body) = plugin_settings_body(plugin_state, id, dark) {
+                            page = page.push(body);
+                        }
+                        page.into()
+                    }
+                    None => Space::new().into(),
+                },
+                PrefsPage::Plugins => plugins::page(plugin_state, dark),
+            }
         };
 
-        let page_title = match (shown, current_plugin) {
-            (PrefsPage::PluginSettings, Some((_, name))) => name.clone(),
-            _ => shown.title(),
+        let page_title = if searching {
+            t!("prefs.search_results").to_string()
+        } else {
+            match (shown, current_plugin) {
+                (PrefsPage::PluginSettings, Some((_, name))) => name.clone(),
+                _ => shown.title(),
+            }
         };
         let content = scrollable(
             column![text(page_title).size(22).font(theme::UI_BOLD), page,]
@@ -418,354 +648,6 @@ impl PreferencesState {
         ])
         .style(theme::popin_card(dark))
         .into()
-    }
-
-    fn editor_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let font_size = row![
-            slider(8.0..=32.0, config.font_size, |v| {
-                Message::Preferences(PreferencesMessage::FontSizeChanged(v.round()))
-            })
-            .step(1.0_f32)
-            .width(140)
-            .style((theme::Slider { dark }).style()),
-            text(format!("{:.0} px", config.font_size))
-                .size(13)
-                .font(theme::MONO)
-                .width(48)
-                .align_x(iced::alignment::Horizontal::Right),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
-
-        let tab_width = {
-            let seg = |width: usize| {
-                button(text(width.to_string()).size(12).font(theme::MONO))
-                    .padding([3, 12])
-                    .on_press(Message::Preferences(PreferencesMessage::TabWidthChanged(
-                        width,
-                    )))
-                    .style(
-                        (theme::Segment {
-                            dark,
-                            active: config.tab_width == width,
-                            radius: theme::R_SM,
-                        })
-                        .style(),
-                    )
-            };
-            container(row![seg(2), seg(4), seg(8)].spacing(2))
-                .padding(2)
-                .style(theme::field(dark, false, theme::R_ROW))
-        };
-
-        let guide_column = {
-            let seg = |column: usize| {
-                button(text(column.to_string()).size(12).font(theme::MONO))
-                    .padding([3, 10])
-                    .on_press(Message::Preferences(
-                        PreferencesMessage::PageGuideColumnChanged(column),
-                    ))
-                    .style(
-                        (theme::Segment {
-                            dark,
-                            active: config.page_guide_column == column,
-                            radius: theme::R_SM,
-                        })
-                        .style(),
-                    )
-            };
-            container(row![seg(72), seg(80), seg(100), seg(120)].spacing(2))
-                .padding(2)
-                .style(theme::field(dark, false, theme::R_ROW))
-        };
-
-        let toggle = |label: String, on: bool, msg: fn(bool) -> PreferencesMessage| {
-            setting_row(label, switch(dark, on, Message::Preferences(msg(!on))))
-        };
-
-        // What each language's server proposes.
-        let option = |key: &str, label: String| {
-            let on = config.completion_options.get(key).copied().unwrap_or(true);
-            setting_row(
-                label,
-                switch(
-                    dark,
-                    on,
-                    Message::Preferences(PreferencesMessage::CompletionOption(
-                        key.to_string(),
-                        !on,
-                    )),
-                ),
-            )
-        };
-        let completion_options = vec![
-            option(
-                "typescript.auto_import",
-                t!("prefs.completion_ts_imports").to_string(),
-            ),
-            option(
-                "rust.auto_import",
-                t!("prefs.completion_rust_imports").to_string(),
-            ),
-            option(
-                "rust.postfix",
-                t!("prefs.completion_rust_postfix").to_string(),
-            ),
-            option(
-                "rust.call_arguments",
-                t!("prefs.completion_rust_arguments").to_string(),
-            ),
-            option(
-                "python.auto_import",
-                t!("prefs.completion_python_imports").to_string(),
-            ),
-        ];
-
-        let mut rows: Vec<Element<Message>> = vec![
-            setting_row(t!("prefs.font_size").to_string(), font_size.into()),
-            setting_row(t!("prefs.tab_width").to_string(), tab_width.into()),
-            toggle(
-                t!("prefs.use_spaces").to_string(),
-                config.use_spaces,
-                PreferencesMessage::UseSpacesToggled,
-            ),
-            toggle(
-                t!("prefs.show_line_numbers").to_string(),
-                config.show_line_numbers,
-                PreferencesMessage::ShowLineNumbersToggled,
-            ),
-            toggle(
-                t!("prefs.auto_indent").to_string(),
-                config.auto_indent,
-                PreferencesMessage::AutoIndentToggled,
-            ),
-            toggle(
-                t!("prefs.completion").to_string(),
-                config.completion_enabled,
-                PreferencesMessage::CompletionToggled,
-            ),
-            toggle(
-                t!("prefs.completion_auto").to_string(),
-                config.completion_auto,
-                PreferencesMessage::CompletionAutoToggled,
-            ),
-            toggle(
-                t!("prefs.autocomplete_brackets").to_string(),
-                config.autocomplete_brackets,
-                PreferencesMessage::AutocompleteBracketsToggled,
-            ),
-            toggle(
-                t!("prefs.autocomplete_quotes").to_string(),
-                config.autocomplete_quotes,
-                PreferencesMessage::AutocompleteQuotesToggled,
-            ),
-            toggle(
-                t!("prefs.highlight_current_line").to_string(),
-                config.highlight_current_line,
-                PreferencesMessage::HighlightCurrentLineToggled,
-            ),
-            toggle(
-                t!("prefs.auto_save").to_string(),
-                config.auto_save,
-                PreferencesMessage::AutoSaveToggled,
-            ),
-            toggle(
-                t!("prefs.show_page_guide").to_string(),
-                config.show_page_guide,
-                PreferencesMessage::ShowPageGuideToggled,
-            ),
-            toggle(
-                t!("prefs.high_contrast").to_string(),
-                config.high_contrast,
-                PreferencesMessage::HighContrastToggled,
-            ),
-            toggle(
-                t!("prefs.spell_check").to_string(),
-                config.spell_check,
-                PreferencesMessage::SpellCheckToggled,
-            ),
-            toggle(
-                t!("prefs.format_on_save").to_string(),
-                config.format_on_save,
-                PreferencesMessage::FormatOnSaveToggled,
-            ),
-            toggle(
-                t!("prefs.detect_indent").to_string(),
-                config.detect_indent,
-                PreferencesMessage::DetectIndentToggled,
-            ),
-            toggle(
-                t!("prefs.show_indent_guides").to_string(),
-                config.show_indent_guides,
-                PreferencesMessage::ShowIndentGuidesToggled,
-            ),
-            toggle(
-                t!("prefs.show_whitespace").to_string(),
-                config.show_whitespace,
-                PreferencesMessage::ShowWhitespaceToggled,
-            ),
-            toggle(
-                t!("prefs.highlight_word").to_string(),
-                config.highlight_word,
-                PreferencesMessage::HighlightWordToggled,
-            ),
-            toggle(
-                t!("prefs.match_brackets").to_string(),
-                config.match_brackets,
-                PreferencesMessage::MatchBracketsToggled,
-            ),
-            setting_row(
-                t!("prefs.page_guide_column").to_string(),
-                guide_column.into(),
-            ),
-            toggle(
-                t!("prefs.show_minimap").to_string(),
-                config.show_minimap,
-                PreferencesMessage::ShowMinimapToggled,
-            ),
-            toggle(
-                t!("prefs.word_wrap").to_string(),
-                config.word_wrap,
-                PreferencesMessage::WordWrapToggled,
-            ),
-            toggle(
-                t!("prefs.everywhere_text").to_string(),
-                config.everywhere_text,
-                PreferencesMessage::EverywhereTextToggled,
-            ),
-            toggle(
-                t!("prefs.everywhere_plugins").to_string(),
-                config.everywhere_git,
-                PreferencesMessage::EverywhereGitToggled,
-            ),
-        ];
-        // The languages' settings come under the completion switches.
-        let after = rows.len().min(7);
-        rows.splice(after..after, completion_options);
-
-        card_of_rows(dark, rows)
-    }
-
-    fn appearance_card(&self, dark: bool) -> Element<'_, Message> {
-        let seg = |label: String, is_dark: bool| {
-            button(text(label).size(12))
-                .padding([3, 12])
-                .on_press(Message::ThemeChanged(is_dark))
-                .style(
-                    (theme::Segment {
-                        dark,
-                        active: dark == is_dark,
-                        radius: theme::R_SM,
-                    })
-                    .style(),
-                )
-        };
-        let control = container(
-            row![
-                seg(t!("toolbar.dark").to_string(), true),
-                seg(t!("toolbar.light").to_string(), false)
-            ]
-            .spacing(2),
-        )
-        .padding(2)
-        .style(theme::field(dark, false, theme::R_ROW));
-
-        card_of_rows(
-            dark,
-            vec![setting_row(t!("prefs.theme").to_string(), control.into())],
-        )
-    }
-
-    /// Where scratch files are kept.
-    /// What the trees of the projects (and the finders) leave out.
-    fn projects_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let field = text_input("node_modules/, *.log, dist/", &self.exclude_draft)
-            .on_input(|v| Message::Preferences(PreferencesMessage::ExcludeTyped(v)))
-            .on_submit(Message::SetProjectsExclude(self.exclude_draft.clone()))
-            .padding([6, 10])
-            .size(13)
-            .width(260)
-            .style(theme::Field::new(dark).style());
-        let apply = button(text(t!("prefs.apply").to_string()).size(12))
-            .padding([6, 12])
-            .on_press(Message::SetProjectsExclude(self.exclude_draft.clone()))
-            .style((theme::Outline { dark }).style());
-        card_of_rows(
-            dark,
-            vec![
-                setting_row(
-                    t!("sidebar.hide_ignored").to_string(),
-                    switch(
-                        dark,
-                        config.projects_hide_ignored,
-                        Message::ToggleHideIgnored,
-                    ),
-                ),
-                setting_row(
-                    t!("prefs.projects_exclude").to_string(),
-                    row![field, apply]
-                        .spacing(8)
-                        .align_y(Alignment::Center)
-                        .into(),
-                ),
-            ],
-        )
-    }
-
-    fn scratch_card(&self, dark: bool) -> Element<'_, Message> {
-        let field = text_input(
-            crate::scratch::default_dir().to_string_lossy().as_ref(),
-            &self.scratch_draft,
-        )
-        .on_input(|v| Message::Preferences(PreferencesMessage::ScratchDirTyped(v)))
-        .on_submit(Message::SetScratchDir(self.scratch_draft.clone()))
-        .padding([6, 10])
-        .size(13)
-        .width(300)
-        .style(theme::Field::new(dark).style());
-        let small = |label: String, msg: Message| {
-            button(text(label).size(12))
-                .padding([6, 12])
-                .on_press(msg)
-                .style((theme::Outline { dark }).style())
-        };
-        let control = row![
-            field,
-            small(
-                t!("prefs.scratch_browse").to_string(),
-                Message::PickScratchDir
-            ),
-            small(
-                t!("prefs.scratch_reset").to_string(),
-                Message::SetScratchDir(String::new())
-            ),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center);
-        card_of_rows(
-            dark,
-            vec![setting_row(
-                t!("prefs.scratch_dir").to_string(),
-                control.into(),
-            )],
-        )
-    }
-
-    fn language_card(&self, config: &Config, dark: bool) -> Element<'_, Message> {
-        let selected = LOCALES.iter().copied().find(|l| l.code == config.locale);
-        let select = pick_list(LOCALES, selected, |choice| {
-            Message::Preferences(PreferencesMessage::LocaleChanged(choice.code.to_string()))
-        })
-        .padding([6, 12])
-        .width(150)
-        .text_size(13)
-        .style(theme::Select { dark }.style())
-        .menu_style(theme::Select { dark }.menu_style());
-
-        card_of_rows(
-            dark,
-            vec![setting_row(t!("prefs.language").to_string(), select.into())],
-        )
     }
 
     /// The language servers: installed ones give exact answers to Ctrl+click
@@ -819,24 +701,20 @@ impl PreferencesState {
         .spacing(12)
         .into()
     }
+}
 
-    fn updates_card(&self, dark: bool) -> Element<'_, Message> {
-        let version = text(format!("v{}", env!("CARGO_PKG_VERSION")))
-            .size(13)
-            .font(theme::MONO);
-        let check = button(text(t!("menu.help_check_updates").to_string()).size(12))
-            .padding([6, 12])
-            .on_press(Message::CheckForUpdate)
-            .style((theme::Outline { dark }).style());
-
-        card_of_rows(
-            dark,
-            vec![
-                setting_row(t!("prefs.current_version").to_string(), version.into()),
-                setting_row(t!("prefs.updates").to_string(), check.into()),
-            ],
-        )
-    }
+/// The row of the language of the interface.
+fn language_row(config: &Config, dark: bool) -> Element<'static, Message> {
+    let selected = LOCALES.iter().copied().find(|l| l.code == config.locale);
+    let select = pick_list(LOCALES, selected, |choice| {
+        Message::Preferences(PreferencesMessage::LocaleChanged(choice.code.to_string()))
+    })
+    .padding([6, 12])
+    .width(150)
+    .text_size(13)
+    .style(theme::Select { dark }.style())
+    .menu_style(theme::Select { dark }.menu_style());
+    setting_row(t!("prefs.language").to_string(), select.into())
 }
 
 /// The few settings the welcome popin asks: language, theme, size of the
@@ -961,30 +839,18 @@ pub fn switch(dark: bool, on: bool, message: Message) -> Element<'static, Messag
 
 /// The configurable shortcuts: one row per action, click a key to rebind it.
 /// Used by the Preferences page and by Help > Configure shortcuts.
-/// Whether a shortcut is listed: the ones of Git and of the terminal only
-/// once their plugin is installed.
-pub(crate) fn shortcut_shown(target: ShortcutTarget, tools: crate::plugins::Tools) -> bool {
-    match target {
-        ShortcutTarget::ToggleGit
-        | ShortcutTarget::GitCommit
-        | ShortcutTarget::GitPush
-        | ShortcutTarget::GitPull
-        | ShortcutTarget::GitBranches => tools.git,
-        ShortcutTarget::ToggleTerminal => tools.terminal,
-        _ => true,
-    }
+/// Whether a shortcut is listed: the ones of a plugin only once it is
+/// installed.
+pub(crate) fn shortcut_shown(target: ShortcutTarget, plugins: &crate::plugins::Plugins) -> bool {
+    PLUGIN_SHORTCUTS
+        .iter()
+        .find(|(_, targets)| targets.contains(&target))
+        .is_none_or(|(id, _)| plugins.get(id).is_some())
 }
 
-pub fn shortcuts_list(
-    dark: bool,
-    config: &Config,
-    capturing: Option<ShortcutTarget>,
-    tools: crate::plugins::Tools,
-) -> Element<'static, Message> {
-    let p = theme::palette(dark);
-    let sc = &config.shortcuts;
-
-    let entries: Vec<(ShortcutTarget, String, String)> = vec![
+/// Every shortcut that can be rebound: the action, its label, its keys.
+fn shortcut_entries(sc: &crate::config::Shortcuts) -> Vec<(ShortcutTarget, String, String)> {
+    vec![
         (
             ShortcutTarget::Undo,
             t!("shortcuts.undo").to_string(),
@@ -1220,12 +1086,128 @@ pub fn shortcuts_list(
             t!("shortcuts.quit").to_string(),
             sc.quit.display(),
         ),
-    ];
+    ]
+}
 
-    let rows: Vec<Element<'static, Message>> = entries
-        .into_iter()
-        .filter(|(target, ..)| shortcut_shown(*target, tools))
-        .map(|(target, label, key)| {
+/// The groups of the shortcuts of the editor, by theme.
+fn editor_groups() -> Vec<(String, Vec<ShortcutTarget>)> {
+    use ShortcutTarget as T;
+    vec![
+        (
+            t!("prefs.sc_files").to_string(),
+            vec![
+                T::NewFile,
+                T::OpenFile,
+                T::SaveFile,
+                T::SaveAs,
+                T::CloseFile,
+                T::ReopenTab,
+                T::Quit,
+            ],
+        ),
+        (
+            t!("prefs.sc_edit").to_string(),
+            vec![
+                T::Undo,
+                T::Redo,
+                T::SelectAll,
+                T::DuplicateLine,
+                T::MoveLineUp,
+                T::MoveLineDown,
+                T::DeleteLine,
+                T::ToggleComment,
+                T::FormatCode,
+                T::RenameSymbol,
+            ],
+        ),
+        (
+            t!("prefs.sc_cursors").to_string(),
+            vec![
+                T::AddNextOccurrence,
+                T::SelectAllOccurrences,
+                T::AddCursorAbove,
+                T::AddCursorBelow,
+            ],
+        ),
+        (
+            t!("prefs.sc_code").to_string(),
+            vec![T::Complete, T::ParameterInfo, T::ToggleFold],
+        ),
+        (
+            t!("prefs.sc_navigation").to_string(),
+            vec![
+                T::Find,
+                T::FindInFiles,
+                T::ReplaceInFiles,
+                T::GotoFile,
+                T::GotoClass,
+                T::GotoSymbol,
+                T::GotoLine,
+                T::NavBack,
+                T::NavForward,
+            ],
+        ),
+        (
+            t!("prefs.sc_bookmarks").to_string(),
+            vec![
+                T::ToggleBookmark,
+                T::NextBookmark,
+                T::PrevBookmark,
+                T::BookmarkPanel,
+            ],
+        ),
+        (
+            t!("prefs.sc_view").to_string(),
+            vec![T::CommandPalette, T::ToggleSidebar],
+        ),
+    ]
+}
+
+pub fn shortcuts_list(
+    dark: bool,
+    config: &Config,
+    capturing: Option<ShortcutTarget>,
+    plugins: &crate::plugins::Plugins,
+    filter: &str,
+) -> Element<'static, Message> {
+    let p = theme::palette(dark);
+    let sc = &config.shortcuts;
+
+    let entries = shortcut_entries(sc);
+
+    // Each shortcut is in one group; the ones of the plugins come after, one
+    // group per plugin installed.
+    let editor_groups = editor_groups();
+    let mut groups = editor_groups;
+    for (id, targets) in PLUGIN_SHORTCUTS {
+        if let Some(plugin) = plugins.get(id) {
+            groups.push((plugin.name(), targets.to_vec()));
+        }
+    }
+    // Whatever no group names is kept, at the end: no shortcut is lost.
+    let named: Vec<ShortcutTarget> = groups.iter().flat_map(|(_, t)| t.clone()).collect();
+    let left: Vec<ShortcutTarget> = entries
+        .iter()
+        .map(|(target, ..)| *target)
+        .filter(|t| !named.contains(t) && shortcut_shown(*t, plugins))
+        .collect();
+    if !left.is_empty() {
+        groups.push((t!("prefs.sc_other").to_string(), left));
+    }
+
+    // The search: every word must be in the label or in the keys.
+    let words: Vec<String> = filter
+        .split(|c: char| c.is_whitespace() || c == '+')
+        .filter(|w| !w.is_empty())
+        .map(plain)
+        .collect();
+    let matches = |label: &str, key: &str| {
+        let hay = format!("{} {}", plain(label), plain(key));
+        words.iter().all(|w| hay.contains(w.as_str()))
+    };
+
+    let row_of =
+        |target: ShortcutTarget, label: String, key: String| -> Element<'static, Message> {
             let is_capturing = capturing == Some(target);
             let key_label = if is_capturing {
                 t!("shortcuts.capturing").to_string()
@@ -1249,21 +1231,85 @@ pub fn shortcuts_list(
                 .style(),
             );
             setting_row(label, key_button.into())
-        })
-        .collect();
+        };
 
-    column![
-        card_of_rows(dark, rows),
+    let search = text_input(&t!("prefs.shortcut_search"), filter)
+        .on_input(|v| Message::Preferences(PreferencesMessage::ShortcutFilter(v)))
+        .padding([8, 12])
+        .size(13)
+        .style(theme::Field::new(dark).style());
+
+    let mut page = column![search].spacing(22);
+    let mut any = false;
+    for (title, targets) in groups {
+        let rows: Vec<Element<'static, Message>> = targets
+            .into_iter()
+            .filter_map(|target| {
+                let (_, label, key) = entries.iter().find(|(t, ..)| *t == target)?;
+                matches(label, key).then(|| row_of(target, label.clone(), key.clone()))
+            })
+            .collect();
+        if rows.is_empty() {
+            continue;
+        }
+        any = true;
+        page = page.push(
+            column![
+                text(title)
+                    .size(12)
+                    .font(theme::UI_SEMIBOLD)
+                    .color(theme::muted_strong(dark)),
+                card_of_rows(dark, rows),
+            ]
+            .spacing(8),
+        );
+    }
+    if !any {
+        page = page.push(
+            text(t!("prefs.shortcut_none").to_string())
+                .size(13)
+                .color(theme::muted_strong(dark)),
+        );
+    }
+    page.push(
         text(if capturing.is_some() {
             t!("shortcuts.capturing").to_string()
         } else {
             t!("shortcuts.click_to_rebind").to_string()
         })
         .size(11.5)
-        .color(p.muted),
-    ]
-    .spacing(10)
+        .color(theme::muted_strong(dark)),
+    )
     .into()
+}
+
+/// The shortcuts of the plugins, by plugin: its group shows once it is
+/// installed.
+const PLUGIN_SHORTCUTS: [(&str, &[ShortcutTarget]); 4] = [
+    (
+        crate::plugins::migrate::GIT,
+        &[
+            ShortcutTarget::ToggleGit,
+            ShortcutTarget::GitCommit,
+            ShortcutTarget::GitPush,
+            ShortcutTarget::GitPull,
+            ShortcutTarget::GitBranches,
+        ],
+    ),
+    (
+        crate::plugins::migrate::TERMINAL,
+        &[ShortcutTarget::ToggleTerminal],
+    ),
+    (crate::plugins::migrate::SPELL, &[ShortcutTarget::SpellFix]),
+    (crate::plugins::migrate::TASKS, &[ShortcutTarget::RunTask]),
+];
+
+/// A text as the search compares it: lowercase, without accents.
+fn plain(text: &str) -> String {
+    text.chars()
+        .flat_map(char::to_lowercase)
+        .map(crate::palette::fold)
+        .collect()
 }
 
 /// The Lint page, there once the Lint plugin is installed: whether and how
@@ -1448,6 +1494,368 @@ fn plugin_settings_body<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The settings, as the pages and the search see them.
+    fn settings_of<'a>(
+        state: &'a PreferencesState,
+        config: &'a Config,
+        plugins: &'a crate::plugins::Plugins,
+    ) -> Vec<groups::Setting<'a>> {
+        groups::all(
+            state,
+            &groups::Context {
+                config,
+                dark: true,
+                plugins,
+                spell_choices: &["en_US".to_string(), "fr_FR".to_string()],
+            },
+        )
+    }
+
+    fn in_group(settings: &[groups::Setting], group: Group) -> usize {
+        settings.iter().filter(|s| s.group == group).count()
+    }
+
+    fn install(plugins: &mut crate::plugins::Plugins, id: &str) {
+        let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
+            r#"{{"id": "{id}", "name": "{id}", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
+        ))
+        .unwrap();
+        plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: std::path::PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+    }
+
+    #[test]
+    fn every_block_of_settings_has_something_in_it() {
+        let config = Config::default();
+        let state = PreferencesState::from_config(&config);
+        let plugins = crate::plugins::Plugins::default();
+        let settings = settings_of(&state, &config, &plugins);
+        for group in [
+            Group::Display,
+            Group::Indentation,
+            Group::Typing,
+            Group::Completion,
+            Group::Files,
+            Group::Search,
+            Group::Panels,
+            Group::Projects,
+            Group::Scratch,
+            Group::Snippets,
+            Group::Trust,
+            Group::History,
+            Group::Language,
+            Group::Appearance,
+            Group::Git,
+            Group::Spelling,
+        ] {
+            assert!(in_group(&settings, group) > 0, "{group:?} is empty");
+        }
+        // High contrast is with the theme, not with the text.
+        let appearance: Vec<&str> = settings
+            .iter()
+            .filter(|s| s.group == Group::Appearance)
+            .map(|s| s.label.as_str())
+            .collect();
+        assert!(appearance.contains(&t!("prefs.high_contrast").as_ref()));
+        assert!(settings
+            .iter()
+            .filter(|s| s.group == Group::Display)
+            .all(|s| s.label != t!("prefs.high_contrast")));
+    }
+
+    #[test]
+    fn what_git_ignores_is_hidden_from_the_page_of_git_when_it_is_installed() {
+        let config = Config::default();
+        let state = PreferencesState::from_config(&config);
+        let mut plugins = crate::plugins::Plugins::default();
+        let label = t!("sidebar.hide_ignored").to_string();
+        let has = |group: Group, plugins: &crate::plugins::Plugins| {
+            settings_of(&state, &config, plugins)
+                .iter()
+                .any(|s| s.group == group && s.label == label)
+        };
+        assert!(has(Group::Projects, &plugins) && !has(Group::Git, &plugins));
+        install(&mut plugins, crate::plugins::migrate::GIT);
+        assert!(has(Group::Git, &plugins) && !has(Group::Projects, &plugins));
+        // The tab of Git in Search everywhere is on its page too, spelling
+        // has its own.
+        let settings = settings_of(&state, &config, &plugins);
+        assert!(settings
+            .iter()
+            .any(|s| s.group == Group::Git && s.label == t!("prefs.everywhere_plugins")));
+        assert!(settings
+            .iter()
+            .any(|s| s.group == Group::Spelling && s.label == t!("prefs.spell_language")));
+    }
+
+    #[test]
+    fn the_search_of_the_settings_finds_a_label_or_a_block_without_accents() {
+        let config = Config::default();
+        let state = PreferencesState::from_config(&config);
+        let plugins = crate::plugins::Plugins::default();
+        let labels = |q: &str| -> Vec<String> {
+            groups::matching(settings_of(&state, &config, &plugins), q)
+                .into_iter()
+                .map(|s| s.label)
+                .collect()
+        };
+        assert!(labels("minimap").contains(&t!("prefs.show_minimap").to_string()));
+        assert!(labels("MINIMAP").len() == labels("minimap").len());
+        // A word of the block finds all of the block.
+        assert!(labels("indentation").len() >= 4);
+        // Two words: both must be there.
+        assert!(!labels("minimap police")
+            .iter()
+            .any(|l| l == &t!("prefs.show_minimap")));
+        assert!(labels("zzzz").is_empty());
+        // Nothing typed: everything.
+        assert_eq!(
+            labels("").len(),
+            settings_of(&state, &config, &plugins).len()
+        );
+    }
+
+    #[test]
+    fn a_block_goes_back_to_its_defaults_and_a_list_has_nothing_to_go_back_to() {
+        let defaults = Config::default();
+        let mut config = Config {
+            font_size: 22.0,
+            show_minimap: !defaults.show_minimap,
+            word_wrap: !defaults.word_wrap,
+            tab_width: 8,
+            auto_save: !defaults.auto_save,
+            trim_trailing_whitespace: true,
+            default_line_ending: "CRLF".into(),
+            ..Config::default()
+        };
+        let mut state = PreferencesState::from_config(&config);
+        assert!(state.update(PreferencesMessage::ResetGroup(Group::Display), &mut config));
+        assert_eq!(config.font_size, defaults.font_size);
+        assert_eq!(config.show_minimap, defaults.show_minimap);
+        assert_eq!(config.word_wrap, defaults.word_wrap);
+        // The other blocks keep what they have.
+        assert_eq!(config.tab_width, 8);
+        assert!(state.update(
+            PreferencesMessage::ResetGroup(Group::Indentation),
+            &mut config
+        ));
+        assert_eq!(config.tab_width, defaults.tab_width);
+        assert!(state.update(PreferencesMessage::ResetGroup(Group::Files), &mut config));
+        assert_eq!(config.auto_save, defaults.auto_save);
+        assert!(!config.trim_trailing_whitespace && config.default_line_ending.is_empty());
+        // A list: nothing changes.
+        assert!(!state.update(PreferencesMessage::ResetGroup(Group::Snippets), &mut config));
+        assert!(Group::Display.resettable() && !Group::Trust.resettable());
+    }
+
+    #[test]
+    fn the_lists_the_user_wrote_can_be_edited_from_the_preferences() {
+        let mut config = Config::default();
+        let mut state = PreferencesState::from_config(&config);
+        // A snippet: written, added, removed.
+        state.update(PreferencesMessage::SnippetTrigger("fn".into()), &mut config);
+        state.update(
+            PreferencesMessage::SnippetLanguages("rs, .Py".into()),
+            &mut config,
+        );
+        assert!(
+            !state.update(PreferencesMessage::SnippetAdd, &mut config),
+            "no body, nothing added"
+        );
+        state.snippet_body = iced::widget::text_editor::Content::with_text("fn $1() {}");
+        assert!(state.update(PreferencesMessage::SnippetAdd, &mut config));
+        assert_eq!(config.snippets.len(), 1);
+        assert_eq!(config.snippets[0].trigger, "fn");
+        assert_eq!(config.snippets[0].languages, vec!["rs", "py"]);
+        assert!(state.snippet_trigger.is_empty(), "the form is empty again");
+        state.update(PreferencesMessage::SnippetRemove(0), &mut config);
+        assert!(config.snippets.is_empty());
+        // A trusted folder: no longer trusted.
+        config.trusted_folders = vec!["/a".into(), "/b".into()];
+        crate::trust::set_all(&config.trusted_folders);
+        state.update(PreferencesMessage::UntrustFolder("/a".into()), &mut config);
+        assert_eq!(config.trusted_folders, vec!["/b".to_string()]);
+        assert!(!crate::trust::is_trusted(std::path::Path::new("/a/x")));
+        crate::trust::set_all(&[]);
+        // The abbreviation of an action: removed, and the action with it
+        // when it was the last.
+        config
+            .action_abbreviations
+            .insert("ToggleSidebar".into(), vec!["sb".into(), "side".into()]);
+        state.update(
+            PreferencesMessage::AbbreviationRemove("ToggleSidebar".into(), "sb".into()),
+            &mut config,
+        );
+        assert_eq!(config.action_abbreviations["ToggleSidebar"], vec!["side"]);
+        state.update(
+            PreferencesMessage::AbbreviationRemove("ToggleSidebar".into(), "side".into()),
+            &mut config,
+        );
+        assert!(config.action_abbreviations.is_empty());
+        // The histories.
+        config.recent_files = vec!["/x".into()];
+        config.find_history = vec!["a".into()];
+        config.replace_history = vec!["b".into()];
+        config.remote_hosts = vec!["me@box".into()];
+        for kind in [
+            HistoryKind::RecentFiles,
+            HistoryKind::Find,
+            HistoryKind::Replace,
+            HistoryKind::RemoteHosts,
+        ] {
+            state.update(PreferencesMessage::ClearHistory(kind), &mut config);
+        }
+        assert!(config.recent_files.is_empty() && config.find_history.is_empty());
+        assert!(config.replace_history.is_empty() && config.remote_hosts.is_empty());
+    }
+
+    #[test]
+    fn a_new_file_is_stored_as_the_settings_say_and_the_font_is_the_one_named() {
+        use crate::tabs::{Encoding, LineEnding};
+        let mut config = Config::default();
+        let mut state = PreferencesState::from_config(&config);
+        let format = config.new_file_format();
+        assert_eq!(
+            (format.encoding, format.ending),
+            (Encoding::Utf8, LineEnding::Lf)
+        );
+        state.update(
+            PreferencesMessage::DefaultLineEndingChanged("CRLF".into()),
+            &mut config,
+        );
+        state.update(
+            PreferencesMessage::DefaultEncodingChanged(Encoding::Latin1.label().into()),
+            &mut config,
+        );
+        let format = config.new_file_format();
+        assert_eq!(
+            (format.encoding, format.ending),
+            (Encoding::Latin1, LineEnding::Crlf)
+        );
+        // Back to the defaults: nothing is kept.
+        state.update(
+            PreferencesMessage::DefaultLineEndingChanged("LF".into()),
+            &mut config,
+        );
+        state.update(
+            PreferencesMessage::DefaultEncodingChanged(Encoding::Utf8.label().into()),
+            &mut config,
+        );
+        assert!(config.default_line_ending.is_empty() && config.default_encoding.is_empty());
+        // The font: typed, then set; empty is the bundled one.
+        state.update(
+            PreferencesMessage::FontFamilyTyped(" Fira Code ".into()),
+            &mut config,
+        );
+        assert!(config.font_family.is_empty(), "typing does not apply it");
+        state.update(
+            PreferencesMessage::FontFamilySet(" Fira Code ".into()),
+            &mut config,
+        );
+        assert_eq!(config.font_family, "Fira Code");
+        assert_eq!(
+            theme::editor_font(&config.font_family),
+            theme::editor_font("Fira Code")
+        );
+        assert_eq!(theme::editor_font(""), theme::MONO);
+        assert_ne!(theme::editor_font("Fira Code"), theme::MONO);
+    }
+
+    #[test]
+    fn the_spelling_plugin_has_a_page_of_settings_once_installed() {
+        let mut plugins = crate::plugins::Plugins::default();
+        assert!(plugins.settings_pages().is_empty());
+        let manifest = ardoise_plugin::manifest::Manifest::parse(
+            r#"{"id": "ardoise.spell", "name": "Spelling", "version": "1.0.0", "api": 1, "command": ["bin/none"]}"#,
+        )
+        .unwrap();
+        plugins.installed.push(crate::plugins::Installed {
+            manifest,
+            dir: std::path::PathBuf::from("/nowhere"),
+            origin: Default::default(),
+        });
+        let pages = plugins.settings_pages();
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].0, "ardoise.spell");
+    }
+
+    #[test]
+    fn every_shortcut_is_in_exactly_one_group() {
+        let entries = shortcut_entries(&Config::default().shortcuts);
+        let mut named: Vec<ShortcutTarget> = editor_groups()
+            .into_iter()
+            .flat_map(|(_, targets)| targets)
+            .collect();
+        named.extend(
+            PLUGIN_SHORTCUTS
+                .iter()
+                .flat_map(|(_, targets)| targets.to_vec()),
+        );
+        for (target, ..) in &entries {
+            let count = named.iter().filter(|t| *t == target).count();
+            assert_eq!(count, 1, "{target:?} is in {count} groups");
+        }
+        assert_eq!(named.len(), entries.len(), "a group names something else");
+    }
+
+    #[test]
+    fn the_search_of_the_shortcuts_looks_at_the_label_and_the_keys_without_accents() {
+        // What a row matches: the same test as the page applies.
+        let hit = |label: &str, key: &str, typed: &str| {
+            let words: Vec<String> = typed
+                .split(|c: char| c.is_whitespace() || c == '+')
+                .filter(|w| !w.is_empty())
+                .map(plain)
+                .collect();
+            let hay = format!("{} {}", plain(label), plain(key));
+            words.iter().all(|w| hay.contains(w.as_str()))
+        };
+        assert!(
+            hit("Dupliquer la ligne", "Ctrl+D", "dupli"),
+            "a part of the label"
+        );
+        assert!(
+            hit("Rétablir", "Ctrl+Maj+Z", "retablir"),
+            "accents do not matter"
+        );
+        assert!(hit("Rétablir", "Ctrl+Maj+Z", "ctrl+maj+z"), "the keys");
+        assert!(hit("Rétablir", "Ctrl+Maj+Z", "maj z"), "words in any place");
+        assert!(
+            hit("Annuler", "Ctrl+Z", "ANNULER"),
+            "capitals do not matter"
+        );
+        assert!(!hit("Annuler", "Ctrl+Z", "dupli"));
+        assert!(!hit("Annuler", "Ctrl+Z", "ctrl+y"));
+        assert!(hit("Annuler", "Ctrl+Z", ""), "nothing typed: everything");
+    }
+
+    #[test]
+    fn the_shortcuts_of_a_plugin_show_once_it_is_installed() {
+        let mut plugins = crate::plugins::Plugins::default();
+        assert!(!shortcut_shown(ShortcutTarget::GitCommit, &plugins));
+        assert!(!shortcut_shown(ShortcutTarget::SpellFix, &plugins));
+        assert!(!shortcut_shown(ShortcutTarget::RunTask, &plugins));
+        assert!(shortcut_shown(ShortcutTarget::Undo, &plugins));
+        for id in ["ardoise.git", "ardoise.spell", "ardoise.tasks"] {
+            let manifest = ardoise_plugin::manifest::Manifest::parse(&format!(
+                r#"{{"id": "{id}", "name": "{id}", "version": "1.0.0", "api": 1, "command": ["bin/none"]}}"#
+            ))
+            .unwrap();
+            plugins.installed.push(crate::plugins::Installed {
+                manifest,
+                dir: std::path::PathBuf::from("/nowhere"),
+                origin: Default::default(),
+            });
+        }
+        assert!(shortcut_shown(ShortcutTarget::GitCommit, &plugins));
+        assert!(shortcut_shown(ShortcutTarget::SpellFix, &plugins));
+        assert!(shortcut_shown(ShortcutTarget::RunTask, &plugins));
+        assert!(!shortcut_shown(ShortcutTarget::ToggleTerminal, &plugins));
+    }
 
     #[test]
     fn preferences_from_default_config() {
