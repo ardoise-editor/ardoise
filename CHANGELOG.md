@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.8.0] - 2026-11-25
+
+### Added
+- The Git panel can hold the panels of other plugins as tabs: with the GitHub or GitLab plugin, one Git button in the activity bar and a tab each, with or without the Git plugin. A plugin joins with `"group": "git"` on a bottom panel.
+
 ## [2.7.2] - 2026-11-24
 
 ### Added
