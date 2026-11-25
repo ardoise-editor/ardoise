@@ -82,6 +82,16 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libvulkan-dev
       - run: cargo test
 
+  site:
+    name: Website up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Fails when docs/ is not what the generator makes, e.g. after a version
+      # bump in Cargo.toml without rebuilding the site.
+      - run: python3 -m unittest discover -s site-generator/tests
+
   msrv:
     name: Minimum Rust version (1.90)
     runs-on: ubuntu-latest

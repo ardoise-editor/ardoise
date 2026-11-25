@@ -15,6 +15,7 @@ REPO = os.path.abspath(a.repo)
 OUT = os.path.abspath(a.out or os.path.join(REPO, "docs"))
 SRC = os.path.join(REPO, "docs")
 import lib
+lib.VERSION = lib.cargo_version(REPO)
 os.makedirs(os.path.join(OUT, "assets"), exist_ok=True)
 if os.path.abspath(SRC) != OUT:
     shutil.copytree(os.path.join(SRC, "fonts"), os.path.join(OUT, "fonts"), dirs_exist_ok=True)

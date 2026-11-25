@@ -2,14 +2,21 @@
 """Tiny static-site toolkit for the Ardoise website (no dependency)."""
 import html as _h
 import os
+import re
 
 SITE = "https://ardoise-editor.github.io/ardoise/"
-VERSION = "2.9.0"
+VERSION = ""  # set by build.py from Cargo.toml, before the pages are imported
 REPO = "https://github.com/ardoise-editor/ardoise"
 ORG = "https://github.com/ardoise-editor"
 
 PAGES = []   # (filename, title_fr) for the sitemap
 MEDIA = []   # registered media slots -> media/CAPTURES.md
+
+
+def cargo_version(repo):
+    """The app version: the one a release tag must match."""
+    with open(os.path.join(repo, "Cargo.toml"), encoding="utf-8") as f:
+        return re.search(r'^version\s*=\s*"([^"]+)"', f.read(), re.M).group(1)
 
 
 def esc(s):
