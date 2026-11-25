@@ -77,6 +77,21 @@ fn file_args(args: impl Iterator<Item = std::ffi::OsString>) -> Vec<ipc::Target>
     files
 }
 
+/// What `--help` (`-h`) or `--version` (`-V`) prints, in place of opening a
+/// window.
+fn asked_to_say(args: impl Iterator<Item = std::ffi::OsString>) -> Option<String> {
+    let version = concat!("Ardoise Editor ", env!("CARGO_PKG_VERSION"));
+    for arg in args.take_while(|a| a != "--") {
+        if arg == "-h" || arg == "--help" {
+            return Some(format!("{version}\n\n{}", t!("cli.help")));
+        }
+        if arg == "-V" || arg == "--version" {
+            return Some(version.to_string());
+        }
+    }
+    None
+}
+
 /// `--new-window` (or `-n`): the files open in a window of their own.
 fn wants_new_window(args: impl Iterator<Item = std::ffi::OsString>) -> bool {
     args.take_while(|a| a != "--")
@@ -241,6 +256,10 @@ fn main() -> iced::Result {
     // only when no config file exists yet.
     let config = config::Config::load();
     rust_i18n::set_locale(&config.locale);
+    if let Some(said) = asked_to_say(std::env::args_os().skip(1)) {
+        println!("{said}");
+        return Ok(());
+    }
 
     let files = file_args(std::env::args_os().skip(1));
     // Files named while a window runs open there; the window comes forward.
@@ -314,6 +333,17 @@ mod tests {
             .into_iter()
             .map(|t| t.path)
             .collect()
+    }
+
+    #[test]
+    fn help_and_version_are_said_without_a_window() {
+        let said = |list: &[&str]| asked_to_say(list.iter().map(OsString::from));
+        assert!(said(&["--help"]).unwrap().contains("--new-window"));
+        assert!(said(&["a.txt", "-h"]).is_some());
+        assert!(said(&["-V"]).unwrap().ends_with(env!("CARGO_PKG_VERSION")));
+        assert!(said(&["a.txt"]).is_none());
+        // After `--`, a file of that name.
+        assert!(said(&["--", "--help"]).is_none());
     }
 
     #[test]

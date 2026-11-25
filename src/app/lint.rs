@@ -338,6 +338,7 @@ impl ArdoiseApp {
                     end_line: d.end_line,
                     end_col: d.end_col,
                     color: lint::color(&self.config, d.severity),
+                    minimap: true,
                     wavy: matches!(marking, Marking::Wavy | Marking::WavyHighlight),
                     straight: marking == Marking::Straight,
                     wash: match marking {

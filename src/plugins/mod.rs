@@ -271,6 +271,9 @@ pub struct Plugins {
     /// The text of the fields of the panels as typed, which the plugin need
     /// not send back at each key.
     pub inputs: HashMap<(PanelKey, String), String>,
+    /// What was typed in a field or an editor and told to its plugin, not
+    /// drawn back yet.
+    typed: HashMap<(PanelKey, String), std::collections::VecDeque<String>>,
     /// The values the fields had in the last render of each panel.
     rendered_inputs: HashMap<PanelKey, HashMap<String, String>>,
     /// The panel of a plugin shown in the sidebar, and the one under the editor.
@@ -425,7 +428,8 @@ impl Plugins {
         collect_inputs(&root, &mut now);
         let before = self.rendered_inputs.remove(&key).unwrap_or_default();
         for (id, value) in &now {
-            if before.get(id) != Some(value) {
+            let echo = self.is_echo(&(key.clone(), id.clone()), value);
+            if !echo && before.get(id) != Some(value) {
                 self.inputs.insert((key.clone(), id.clone()), value.clone());
             }
         }
@@ -436,10 +440,10 @@ impl Plugins {
         for (id, value, selection) in editors {
             let slot = (key.clone(), id);
             let moved = selection.filter(|s| self.editor_selections.get(&slot) != Some(s));
+            let echo = self.is_echo(&slot, &value);
             match self.editors.get_mut(&slot) {
-                Some((content, last)) if *last == value => {
-                    let _ = content;
-                }
+                // Nothing new: the editor stays, with its cursor.
+                Some((_, last)) if echo || *last == value => *last = value,
                 Some((content, last)) => {
                     *content = iced::widget::text_editor::Content::with_text(&value);
                     *last = value;
@@ -476,6 +480,7 @@ impl Plugins {
             self.panel_focus = None;
         }
         self.rendered_inputs.retain(|k, _| k.0 != id);
+        self.typed.retain(|k, _| k.0 .0 != id);
         self.status.retain(|k, _| k.0 != id);
         for by_plugin in self.published.values_mut() {
             by_plugin.remove(id);
@@ -490,6 +495,29 @@ impl Plugins {
             .into_iter()
             .flat_map(|by_plugin| by_plugin.values().flatten().cloned())
             .collect()
+    }
+
+    /// Keeps what was typed in a field or an editor, as told to its plugin.
+    pub fn has_typed(&mut self, slot: (PanelKey, String), text: String) {
+        let sent = self.typed.entry(slot).or_default();
+        sent.push_back(text);
+        // A plugin that does not draw it back: the oldest are forgotten.
+        if sent.len() > 64 {
+            sent.pop_front();
+        }
+    }
+
+    /// Whether `value` is what was typed, drawn back, maybe late (more was
+    /// typed since): it must not replace what is shown.
+    pub(crate) fn is_echo(&mut self, slot: &(PanelKey, String), value: &str) -> bool {
+        let Some(sent) = self.typed.get_mut(slot) else {
+            return false;
+        };
+        let Some(at) = sent.iter().position(|t| t == value) else {
+            return false;
+        };
+        sent.drain(..=at);
+        true
     }
 
     /// The text of a field as shown.
@@ -647,6 +675,37 @@ fn collect_inputs(node: &Node, out: &mut HashMap<String, String>) {
 mod tests {
     use super::*;
     use ardoise_plugin::ui::{column, input};
+
+    #[test]
+    fn what_was_typed_drawn_back_late_leaves_the_editor_and_its_cursor() {
+        let mut plugins = Plugins::default();
+        let key: PanelKey = ("acme.a".into(), "p".into());
+        let editor = |value: &str| -> Node {
+            serde_json::from_value(
+                serde_json::json!({"type": "editor", "id": "sql", "value": value}),
+            )
+            .unwrap()
+        };
+        let slot = (key.clone(), "sql".to_string());
+        plugins.set_view(key.clone(), editor(""));
+        // "se" is typed, and the plugin draws "s" back only then.
+        for (c, text) in [('s', "s"), ('e', "se")] {
+            let content = &mut plugins.editors.get_mut(&slot).unwrap().0;
+            content.perform(iced::widget::text_editor::Action::Edit(
+                iced::widget::text_editor::Edit::Insert(c),
+            ));
+            plugins.has_typed(slot.clone(), text.into());
+        }
+        for drawn in ["s", "s", "se"] {
+            plugins.set_view(key.clone(), editor(drawn));
+            let content = &plugins.editors[&slot].0;
+            assert_eq!(content.text().trim_end(), "se", "after {drawn:?}");
+            assert_eq!(content.cursor().position.column, 2);
+        }
+        // A text of the plugin's own replaces it.
+        plugins.set_view(key.clone(), editor("select 1"));
+        assert_eq!(plugins.editors[&slot].0.text().trim_end(), "select 1");
+    }
 
     #[test]
     fn typed_text_stays_until_the_plugin_changes_the_field() {

@@ -800,12 +800,16 @@ impl ArdoiseApp {
             .language
             .as_deref()
             .is_some_and(crate::formatter::can_format);
+        // The list itself covers the editor: what can be edited is judged
+        // as it will be once the list is gone.
+        let mut editor = self.menu_editor();
+        editor.can_edit = !self.editing_blocked_by(false);
         let entries = crate::palette::entries(
             &self.config,
             has_formatter,
             self.language_picker_enabled(),
             self.plugins.tools(),
-            &self.menu_editor(),
+            &editor,
         );
         let mut scored: Vec<(i64, Row)> = entries
             .into_iter()

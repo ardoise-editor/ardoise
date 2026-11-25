@@ -39,6 +39,17 @@ pub struct GridView {
     /// The cell of the cursor as last drawn: when it moves out of view, the
     /// rows scroll to it.
     pub cursor: Option<(usize, usize)>,
+    /// The cell being typed in as last drawn: its field takes the keyboard
+    /// when it appears.
+    pub editing: Option<(usize, usize)>,
+    /// What the field of that cell shows while it is typed in: the plugin's
+    /// answer comes after the next key.
+    pub typed: Option<String>,
+    /// The value the plugin last drew in it.
+    pub drawn: String,
+    /// The same for the filters of the columns, by column.
+    pub filters: HashMap<usize, String>,
+    pub drawn_filters: Vec<String>,
 }
 
 /// The scrollable of the rows of a grid.
@@ -210,12 +221,16 @@ pub fn view<'a>(
             let k = key.clone();
             line = line.push(
                 container(
-                    text_input("", &column.filter)
-                        .on_input(move |t| msg(&k, id, GridMsg::Filter(c, t)))
-                        .on_submit(msg(key, id, GridMsg::FilterSubmit(c)))
-                        .size(12)
-                        .padding([2, 6])
-                        .style(se_theme::Field::new(dark).style()),
+                    text_input(
+                        "",
+                        view.and_then(|v| v.filters.get(&c))
+                            .unwrap_or(&column.filter),
+                    )
+                    .on_input(move |t| msg(&k, id, GridMsg::Filter(c, t)))
+                    .on_submit(msg(key, id, GridMsg::FilterSubmit(c)))
+                    .size(12)
+                    .padding([2, 6])
+                    .style(se_theme::Field::new(dark).style()),
                 )
                 .width(Length::Fixed(widths[c]))
                 .padding([2, 4]),
@@ -273,17 +288,21 @@ pub fn view<'a>(
             }
             let cell = grid_row.cells.get(c);
             let content: Element<Message> = match (typing, cell) {
-                (Some(editing), _) => text_input("", &editing.value)
-                    .id(edit_id())
-                    .on_input({
-                        let k = key.clone();
-                        move |t| msg(&k, id, GridMsg::EditInput(t))
-                    })
-                    .on_submit(msg(key, id, GridMsg::EditCommit))
-                    .size(12.5)
-                    .padding([2, 6])
-                    .style(se_theme::Field::new(dark).style())
-                    .into(),
+                (Some(editing), _) => text_input(
+                    "",
+                    view.and_then(|v| v.typed.as_deref())
+                        .unwrap_or(&editing.value),
+                )
+                .id(edit_id())
+                .on_input({
+                    let k = key.clone();
+                    move |t| msg(&k, id, GridMsg::EditInput(t))
+                })
+                .on_submit(msg(key, id, GridMsg::EditCommit))
+                .size(12.5)
+                .padding([2, 6])
+                .style(se_theme::Field::new(dark).style())
+                .into(),
                 (None, Some(cell)) if cell.null => text("NULL")
                     .size(11.5)
                     .color(p.muted)

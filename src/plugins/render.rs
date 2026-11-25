@@ -399,69 +399,68 @@ fn draw<'a>(
             let framed = (!selects)
                 .then(|| framed_region(regions, cursor.position.line))
                 .flatten();
-            let editor: Element<Message> = match (framed, mark) {
-                (None, None) => editor.into(),
-                (framed, mark) => {
-                    let mut layers = iced::widget::Stack::new().push(editor);
-                    if let Some((first, last)) = framed {
-                        layers = layers.push(
-                            container(
-                                container(Space::new().width(Length::Fill).height(Length::Fixed(
-                                    (last - first + 1) as f32 * EDITOR_LINE + 2.0,
-                                )))
-                                .style(move |_: &iced::Theme| {
-                                    container::Style {
-                                        background: Some(iced::Background::Color(iced::Color {
-                                            a: 0.07,
-                                            ..p.accent
-                                        })),
-                                        border: iced::Border {
-                                            color: p.accent,
-                                            width: 1.0,
-                                            radius: 0.0.into(),
-                                        },
-                                        ..container::Style::default()
-                                    }
-                                }),
-                            )
-                            .padding(iced::Padding {
-                                top: EDITOR_PAD + first as f32 * EDITOR_LINE - 1.0,
-                                left: 4.0,
-                                right: 4.0,
-                                bottom: 0.0,
-                            })
-                            .width(Length::Fill)
-                            .height(Length::Fill),
-                        );
-                    }
-                    if let Some(mark) = mark {
-                        let red = se_theme::error_color(dark);
-                        layers = layers.push(
-                            container(
-                                container(Space::new().height(2))
-                                    .width(Length::Fixed(mark.len.max(1) as f32 * EDITOR_CHAR))
-                                    .style(move |_: &iced::Theme| container::Style {
-                                        background: Some(iced::Background::Color(red)),
-                                        ..container::Style::default()
-                                    }),
-                            )
-                            .padding(iced::Padding {
-                                top: EDITOR_PAD + (mark.line as f32 + 1.0) * EDITOR_LINE - 1.0,
-                                left: EDITOR_PAD + mark.column as f32 * EDITOR_CHAR,
-                                ..iced::Padding::ZERO
+            // Always the same tree of widgets, whatever is drawn over the
+            // editor or under it: a new shape would take its focus away.
+            let editor: Element<Message> = {
+                let mut layers = iced::widget::Stack::new().push(editor);
+                if let Some((first, last)) = framed {
+                    layers = layers.push(
+                        container(
+                            container(Space::new().width(Length::Fill).height(Length::Fixed(
+                                (last - first + 1) as f32 * EDITOR_LINE + 2.0,
+                            )))
+                            .style(move |_: &iced::Theme| {
+                                container::Style {
+                                    background: Some(iced::Background::Color(iced::Color {
+                                        a: 0.07,
+                                        ..p.accent
+                                    })),
+                                    border: iced::Border {
+                                        color: p.accent,
+                                        width: 1.0,
+                                        radius: 0.0.into(),
+                                    },
+                                    ..container::Style::default()
+                                }
                             }),
-                        );
-                    }
-                    layers.into()
+                        )
+                        .padding(iced::Padding {
+                            top: EDITOR_PAD + first as f32 * EDITOR_LINE - 1.0,
+                            left: 4.0,
+                            right: 4.0,
+                            bottom: 0.0,
+                        })
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                    );
                 }
+                if let Some(mark) = mark {
+                    let red = se_theme::error_color(dark);
+                    layers = layers.push(
+                        container(
+                            container(Space::new().height(2))
+                                .width(Length::Fixed(mark.len.max(1) as f32 * EDITOR_CHAR))
+                                .style(move |_: &iced::Theme| container::Style {
+                                    background: Some(iced::Background::Color(red)),
+                                    ..container::Style::default()
+                                }),
+                        )
+                        .padding(iced::Padding {
+                            top: EDITOR_PAD + (mark.line as f32 + 1.0) * EDITOR_LINE - 1.0,
+                            left: EDITOR_PAD + mark.column as f32 * EDITOR_CHAR,
+                            ..iced::Padding::ZERO
+                        }),
+                    );
+                }
+                layers.into()
             };
             let editor = container(editor).width(Length::Fill);
             // The completions the plugin gave, under its editor.
             let slot = (key.clone(), id_of(node).to_string());
-            match plugins.completion.as_ref().filter(|c| c.editor == slot) {
-                Some(open) => column![editor, completion_list(open, dark)].into(),
-                None => editor.into(),
-            }
+            let open = plugins.completion.as_ref().filter(|c| c.editor == slot);
+            column![editor]
+                .push(open.map(|open| completion_list(open, dark)))
+                .into()
         }
         Node::Grid(grid) => {
             let view = plugins.grids.get(&(key.clone(), grid.id.clone()));
@@ -824,6 +823,39 @@ fn tree_row<'a>(
 mod tests {
     use super::*;
     use ardoise_plugin::ui::tree_item;
+
+    #[test]
+    fn what_is_drawn_over_an_editor_leaves_it_where_it_was_among_the_widgets() {
+        // The widget that has the focus is found again by its place: the
+        // frame of a statement must not move the editor being typed in.
+        let path_to_the_editor = |extra: serde_json::Value| {
+            let mut node = serde_json::json!({"type": "editor", "id": "sql", "value": "select 1"});
+            node.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let node: Node = serde_json::from_value(node).unwrap();
+            let mut plugins = Plugins::default();
+            let key: PanelKey = ("acme".into(), "panel".into());
+            plugins.set_view(key.clone(), node);
+            let element = view(&plugins, &key, &plugins.views[&key], true);
+            let mut tree = &iced::advanced::widget::Tree::new(element.as_widget());
+            let mut path = vec![tree.tag];
+            while let Some(child) = tree.children.first() {
+                path.push(child.tag);
+                tree = child;
+            }
+            path
+        };
+        let bare = path_to_the_editor(serde_json::json!({}));
+        assert_eq!(
+            path_to_the_editor(serde_json::json!({"regions": [[0, 0]]})),
+            bare
+        );
+        assert_eq!(
+            path_to_the_editor(serde_json::json!({"mark": {"line": 0, "column": 0, "len": 3}})),
+            bare
+        );
+    }
 
     #[test]
     fn only_the_open_rows_of_a_tree_show() {

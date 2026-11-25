@@ -1,4 +1,5 @@
 {
+  "cli.help": "Usage: ardoise [options] [file[:line[:column]]…]\n\nOptions:\n  -n, --new-window  Open the files in a new window\n  -h, --help        Show this help\n  -V, --version     Show the version\n  --                What follows is files, even if it starts with a dash",
   "app.untitled": "Untitled",
   "toolbar.dark": "Dark",
   "toolbar.light": "Light",

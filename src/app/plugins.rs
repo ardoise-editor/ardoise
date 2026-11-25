@@ -1025,6 +1025,7 @@ impl ArdoiseApp {
                 };
                 if edit {
                     let text = content.text();
+                    self.plugins.has_typed(slot, text.clone());
                     host::notify(
                         &plugin,
                         methods::UI_EVENT,
@@ -1052,10 +1053,9 @@ impl ArdoiseApp {
                 self.plugin_settings_touched(&plugin, &panel);
                 // A field has the keyboard: its keys are its own.
                 self.plugins.panel_focus = None;
-                self.plugins.inputs.insert(
-                    ((plugin.clone(), panel.clone()), field.clone()),
-                    value.clone(),
-                );
+                let slot = ((plugin.clone(), panel.clone()), field.clone());
+                self.plugins.has_typed(slot.clone(), value.clone());
+                self.plugins.inputs.insert(slot, value.clone());
                 host::notify(
                     &plugin,
                     methods::UI_EVENT,
@@ -2179,7 +2179,7 @@ impl ArdoiseApp {
         let key = self.plugins.bottom.as_ref()?;
         Some(
             container(iced::widget::column![
-                rule(dark),
+                super::resize_edge(dark),
                 container(
                     iced::widget::column![
                         self.plugin_panel_header(
