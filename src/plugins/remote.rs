@@ -5,7 +5,7 @@
 //! `<anything>-<target>.tar.gz` (`x86_64-linux`, `aarch64-apple-darwin`), or
 //! one for all, `<anything>-any.tar.gz` (a plugin written in a scripting
 //! language), and `SHA256SUMS` listing them. The official plugins also sign
-//! it (`SHA256SUMS.sig`) with the key the app's own releases are signed
+//! it (`SHA256SUMS.sig3`) with the key the app's own releases are signed
 //! with.
 
 use std::time::Duration;
@@ -161,7 +161,7 @@ pub fn parse_release(json: &str, repository: &str, target: &str) -> Result<Relea
         .or_else(|| find(&|n| n.ends_with("-any.tar.gz")))
         .ok_or_else(|| t!("plugins.err_no_archive").to_string())?;
     let sums = find(&|n| n == "SHA256SUMS").ok_or_else(|| t!("plugins.err_no_sums").to_string())?;
-    let signature = find(&|n| n == "SHA256SUMS.sig");
+    let signature = find(&|n| n == crate::updater::RELEASE_SIGNATURE);
     Ok(Release {
         repository: repository.to_string(),
         version,
@@ -282,7 +282,7 @@ mod tests {
             {"name": "hello-1.2.0-x86_64-linux.tar.gz", "browser_download_url": "https://github.com/acme/hello/releases/download/v1.2.0/hello-1.2.0-x86_64-linux.tar.gz"},
             {"name": "hello-1.2.0-any.tar.gz", "browser_download_url": "https://github.com/acme/hello/releases/download/v1.2.0/hello-1.2.0-any.tar.gz"},
             {"name": "SHA256SUMS", "browser_download_url": "https://github.com/acme/hello/releases/download/v1.2.0/SHA256SUMS"},
-            {"name": "SHA256SUMS.sig", "browser_download_url": "https://evil.example/SHA256SUMS.sig"}
+            {"name": "SHA256SUMS.sig3", "browser_download_url": "https://evil.example/SHA256SUMS.sig3"}
         ]}"#;
         let linux = parse_release(json, "acme/hello", "x86_64-linux").unwrap();
         assert_eq!(linux.version, "1.2.0");
@@ -295,6 +295,29 @@ mod tests {
         assert!(parse_release(&no_sums, "acme/hello", "x86_64-linux").is_err());
         let bad_tag = json.replace("v1.2.0\"", "latest\"");
         assert!(parse_release(&bad_tag, "acme/hello", "x86_64-linux").is_err());
+    }
+
+    /// The signatures of the keys that were replaced are still published for
+    /// older editors: they must not count here.
+    #[test]
+    fn only_the_signature_of_the_current_key_is_taken() {
+        let asset = |name: &str| {
+            format!(
+                r#"{{"name": "{name}", "browser_download_url": "https://github.com/acme/hello/releases/download/v1.0.0/{name}"}}"#
+            )
+        };
+        let release = |names: &[&str]| {
+            let assets: Vec<String> = names.iter().map(|n| asset(n)).collect();
+            let json = format!(
+                r#"{{"tag_name": "v1.0.0", "assets": [{}]}}"#,
+                assets.join(",")
+            );
+            parse_release(&json, "acme/hello", "x86_64-linux").unwrap()
+        };
+        let base = ["hello-any.tar.gz", "SHA256SUMS", "SHA256SUMS.sig"];
+        assert_eq!(release(&base).signature, None);
+        let both = [&base[..], &["SHA256SUMS.sig3"]].concat();
+        assert_eq!(release(&both).signature.unwrap().name, "SHA256SUMS.sig3");
     }
 
     #[test]
