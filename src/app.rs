@@ -2745,6 +2745,10 @@ impl ArdoiseApp {
             Message::DiffTab(nav) => self.diff_nav(nav),
             // Git is the Git plugin's: its panel opens or closes.
             Message::ToggleGit => {
+                // Without the Git plugin, what goes with it is still there.
+                if !self.plugins.tools().git && !self.plugins.git_group().is_empty() {
+                    return self.update(Message::Plugin(crate::plugins::PluginMsg::ToggleGitGroup));
+                }
                 let open = self
                     .plugins
                     .bottom
