@@ -195,19 +195,21 @@ jobs:
         run: sha256sum ardoise-*.tar.gz ardoise-*-macos-aarch64.zip *.deb *.AppImage > SHA256SUMS
       # Ed25519 signature over SHA256SUMS; the app embeds the public key and
       # refuses an update whose checksums aren't signed by it.
-      # Two signatures while the key changes: SHA256SUMS.sig with the old key
-      # (UPDATE_SIGNING_KEY), which the versions installed before check, and
-      # SHA256SUMS.sig2 with the new one (UPDATE_SIGNING_KEY_V2), which the
-      # versions since check, and with which the official plugins are signed.
+      # One signature per key still trusted by an installed version:
+      # SHA256SUMS.sig (UPDATE_SIGNING_KEY) for SimpleEdit before 2.0,
+      # SHA256SUMS.sig2 (UPDATE_SIGNING_KEY_V2) for 2.0 to 2.8, and
+      # SHA256SUMS.sig3 (UPDATE_SIGNING_KEY_V3) for the versions since, which
+      # accept no other. The official plugins are signed with that last key.
       - name: Sign checksums
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           UPDATE_SIGNING_KEY_V2: ${{ secrets.UPDATE_SIGNING_KEY_V2 }}
+          UPDATE_SIGNING_KEY_V3: ${{ secrets.UPDATE_SIGNING_KEY_V3 }}
         run: |
           # install.sh and the in-app updater both refuse unsigned releases, so
           # publishing one would only break them.
-          if [ -z "$UPDATE_SIGNING_KEY" ] || [ -z "$UPDATE_SIGNING_KEY_V2" ]; then
-            echo "::error::UPDATE_SIGNING_KEY and UPDATE_SIGNING_KEY_V2 must both be set — refusing to release without SHA256SUMS.sig and SHA256SUMS.sig2."
+          if [ -z "$UPDATE_SIGNING_KEY" ] || [ -z "$UPDATE_SIGNING_KEY_V2" ] || [ -z "$UPDATE_SIGNING_KEY_V3" ]; then
+            echo "::error::UPDATE_SIGNING_KEY, UPDATE_SIGNING_KEY_V2 and UPDATE_SIGNING_KEY_V3 must all be set — refusing to release without the three signatures."
             exit 1
           fi
           umask 077
@@ -215,6 +217,8 @@ jobs:
           openssl pkeyutl -sign -inkey update-key.pem -rawin -in SHA256SUMS -out SHA256SUMS.sig
           printf '%s\n' "$UPDATE_SIGNING_KEY_V2" > update-key.pem
           openssl pkeyutl -sign -inkey update-key.pem -rawin -in SHA256SUMS -out SHA256SUMS.sig2
+          printf '%s\n' "$UPDATE_SIGNING_KEY_V3" > update-key.pem
+          openssl pkeyutl -sign -inkey update-key.pem -rawin -in SHA256SUMS -out SHA256SUMS.sig3
           rm -f update-key.pem
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -227,6 +231,7 @@ jobs:
             SHA256SUMS
             SHA256SUMS.sig
             SHA256SUMS.sig2
+            SHA256SUMS.sig3
           generate_release_notes: true
           draft: false
 
