@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## [2.9.0] - 2026-11-25
+
+### Sécurité
+- Nouvelle clé de signature pour les releases et les plugins officiels : seule sa signature (`SHA256SUMS.sig3`) est acceptée, par la mise à jour, l’installation des plugins et `install.sh`. Les releases gardent les anciennes signatures pour que les versions installées puissent se mettre à jour.
+
 ## [2.8.0] - 2026-11-25
 
 ### Ajouté

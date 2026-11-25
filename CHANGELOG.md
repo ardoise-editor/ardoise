@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.9.0] - 2026-11-25
+
+### Security
+- A new signing key for the releases and the official plugins: only its signature (`SHA256SUMS.sig3`) is accepted, by the updater, the plugin installer and `install.sh`. The releases keep the earlier signatures so that installed versions can update.
+
 ## [2.8.0] - 2026-11-25
 
 ### Added

@@ -7,16 +7,17 @@ const REPO: &str = "ardoise-editor/ardoise";
 const RELEASES_API: &str = "https://api.github.com/repos/ardoise-editor/ardoise/releases/latest";
 /// Public half of the signing key (Ed25519) of the releases and of the
 /// official plugins. `SHA256SUMS` must carry a valid signature from it, so a
-/// tampered release can't vouch for itself. The releases are signed with it
-/// in `SHA256SUMS.sig2` (`SHA256SUMS.sig` keeps the signature of the key it
-/// replaced, for the versions installed before).
+/// tampered release can't vouch for itself. It signs `SHA256SUMS.sig3`; the
+/// releases of the app and of the plugins also keep the signatures of the keys
+/// it replaced, for the versions installed before.
 const SIGNING_PUBLIC_KEY: [u8; 32] = [
-    0x8f, 0x2e, 0xe9, 0x26, 0xd5, 0x2e, 0x4c, 0xbf, 0x76, 0x19, 0x08, 0x6c, 0xb0, 0x6a, 0x7d, 0xc1,
-    0xad, 0x69, 0x9c, 0xde, 0xda, 0x7c, 0xe8, 0xe4, 0x82, 0x34, 0x55, 0xe2, 0x7c, 0x52, 0x78, 0xaf,
+    0x59, 0xaf, 0x44, 0x49, 0x33, 0xae, 0x93, 0x3d, 0x3c, 0xfc, 0x6c, 0x51, 0x38, 0xe4, 0x37, 0x15,
+    0x65, 0x8c, 0x1a, 0x94, 0xea, 0xf2, 0xa3, 0xc3, 0x26, 0x90, 0xfa, 0x24, 0x91, 0x21, 0xd2, 0xef,
 ];
 
-/// The signature of `SHA256SUMS` this key made, in a release of the app.
-pub(crate) const RELEASE_SIGNATURE: &str = "SHA256SUMS.sig2";
+/// The signature of `SHA256SUMS` this key made, in a release of the app or of
+/// an official plugin.
+pub(crate) const RELEASE_SIGNATURE: &str = "SHA256SUMS.sig3";
 /// Refuse absurdly large downloads.
 const MAX_DOWNLOAD: usize = 300 * 1024 * 1024;
 
@@ -455,7 +456,7 @@ mod tests {
     fn signature_verifies_only_for_the_signed_message() {
         let sig: Vec<u8> = (0..128)
             .step_by(2)
-            .map(|i| u8::from_str_radix(&"2d0fbae60fb8760a5abc7276a9141f1f2649f936391cc30e26a50972f7c34587f550ea19e3a3a6e68224c5b6794120f235776e2c2214d0aa3e754e8c46ca0f04"[i..i + 2], 16).unwrap())
+            .map(|i| u8::from_str_radix(&"5429211624a65880ec4523dba309e7eb48d0af23660f5d343aa739f9b1b4778ef8e739b90593b882fd9188ff9565340b7b6b8427768b2e3f644450e8d41f6303"[i..i + 2], 16).unwrap())
             .collect();
         assert!(verify_signature(b"simpleedit-test-message", &sig));
         assert!(!verify_signature(b"simpleedit-test-messagE", &sig));

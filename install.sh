@@ -13,14 +13,10 @@ need() {
 }
 
 # Public half of the release signing key (Ed25519), whose signature is
-# SHA256SUMS.sig2; keep in sync with SIGNING_PUBLIC_KEY in src/updater.rs.
+# SHA256SUMS.sig3; keep in sync with SIGNING_PUBLIC_KEY in src/updater.rs.
+# This script installs the latest release, so no earlier key is accepted.
 SIGNING_PUBKEY='-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAjy7pJtUuTL92GQhssGp9wa1pnN7afOjkgjRV4nxSeK8=
------END PUBLIC KEY-----'
-# The key it replaced: the releases made before it carry only its
-# signature, SHA256SUMS.sig.
-OLD_SIGNING_PUBKEY='-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAmZrvmo6ZzYbZD25u7dMsx6dm9HcyrW/ijgwVb4vjeks=
+MCowBQYDK2VwAyEAWa9ESTOukz08/GxROOQ3FWWMGpTq8qPDJpD6JJEh0u8=
 -----END PUBLIC KEY-----'
 
 # Verification is mandatory: the checksum list must be signed with the release
@@ -65,18 +61,13 @@ verify() {
         unverifiable "No SHA256SUMS is published for ${VERSION}."
         return 0
     fi
-    local base="https://github.com/${REPO}/releases/download/${VERSION}" key="$SIGNING_PUBKEY"
-    if ! curl -fsSL "$base/SHA256SUMS.sig2" -o "$work/SHA256SUMS.sig" 2>/dev/null; then
-        # A release made before the key changed.
-        key="$OLD_SIGNING_PUBKEY"
-        curl -fsSL "$base/SHA256SUMS.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || rm -f "$work/SHA256SUMS.sig"
-    fi
+    curl -fsSL "https://github.com/${REPO}/releases/download/${VERSION}/SHA256SUMS.sig3" -o "$work/SHA256SUMS.sig" 2>/dev/null || rm -f "$work/SHA256SUMS.sig"
     if [ ! -s "$work/SHA256SUMS.sig" ]; then
         unverifiable "No signature is published for ${VERSION}."
     elif ! openssl=$(find_openssl); then
         unverifiable "This system has no openssl able to verify Ed25519 signatures (install OpenSSL 3, e.g. 'brew install openssl@3')."
     else
-        printf '%s\n' "$key" > "$work/pub.pem"
+        printf '%s\n' "$SIGNING_PUBKEY" > "$work/pub.pem"
         "$openssl" pkeyutl -verify -pubin -inkey "$work/pub.pem" -rawin \
             -in "$work/SHA256SUMS" -sigfile "$work/SHA256SUMS.sig" >/dev/null 2>&1 \
             || err "Invalid signature on SHA256SUMS. Aborting."
