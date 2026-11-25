@@ -4,7 +4,7 @@ import html as _h
 import os
 
 SITE = "https://ardoise-editor.github.io/ardoise/"
-VERSION = "2.7.2"
+VERSION = "2.8.0"
 REPO = "https://github.com/ardoise-editor/ardoise"
 ORG = "https://github.com/ardoise-editor"
 
