@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr" data-title-fr="Installation et désinstallation — Ardoise Editor" data-title-en="Install and uninstall — Ardoise Editor">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installation et désinstallation — Ardoise Editor</title>
+<meta name="description" content="Installer Ardoise Editor sur Linux ou macOS : script, Homebrew, .deb, tar.gz ou depuis les sources — et le désinstaller proprement.">
+<meta property="og:title" content="Installation et désinstallation — Ardoise Editor"><meta property="og:description" content="Installer Ardoise Editor sur Linux ou macOS : script, Homebrew, .deb, tar.gz ou depuis les sources — et le désinstaller proprement.">
+<meta property="og:type" content="website"><meta property="og:url" content="https://ardoise-editor.github.io/ardoise/install.html">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" type="image/svg+xml" href="assets/ardoise.svg">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){try{var d=document.documentElement,l=localStorage.getItem('ardoise-lang'),t=localStorage.getItem('ardoise-theme');
+if(!l)l=(navigator.language||'fr').slice(0,2)==='fr'?'fr':'en';d.lang=l;if(t)d.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script defer src="assets/site.js"></script>
+
+</head>
+<body>
+<a class="skip" href="#main"><span data-lang="fr">Aller au contenu</span><span data-lang="en">Skip to content</span></a>
+<header class="site-header"><div class="wrap">
+  <a class="brand" href="index.html"><img src="assets/ardoise.svg" alt="" width="28" height="28">Ardoise</a>
+  <nav class="nav" id="nav" aria-label="Navigation"><a href="index.html"><span data-lang="fr">Accueil</span><span data-lang="en">Home</span></a><a href="guide.html"><span data-lang="fr">Guide</span><span data-lang="en">Guide</span></a><a href="extensions.html"><span data-lang="fr">Plugins</span><span data-lang="en">Plugins</span></a><a href="install.html" aria-current="page"><span data-lang="fr">Installation</span><span data-lang="en">Install</span></a></nav>
+  <div class="spacer"></div>
+  <div class="tools">
+    <div class="seg" role="group" aria-label="Language"><button type="button" data-set-lang="fr" onclick="setLang('fr')">FR</button><button type="button" data-set-lang="en" onclick="setLang('en')">EN</button></div>
+    <button class="icon-btn" id="theme-btn" type="button" aria-label="Theme / Thème"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg></button>
+    <a class="gh" href="https://github.com/ardoise-editor/ardoise"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z" fill="currentColor" stroke="none"/></svg><span>GitHub</span></a>
+    <button class="icon-btn burger" id="burger" type="button" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  </div>
+</div></header>
+<main id="main">
+<section class="page-head"><div class="wrap">
+<div class="crumbs"><a href="index.html"><span data-lang="fr">Accueil</span><span data-lang="en">Home</span></a> / <span data-lang="fr">Installation</span><span data-lang="en">Install</span></div>
+<h1><span data-lang="fr">Installer Ardoise</span><span data-lang="en">Install Ardoise</span></h1>
+<p class="lead"><span data-lang="fr">Choisissez la méthode qui vous convient. Chacune a sa commande de désinstallation, et rien ne demande de compte.</span><span data-lang="en">Pick the method that suits you. Each has its own uninstall command, and nothing asks for an account.</span></p></div></section><section class="block tight" style="padding-top:24px"><div class="wrap" style="max-width:900px">
+<div data-tabs data-detect="1" data-default="auto" data-mac="brew" data-linux="auto">
+<div class="tabs" role="tablist" aria-label="Méthode / Method"><button type="button" role="tab" data-tab="auto" aria-selected="false"><span data-lang="fr">Recommandé</span><span data-lang="en">Recommended</span></button><button type="button" role="tab" data-tab="brew" aria-selected="false"><span data-lang="fr">macOS · Homebrew</span><span data-lang="en">macOS · Homebrew</span></button><button type="button" role="tab" data-tab="deb" aria-selected="false"><span data-lang="fr">Debian · Ubuntu</span><span data-lang="en">Debian · Ubuntu</span></button><button type="button" role="tab" data-tab="tar" aria-selected="false"><span data-lang="fr">Linux · tar.gz</span><span data-lang="en">Linux · tar.gz</span></button><button type="button" role="tab" data-tab="src" aria-selected="false"><span data-lang="fr">Depuis les sources</span><span data-lang="en">From source</span></button></div>
+
+<div class="tabpanel" id="auto" role="tabpanel">
+ <p class="lead" style="font-size:17px"><span data-lang="fr">Une seule commande pour Linux et macOS : elle détecte votre système, télécharge la dernière version et la vérifie (signature Ed25519 du fichier SHA256SUMS, puis somme de contrôle du fichier).</span><span data-lang="en">One command for Linux and macOS: it detects your system, downloads the latest release and verifies it (Ed25519 signature on SHA256SUMS, then the file's checksum).</span></p>
+ <div class="cmd"><code><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/install.sh | bash</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <h3 id="uninstall-auto" style="margin-top:28px"><span data-lang="fr">Désinstaller</span><span data-lang="en">Uninstall</span></h3>
+ <div class="cmd"><code><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/uninstall.sh | bash</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <p data-lang="fr">Le script détecte comment Ardoise a été installé et le retire, avec tout ce qu'il avait conservé : réglages, session (le texte des fichiers non enregistrés), plugins et leurs données, serveurs de langage, et les mots de passe enregistrés dans le trousseau du système. Un dossier Scratch choisi par vous est laissé intact. Fermez Ardoise avant.</p><p data-lang="en">The script detects how Ardoise was installed and removes it, with everything it kept: settings, session (the text of unsaved files), plugins and their data, language servers, and the passwords the plugins saved in the system keychain. A scratch folder you chose yourself is left alone. Close Ardoise first.</p>
+ <div class="callout"><b><span data-lang="fr">À savoir</span><span data-lang="en">Good to know</span></b> — <span data-lang="fr">pour garder vos données en vue d'une réinstallation, ajoutez <code>--keep-data</code> :</span><span data-lang="en">to keep your data for a reinstall, add <code>--keep-data</code>:</span></div>
+ <div class="cmd"><code><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/uninstall.sh | bash -s -- --keep-data</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+</div>
+
+<div class="tabpanel" id="brew" role="tabpanel" hidden>
+ <p class="lead" style="font-size:17px"><span data-lang="fr">Installe <code>Ardoise.app</code> dans <code>/Applications</code> et place <code>ardoise</code> dans votre <code>PATH</code>.</span><span data-lang="en">Installs <code>Ardoise.app</code> into <code>/Applications</code> and puts <code>ardoise</code> on your <code>PATH</code>.</span></p>
+ <div class="cmd"><code><span class="p">$</span> brew install --cask ardoise-editor/tap/ardoise</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <div class="callout warn"><b><span data-lang="fr">macOS</span><span data-lang="en">macOS</span></b> — <span data-lang="fr">l'application est signée « ad hoc », pas notarisée. Si Gatekeeper bloque le premier lancement, faites un clic droit sur l'app puis <b>Ouvrir</b>, ou lancez :</span><span data-lang="en">the app is signed ad-hoc, not notarised. If Gatekeeper blocks the first launch, right-click the app and choose <b>Open</b>, or run:</span></div>
+ <div class="cmd"><code><span class="p">$</span> xattr -dr com.apple.quarantine /Applications/Ardoise.app</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <h3 style="margin-top:28px"><span data-lang="fr">Désinstaller</span><span data-lang="en">Uninstall</span></h3>
+ <div class="cmd"><code><span class="p">$</span> brew uninstall --cask ardoise</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <p class="muted" style="margin-top:12px"><span data-lang="fr">Pour supprimer aussi vos réglages :</span><span data-lang="en">To drop your settings too:</span></p>
+ <div class="cmd"><code><span class="p">$</span> brew uninstall --zap --cask ardoise</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+</div>
+
+<div class="tabpanel" id="deb" role="tabpanel" hidden>
+ <p class="lead" style="font-size:17px"><span data-lang="fr">Télécharge et installe le dernier paquet <code>.deb</code>.</span><span data-lang="en">Downloads and installs the latest <code>.deb</code> package.</span></p>
+ <div class="codewrap"><pre class="code"><code><span class="p">$</span> curl -fsSL https://api.github.com/repos/ardoise-editor/ardoise/releases/latest \
+  | sed -n &#x27;s/.*&quot;browser_download_url&quot;: *&quot;\([^&quot;]*\/ardoise_[^&quot;]*\.deb\)&quot;.*/\1/p&#x27; \
+  | xargs curl -fsSLO
+<span class="p">$</span> sudo apt install ./ardoise_*.deb &amp;&amp; rm ardoise_*.deb</code></pre><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <div class="callout"><b><span data-lang="fr">Vérification</span><span data-lang="en">Verification</span></b> — <span data-lang="fr">cette commande ne vérifie pas le téléchargement ; le script recommandé, lui, le fait. Pour contrôler à la main, téléchargez <code>SHA256SUMS</code> depuis la page des versions, à côté du <code>.deb</code>, puis :</span><span data-lang="en">this command does not verify the download; the recommended script does. To check by hand, download <code>SHA256SUMS</code> from the Releases page next to the <code>.deb</code> and run:</span></div>
+ <div class="cmd"><code><span class="p">$</span> sha256sum -c --ignore-missing SHA256SUMS</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <h3 style="margin-top:28px"><span data-lang="fr">Désinstaller</span><span data-lang="en">Uninstall</span></h3>
+ <div class="codewrap"><pre class="code"><code><span class="p">$</span> sudo apt remove ardoise
+<span class="c"># ou</span>
+<span class="p">$</span> sudo dpkg -r ardoise</code></pre><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+</div>
+
+<div class="tabpanel" id="tar" role="tabpanel" hidden>
+ <p class="lead" style="font-size:17px"><span data-lang="fr">Pour n'importe quelle distribution Linux x86_64 : déposez le binaire dans <code>/usr/local/bin</code>.</span><span data-lang="en">For any x86_64 Linux distribution: drop the binary into <code>/usr/local/bin</code>.</span></p>
+ <div class="codewrap"><pre class="code"><code><span class="p">$</span> VERSION=$(curl -fsSL https://api.github.com/repos/ardoise-editor/ardoise/releases/latest | grep &#x27;&quot;tag_name&quot;&#x27; | head -1 | sed &#x27;s/.*&quot;\(.*\)&quot;.*/\1/&#x27;)
+<span class="p">$</span> curl -fsSL &quot;https://github.com/ardoise-editor/ardoise/releases/download/${VERSION}/ardoise-${VERSION}-x86_64-linux.tar.gz&quot; | tar xz
+<span class="p">$</span> sudo mv ardoise /usr/local/bin/</code></pre><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <h3 style="margin-top:28px"><span data-lang="fr">Désinstaller</span><span data-lang="en">Uninstall</span></h3>
+ <div class="cmd"><code><span class="p">$</span> sudo rm /usr/local/bin/ardoise</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+</div>
+
+<div class="tabpanel" id="src" role="tabpanel" hidden>
+ <p class="lead" style="font-size:17px"><span data-lang="fr">Il faut Rust 1.90 ou plus récent. Sous Ubuntu / Debian, installez d'abord les bibliothèques GTK 3 et libxkbcommon.</span><span data-lang="en">You need Rust 1.90 or newer. On Ubuntu / Debian, install the GTK 3 and libxkbcommon development packages first.</span></p>
+ <div class="codewrap"><pre class="code"><code><span class="c"># Prérequis (Ubuntu / Debian)</span>
+<span class="p">$</span> sudo apt-get install libgtk-3-dev libxkbcommon-dev
+
+<span class="c"># Compiler et lancer</span>
+<span class="p">$</span> git clone https://github.com/ardoise-editor/ardoise
+<span class="p">$</span> cd ardoise
+<span class="p">$</span> cargo build --release
+<span class="p">$</span> ./target/release/ardoise</code></pre><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+ <p class="muted" style="margin-top:12px"><span data-lang="fr">Pour développer : <code>cargo run</code>, <code>cargo test</code>, <code>cargo clippy</code>, <code>cargo fmt</code>.</span><span data-lang="en">To develop: <code>cargo run</code>, <code>cargo test</code>, <code>cargo clippy</code>, <code>cargo fmt</code>.</span></p>
+</div>
+</div>
+<p class="muted" style="margin-top:20px;font-size:14px"><span data-lang="fr">Votre système est détecté pour pré-sélectionner l'onglet. Les versions sont sur la</span><span data-lang="en">Your system is detected to pre-select the tab. Releases are on the</span> <a href="https://github.com/ardoise-editor/ardoise/releases/latest"><span data-lang="fr">page des versions</span><span data-lang="en">Releases page</span></a>.</p>
+</div></section><section class="block tight"><div class="wrap">
+<div class="doc" style="padding-top:0;grid-template-columns:1fr;gap:0"><div class="prose" style="max-width:900px">
+<h2 id="req"><span data-lang="fr">Configuration requise</span><span data-lang="en">Requirements</span></h2><table><thead><tr><th><span data-lang="fr">Système</span><span data-lang="en">System</span></th><th><span data-lang="fr">Architecture</span><span data-lang="en">Architecture</span></th><th><span data-lang="fr">Remarque</span><span data-lang="en">Note</span></th></tr></thead><tbody><tr><td><span data-lang="fr">macOS</span><span data-lang="en">macOS</span></td><td><span data-lang="fr">Apple Silicon (aarch64)</span><span data-lang="en">Apple Silicon (aarch64)</span></td><td><span data-lang="fr">Signé ad hoc, non notarisé (voir l'onglet Homebrew).</span><span data-lang="en">Signed ad-hoc, not notarised (see the Homebrew tab).</span></td></tr><tr><td><span data-lang="fr">Linux</span><span data-lang="en">Linux</span></td><td><span data-lang="fr">x86_64</span><span data-lang="en">x86_64</span></td><td><span data-lang="fr">Paquet .deb, tar.gz ou script ; bibliothèques GTK 3 et libxkbcommon pour compiler.</span><span data-lang="en">.deb package, tar.gz or script; GTK 3 and libxkbcommon libraries to build.</span></td></tr></tbody></table>
+<h2 id="first"><span data-lang="fr">Premier lancement</span><span data-lang="en">First launch</span></h2>
+<p data-lang="fr">Au tout premier lancement, une fenêtre d'accueil règle l'essentiel : la langue, le thème, la taille du texte, l'enregistrement et le retour à la ligne, puis propose d'installer en un clic les plugins officiels. Elle ne s'affiche qu'une fois ; tout reste modifiable dans les Préférences.</p><p data-lang="en">On the very first launch, a welcome window sets the essentials: language, theme, text size, saving and wrapping, then offers the official plugins to install in one click. It shows once; everything stays in the Preferences.</p>
+<figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Bienvenue dans Ardoise</span></div><div class="win-body"><img data-lang="fr" src="media/welcome.png" alt="La fenêtre d&#x27;accueil du premier lancement (« Bienvenue dans Ardoise ») avec la liste des plugins à installer. Pour la revoir : désinstaller avec le script, ou lancer avec un dossier de données vide." loading="lazy" decoding="async"><img data-lang="en" src="media/welcome-en.png" alt="The first-launch welcome window with the list of plugins to install." loading="lazy" decoding="async"><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg><b>media/welcome.png</b><p><span data-lang="fr">La fenêtre d&#x27;accueil du premier lancement (« Bienvenue dans Ardoise ») avec la liste des plugins à installer. Pour la revoir : désinstaller avec le script, ou lancer avec un dossier de données vide.</span><span data-lang="en">The first-launch welcome window with the list of plugins to install.</span></p><small><span data-lang="fr">Capture à venir</span><span data-lang="en">Screenshot to come</span></small></div></div></div></figure>
+<h2 id="cli"><span data-lang="fr">Lancer depuis le terminal</span><span data-lang="en">Launch from the terminal</span></h2>
+<div class="codewrap"><pre class="code"><code><span class="p">$</span> ardoise                  # ouvre la dernière session
+<span class="p">$</span> ardoise chemin/fichier   # ouvre un fichier précis (plusieurs fichiers : un onglet chacun)
+<span class="p">$</span> ardoise nouveau.txt      # un fichier qui n&#x27;existe pas s&#x27;ouvre vide ; enregistrer le crée</code></pre><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div>
+<h2 id="update"><span data-lang="fr">Mettre à jour</span><span data-lang="en">Update</span></h2>
+<p data-lang="fr">Menu <b>Aide › Rechercher des mises à jour…</b> : Ardoise compare sa version à la dernière publiée, télécharge la mise à jour, en vérifie la somme de contrôle et la signature (elle est refusée si elle n'a pas été publiée par les mainteneurs), puis redémarre. Selon le mode d'installation, il se peut que la mise à jour intégrée ne soit pas disponible : téléchargez alors la nouvelle version à la main (ou <code>brew upgrade --cask ardoise</code>).</p><p data-lang="en">Menu <b>Help › Check for updates…</b>: Ardoise compares its version to the latest one, downloads the update, verifies its checksum and signature (it is refused if it was not published by the maintainers), then restarts. Depending on how it was installed, the in-app update may be unavailable: download the new version by hand (or <code>brew upgrade --cask ardoise</code>).</p>
+<figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Mise à jour</span></div><div class="win-body"><img data-lang="fr" src="media/update.png" alt="La fenêtre « Mise à jour » (« Vous êtes à jour ! » ou « La version X est disponible »)." loading="lazy" decoding="async"><img data-lang="en" src="media/update-en.png" alt="The Update window (“You&#x27;re up to date!” or “Version X is available”)." loading="lazy" decoding="async"><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg><b>media/update.png</b><p><span data-lang="fr">La fenêtre « Mise à jour » (« Vous êtes à jour ! » ou « La version X est disponible »).</span><span data-lang="en">The Update window (“You&#x27;re up to date!” or “Version X is available”).</span></p><small><span data-lang="fr">Capture à venir</span><span data-lang="en">Screenshot to come</span></small></div></div></div></figure>
+<h2 id="data"><span data-lang="fr">Où sont mes fichiers ?</span><span data-lang="en">Where are my files?</span></h2>
+<table><thead><tr><th><span data-lang="fr">Quoi</span><span data-lang="en">What</span></th><th><span data-lang="fr">Linux</span><span data-lang="en">Linux</span></th><th><span data-lang="fr">macOS</span><span data-lang="en">macOS</span></th></tr></thead><tbody><tr><td><span data-lang="fr">Session (y compris le texte non enregistré)</span><span data-lang="en">Session (unsaved text included)</span></td><td><code>~/.local/share/ardoise/session.json</code></td><td><code>~/Library/Application Support/ardoise/session.json</code></td></tr><tr><td><span data-lang="fr">Serveurs de langage</span><span data-lang="en">Language servers</span></td><td><code>~/.local/share/ardoise/lsp</code></td><td><code>~/Library/Application Support/ardoise/lsp</code></td></tr><tr><td><span data-lang="fr">Données des plugins</span><span data-lang="en">Plugin data</span></td><td><code>~/.local/share/ardoise/plugin-data/&lt;id&gt;/</code></td><td><code>~/Library/Application Support/ardoise/plugin-data/&lt;id&gt;/</code></td></tr></tbody></table>
+<div class="callout"><b><span data-lang="fr">À savoir</span><span data-lang="en">Good to know</span></b> — <span data-lang="fr">la session n'est lisible que par vous. Supprimez le dossier pour l'oublier. Les fichiers de plus de 64 Mo sont refusés ; ils doivent être en UTF-8, et les fins de ligne (LF / CRLF) et le retour final sont conservés tels quels.</span><span data-lang="en">the session is readable by you only. Delete the folder to forget it. Files over 64 MB are refused; they must be UTF-8, and line endings (LF / CRLF) and the final newline are kept as they were.</span></div>
+<h2 id="uninstall"><span data-lang="fr">Désinstaller</span><span data-lang="en">Uninstall</span></h2>
+<p data-lang="fr">Chaque méthode d'installation a sa propre désinstallation, détaillée dans son onglet ci-dessus. Le résumé :</p><p data-lang="en">Each install method has its own uninstall, detailed in its tab above. In short:</p>
+<table><thead><tr><th><span data-lang="fr">Installé avec</span><span data-lang="en">Installed with</span></th><th><span data-lang="fr">Désinstaller avec</span><span data-lang="en">Uninstall with</span></th></tr></thead><tbody><tr><td><span data-lang="fr">Script</span><span data-lang="en">Script</span></td><td><code>curl -fsSL …/uninstall.sh | bash</code> ( <code>--keep-data</code> )</td></tr><tr><td><span data-lang="fr">Homebrew</span><span data-lang="en">Homebrew</span></td><td><code>brew uninstall --cask ardoise</code> ( <code>--zap</code> )</td></tr><tr><td><span data-lang="fr">.deb</span><span data-lang="en">.deb</span></td><td><code>sudo apt remove ardoise</code></td></tr><tr><td><span data-lang="fr">tar.gz</span><span data-lang="en">tar.gz</span></td><td><code>sudo rm /usr/local/bin/ardoise</code></td></tr></tbody></table>
+</div></div></div></section>
+</main>
+<footer class="site-footer"><div class="wrap">
+ <div class="foot">
+  <div><a class="brand" href="index.html"><img src="assets/ardoise.svg" alt="" width="28" height="28">Ardoise</a>
+   <p><span data-lang="fr">Un éditeur de texte rapide pour macOS et Linux, écrit en Rust. Libre, licence MIT.</span><span data-lang="en">A fast text editor for macOS and Linux, written in Rust. Free, MIT licensed.</span></p></div>
+  <div><h6><span data-lang="fr">Application</span><span data-lang="en">App</span></h6>
+   <a href="index.html"><span data-lang="fr">Accueil</span><span data-lang="en">Home</span></a><a href="install.html"><span data-lang="fr">Installation</span><span data-lang="en">Install</span></a>
+   <a href="guide.html"><span data-lang="fr">Guide</span><span data-lang="en">Guide</span></a><a href="https://github.com/ardoise-editor/ardoise/blob/main/CHANGELOG.md">Changelog</a></div>
+  <div><h6>Plugins</h6><a href="extensions.html"><span data-lang="fr">Plugins officiels</span><span data-lang="en">Official plugins</span></a>
+   <a href="plugins.html"><span data-lang="fr">Créer un plugin</span><span data-lang="en">Write a plugin</span></a>
+   <a href="https://github.com/ardoise-editor/plugin-sdk">SDK</a><a href="https://github.com/ardoise-editor/plugin-template"><span data-lang="fr">Modèle</span><span data-lang="en">Template</span></a></div>
+  <div><h6><span data-lang="fr">Projet</span><span data-lang="en">Project</span></h6><a href="https://github.com/ardoise-editor/ardoise">GitHub</a><a href="https://github.com/ardoise-editor"><span data-lang="fr">Organisation</span><span data-lang="en">Organization</span></a>
+   <a href="https://github.com/ardoise-editor/ardoise/issues"><span data-lang="fr">Signaler un problème</span><span data-lang="en">Report an issue</span></a><a href="https://github.com/ardoise-editor/ardoise/blob/main/LICENSE"><span data-lang="fr">Licence MIT</span><span data-lang="en">MIT license</span></a></div>
+ </div>
+ <div class="legal"><span>Ardoise Editor v2.8.0</span><span>MIT · Rust · iced</span></div>
+</div></footer>
+</body>
+</html>
