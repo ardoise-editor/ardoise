@@ -393,6 +393,7 @@ impl ArdoiseApp {
                 color,
                 wavy: true,
                 straight: false,
+                minimap: false,
                 wash: None,
             })
             .collect()
@@ -565,6 +566,8 @@ mod tests {
         assert_eq!(app.spell.marks, vec![(0, 6, 11), (1, 9, 13)]);
         assert_eq!(app.spell.language, "xx");
         assert_eq!(app.spell_marks(true).len(), 2);
+        // Underlined in the text only: the minimap keeps the rest readable.
+        assert!(app.spell_marks(true).iter().all(|m| !m.minimap));
         assert!(app.spell_marks(true)[0].id >= MARK_BASE);
         // Typed in: the marks stay until the next answer, an old one is dropped.
         let old = app.spell.key.clone().unwrap();

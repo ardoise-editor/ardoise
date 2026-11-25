@@ -103,8 +103,8 @@ PLUGINS = [
   needs=[("Les linters eux-mêmes doivent être présents (dans le projet ou sur la machine).", "The linters themselves must be available (in the project or on the machine).")],
   settings=("Préférences › Plugins : langages concernés, outils de chacun (ceux trouvés prêts dans le projet par défaut), chemin d'un programme introuvable.", "Preferences › Plugins: the languages looked at, the tools of each one (those found ready in the project by default), and the path of a program that is not found by itself."),
   keys=[],
-  media=[("plugin-lint-problems.png", "Un fichier avec des soulignements d'erreurs/avertissements et la liste des problèmes.", "A file with error/warning underlines and the list of problems.", "img", "16/10"),
-         ("plugin-lint-fix.png", "Le menu de correction proposé sur un problème.", "The fix menu offered on a problem.", "img", "16/10")],
+  media=[("plugin-lint-problems.png", "Un fichier avec des soulignements d'erreurs/avertissements et le menu des problèmes.", "A file with error/warning underlines and the Problems menu.", "img", "16/10"),
+         ("plugin-lint-fix.png", "La correction proposée dans la bulle d'un problème.", "The fix offered in the card of a problem.", "img", "16/10")],
  ),
  dict(
   slug="spell", repo="plugin-spell", ver="1.0.1", icon="spell", name=("Orthographe", "Spelling"),

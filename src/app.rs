@@ -5507,10 +5507,15 @@ impl ArdoiseApp {
     }
 
     fn editing_blocked(&self) -> bool {
-        self.current_file.is_none()
+        self.editing_blocked_by(!matches!(self.overlay, ActiveOverlay::None))
+    }
+
+    /// `covered`: something lies over the editor.
+    fn editing_blocked_by(&self, covered: bool) -> bool {
+        covered
+            || self.current_file.is_none()
             || self.large_view().is_some()
             || self.show_preferences
-            || !matches!(self.overlay, ActiveOverlay::None)
             || (self.view_mode == ViewMode::Preview && self.preview_kind().is_some())
     }
 

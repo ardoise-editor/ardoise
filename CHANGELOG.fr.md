@@ -1,5 +1,17 @@
 # Journal des modifications
 
+## [2.9.1] - 2026-11-25
+
+### Ajouté
+- `ardoise --help` et `ardoise --version` affichent leur réponse et rendent la main, sans ouvrir de fenêtre.
+
+### Corrigé
+- Recherche d’actions : les actions qui modifient le texte (trier les lignes, changer la casse…) étaient grisées.
+- Les panneaux de plugin du bas s’agrandissent en tirant leur bord supérieur.
+- Alt+J répété sélectionne l’occurrence suivante au lieu d’écrire « j » (tout Alt+lettre, hors macOS).
+- Panneaux de plugin : la saisie dans un éditeur (la console SQL), une cellule ou un filtre de colonne garde le clavier, le curseur et toutes les lettres. Une cellule prend le clavier dès le double-clic.
+- L’orthographe ne remplit plus la minimap de marques.
+
 ## [2.9.0] - 2026-11-25
 
 ### Sécurité

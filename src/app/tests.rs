@@ -926,6 +926,28 @@ mod behavior_tests {
     }
 
     #[test]
+    fn the_list_of_actions_offers_the_edits_of_the_editor_it_covers() {
+        let mut app = app();
+        let _ = app.update(Message::TabRead(Ok(Loaded {
+            text: "b\na".into(),
+            path: PathBuf::from("/x.txt"),
+            format: TextFormat::default(),
+            stamp: None,
+        })));
+        let _ = app.handle(Message::OpenPalette);
+        assert!(app.editing_blocked(), "the list covers the editor");
+        let offered = |app: &ArdoiseApp| {
+            app.everywhere.rows.iter().any(|row| {
+                matches!(row, crate::app::everywhere::Row::Action(e)
+                    if e.enabled && matches!(e.command, crate::palette::PaletteCommand::Line(_)))
+            })
+        };
+        app.everywhere.query = "sort".into();
+        app.everywhere_refresh();
+        assert!(offered(&app));
+    }
+
+    #[test]
     fn a_hidden_editor_is_not_edited() {
         let mut app = app();
         app.editor.language = Some("md".into());

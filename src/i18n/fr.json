@@ -1,4 +1,5 @@
 {
+  "cli.help": "Utilisation : ardoise [options] [fichier[:ligne[:colonne]]…]\n\nOptions :\n  -n, --new-window  Ouvrir les fichiers dans une nouvelle fenêtre\n  -h, --help        Afficher cette aide\n  -V, --version     Afficher la version\n  --                La suite désigne des fichiers, même avec un tiret en tête",
   "app.untitled": "Sans titre",
   "toolbar.dark": "Sombre",
   "toolbar.light": "Clair",

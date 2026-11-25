@@ -325,6 +325,9 @@ pub struct DiagMark {
     pub straight: bool,
     /// A wash over its text, and how strong (0 to 1).
     pub wash: Option<f32>,
+    /// Marked in the minimap too (not the spelling: there are too many
+    /// misspelled words, in a program above all, for the rest to be seen).
+    pub minimap: bool,
 }
 
 /// The problems of the file, drawn as underlines or washes (as each one
@@ -882,7 +885,7 @@ where
 
         // Problems: a band across, and a tick near the right edge.
         if let Some(paint) = &self.diagnostics {
-            for mark in &paint.marks {
+            for mark in paint.marks.iter().filter(|m| m.minimap) {
                 if mark.line >= lines {
                     continue;
                 }
@@ -4251,7 +4254,10 @@ impl Update {
 
                     // A shortcut (Ctrl/Cmd+key) types nothing; AltGr, which
                     // some systems report as Ctrl+Alt, still does.
-                    let typing_shortcut = modifiers.command() && !modifiers.alt();
+                    // Neither does Alt+key, but on macOS, where it types
+                    // characters (AltGr is not Alt elsewhere).
+                    let typing_shortcut = (modifiers.command() && !modifiers.alt())
+                        || (!cfg!(target_os = "macos") && modifiers.alt() && !modifiers.command());
                     if let Some(text) = text {
                         if let Some(c) = text.chars().find(|c| !c.is_control()) {
                             if typing_shortcut {
@@ -4491,6 +4497,32 @@ mod tests {
             from_key(key::Named::ArrowUp, keyboard::Modifiers::empty()),
             Some(Update::Action(Action::Move(Motion::Up)))
         ));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn alt_and_a_letter_types_nothing_but_alt_gr_does() {
+        let typed = |modifiers| {
+            Update::from_event(
+                &Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Character("j".into()),
+                    modified_key: keyboard::Key::Character("j".into()),
+                    physical_key: key::Physical::Unidentified(key::NativeCode::Unidentified),
+                    location: keyboard::Location::Standard,
+                    modifiers,
+                    text: Some("j".into()),
+                    repeat: false,
+                }),
+                &focused_state(),
+                Rectangle::new(Point::ORIGIN, Size::new(100.0, 100.0)),
+                Padding::ZERO,
+                mouse::Cursor::Unavailable,
+            )
+        };
+        assert!(typed(keyboard::Modifiers::ALT).is_none());
+        // Windows tells AltGr as Ctrl+Alt.
+        assert!(typed(keyboard::Modifiers::CTRL | keyboard::Modifiers::ALT).is_some());
+        assert!(typed(keyboard::Modifiers::empty()).is_some());
     }
 
     #[test]

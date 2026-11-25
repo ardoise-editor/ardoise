@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.9.1] - 2026-11-25
+
+### Added
+- `ardoise --help` and `ardoise --version` print and leave, without opening a window.
+
+### Fixed
+- Search for actions: the actions that edit the text (sort the lines, change the case…) were greyed out.
+- The bottom panels of plugins can be made taller by dragging their top edge.
+- Alt+J pressed again selects the next occurrence instead of typing "j" (any Alt+letter, outside macOS).
+- Panels of plugins: typing in an editor (the SQL console), a cell or a column filter keeps the keyboard, the cursor and every letter. A cell takes the keyboard as soon as it is double-clicked.
+- The spelling no longer fills the minimap with marks.
+
 ## [2.9.0] - 2026-11-25
 
 ### Security

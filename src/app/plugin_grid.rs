@@ -49,6 +49,17 @@ fn word_start(text: &str, offset: usize) -> usize {
     start
 }
 
+/// Where what is typed in the cell of a grid is kept apart from the fields
+/// of the panel (no field has a `:` before its name).
+fn edit_slot(key: &GridKey) -> (crate::plugins::PanelKey, String) {
+    (key.0.clone(), format!(":cell:{}", key.1))
+}
+
+/// The same for the filter of a column.
+fn filter_slot(key: &GridKey, col: usize) -> (crate::plugins::PanelKey, String) {
+    (key.0.clone(), format!(":filter:{}:{col}", key.1))
+}
+
 /// An editor of a panel in a tree of nodes, and whether it asks for
 /// completions.
 fn editor_completes(node: &Node, id: &str) -> bool {
@@ -134,7 +145,7 @@ impl ArdoiseApp {
             GridMsg::Open(row, col) => {
                 self.plugins.grid_focus = Some(key.clone());
                 self.grid_tell(&key, GridEvent::Open { row, col });
-                iced::widget::operation::focus(grid::edit_id())
+                Task::none()
             }
             GridMsg::Sort(col) => {
                 self.grid_tell(&key, GridEvent::Sort { col });
@@ -151,6 +162,8 @@ impl ArdoiseApp {
                 Task::none()
             }
             GridMsg::EditInput(value) => {
+                self.plugins.has_typed(edit_slot(&key), value.clone());
+                self.plugins.grids.entry(key.clone()).or_default().typed = Some(value.clone());
                 self.grid_tell(&key, GridEvent::Edit { value });
                 Task::none()
             }
@@ -159,6 +172,10 @@ impl ArdoiseApp {
                 Task::none()
             }
             GridMsg::Filter(col, value) => {
+                self.plugins
+                    .has_typed(filter_slot(&key, col), value.clone());
+                let view = self.plugins.grids.entry(key.clone()).or_default();
+                view.filters.insert(col, value.clone());
                 self.grid_tell(
                     &key,
                     GridEvent::Filter {
@@ -170,10 +187,16 @@ impl ArdoiseApp {
                 Task::none()
             }
             GridMsg::FilterSubmit(col) => {
-                let value = self
-                    .grid_node(&key)
-                    .and_then(|g| g.columns.get(col).map(|c| c.filter.clone()))
-                    .unwrap_or_default();
+                let typed = self
+                    .plugins
+                    .grids
+                    .get(&key)
+                    .and_then(|v| v.filters.get(&col).cloned());
+                let value = typed.unwrap_or_else(|| {
+                    self.grid_node(&key)
+                        .and_then(|g| g.columns.get(col).map(|c| c.filter.clone()))
+                        .unwrap_or_default()
+                });
                 self.grid_tell(
                     &key,
                     GridEvent::Filter {
@@ -205,17 +228,60 @@ impl ArdoiseApp {
         let Some(root) = self.plugins.views.get(key) else {
             return Task::none();
         };
-        let cursors: Vec<(String, Option<(usize, usize)>)> = grid::all(root)
+        let drawn: Vec<_> = grid::all(root)
             .into_iter()
-            .map(|g| (g.id.clone(), g.selection.map(|s| s.cursor)))
+            .map(|g| {
+                let editing = g
+                    .editing
+                    .as_ref()
+                    .map(|e| ((e.row, e.col), e.value.clone()));
+                let filters: Vec<String> = g.columns.iter().map(|c| c.filter.clone()).collect();
+                (
+                    g.id.clone(),
+                    g.selection.map(|s| s.cursor),
+                    editing,
+                    filters,
+                )
+            })
             .collect();
         let mut tasks = Vec::new();
-        for (id, cursor) in cursors {
+        for (id, cursor, editing, filters) in drawn {
+            let grid_key = (key.clone(), id.clone());
+            for (col, filter) in filters.iter().enumerate() {
+                let echo = self.plugins.is_echo(&filter_slot(&grid_key, col), filter);
+                let view = self.plugins.grids.entry(grid_key.clone()).or_default();
+                if !echo && view.drawn_filters.get(col) != Some(filter) {
+                    view.filters.remove(&col);
+                }
+            }
+            self.plugins
+                .grids
+                .entry(grid_key)
+                .or_default()
+                .drawn_filters = filters;
+            let (editing, value) = editing.unzip();
+            let value = value.unwrap_or_default();
+            let echo = self
+                .plugins
+                .is_echo(&edit_slot(&(key.clone(), id.clone())), &value);
             let view = self
                 .plugins
                 .grids
                 .entry((key.clone(), id.clone()))
                 .or_default();
+            // Another cell, or a value of the plugin's own: its word counts.
+            if view.editing != editing || (!echo && view.drawn != value) {
+                view.typed = None;
+            }
+            view.drawn = value;
+            if view.editing != editing {
+                view.editing = editing;
+                // The plugin draws the field after the double click: only
+                // now is there something to focus.
+                if editing.is_some() {
+                    tasks.push(iced::widget::operation::focus(grid::edit_id()));
+                }
+            }
             if view.cursor == cursor {
                 continue;
             }
@@ -549,6 +615,92 @@ mod tests {
             iced::widget::text_editor::Action::Click(iced::Point::ORIGIN),
         ));
         assert!(app.plugins.grid_focus.is_none());
+    }
+
+    #[test]
+    fn the_field_of_a_cell_takes_the_keyboard_once_the_plugin_draws_it() {
+        let mut app = app_with_panel(serde_json::json!({
+            "type": "grid", "id": "rows", "columns": [{"name": "id"}],
+            "rows": [{"cells": [{"text": "1"}]}]
+        }));
+        let panel = key().0;
+        assert_eq!(app.plugin_grids_follow(&panel).units(), 0);
+        let editing: ardoise_plugin::ui::Node = serde_json::from_value(serde_json::json!({
+            "type": "grid", "id": "rows", "columns": [{"name": "id"}],
+            "rows": [{"cells": [{"text": "1"}]}],
+            "editing": {"row": 0, "col": 0, "value": "1"}
+        }))
+        .unwrap();
+        app.plugins.set_view(panel.clone(), editing);
+        assert_eq!(app.plugin_grids_follow(&panel).units(), 1);
+        // Drawn again while typing: the focus is left where it is.
+        assert_eq!(app.plugin_grids_follow(&panel).units(), 0);
+    }
+
+    #[test]
+    fn what_is_typed_in_a_cell_stays_while_the_plugin_answers_late() {
+        let drawn = |value: &str| -> ardoise_plugin::ui::Node {
+            serde_json::from_value(serde_json::json!({
+                "type": "grid", "id": "rows", "columns": [{"name": "id"}],
+                "rows": [{"cells": [{"text": "1"}]}],
+                "editing": {"row": 0, "col": 0, "value": value}
+            }))
+            .unwrap()
+        };
+        let mut app = app_with_panel(serde_json::json!({
+            "type": "grid", "id": "rows", "columns": [{"name": "id"}],
+            "rows": [{"cells": [{"text": "1"}]}]
+        }));
+        let panel = key().0;
+        let draw = |app: &mut ArdoiseApp, value: &str| {
+            app.plugins.set_view(panel.clone(), drawn(value));
+            let _ = app.plugin_grids_follow(&panel);
+            app.plugins.grids[&key()].typed.clone()
+        };
+        draw(&mut app, "1");
+        for typed in ["G", "Gr"] {
+            let _ = app.update(Message::Plugin(PluginMsg::Grid(
+                "test.grid".into(),
+                "p".into(),
+                "rows".into(),
+                GridMsg::EditInput(typed.into()),
+            )));
+        }
+        assert_eq!(draw(&mut app, "G").as_deref(), Some("Gr"));
+        assert_eq!(draw(&mut app, "Gr").as_deref(), Some("Gr"));
+        // The plugin puts a value of its own: it is the one shown.
+        assert_eq!(draw(&mut app, "NULL"), None);
+    }
+
+    #[test]
+    fn what_is_typed_in_a_filter_stays_while_the_plugin_answers_late() {
+        let drawn = |filter: &str| {
+            serde_json::json!({
+                "type": "grid", "id": "rows",
+                "columns": [{"name": "id", "filter": filter}], "rows": []
+            })
+        };
+        let mut app = app_with_panel(drawn(""));
+        let panel = key().0;
+        let draw = |app: &mut ArdoiseApp, filter: &str| {
+            let node = serde_json::from_value(drawn(filter)).unwrap();
+            app.plugins.set_view(panel.clone(), node);
+            let _ = app.plugin_grids_follow(&panel);
+            app.plugins.grids[&key()].filters.get(&0).cloned()
+        };
+        draw(&mut app, "");
+        for typed in ["a", "ab"] {
+            let _ = app.update(Message::Plugin(PluginMsg::Grid(
+                "test.grid".into(),
+                "p".into(),
+                "rows".into(),
+                GridMsg::Filter(0, typed.into()),
+            )));
+        }
+        assert_eq!(draw(&mut app, "a").as_deref(), Some("ab"));
+        assert_eq!(draw(&mut app, "ab").as_deref(), Some("ab"));
+        // Cleared by the plugin.
+        assert_eq!(draw(&mut app, ""), None);
     }
 
     #[test]
