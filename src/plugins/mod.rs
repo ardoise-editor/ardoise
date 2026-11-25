@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use ardoise_plugin::manifest::Menu;
-use ardoise_plugin::manifest::{Location, Manifest};
+use ardoise_plugin::manifest::{Group, Location, Manifest};
 use ardoise_plugin::protocol::{Settings, StatusParams};
 use ardoise_plugin::ui::Node;
 use serde_json::Value;
@@ -119,6 +119,10 @@ pub enum PluginMsg {
     TogglePanel(String, String),
     /// Closes the panel under the editor.
     CloseBottom,
+    /// The button of the Git group: opens its tab seen last, or closes it.
+    ToggleGitGroup,
+    /// A tab of the Git group clicked.
+    GroupTab(String, String),
     /// Something done in a panel: the plugin, the panel, the action and
     /// what the control holds.
     Ui(String, String, String, Option<Value>),
@@ -272,6 +276,8 @@ pub struct Plugins {
     /// The panel of a plugin shown in the sidebar, and the one under the editor.
     pub sidebar: Option<PanelKey>,
     pub bottom: Option<PanelKey>,
+    /// The tab of the Git group seen last.
+    pub git_tab: Option<PanelKey>,
     /// The settings panel open in Preferences › Plugins.
     pub settings_open: Option<PanelKey>,
     /// The screen that has the keyboard: its panel and its id.
@@ -364,6 +370,44 @@ impl Plugins {
                     .map(move |panel| (p, panel))
             })
             .collect()
+    }
+
+    /// The panels of the Git group, in the order of their tabs: the Git
+    /// plugin's first, then, by title, those that say they go with it.
+    pub fn git_group(&self) -> Vec<PanelKey> {
+        let mut members: Vec<(bool, String, PanelKey)> = self
+            .panels(Location::Bottom)
+            .into_iter()
+            .filter(|(plugin, panel)| {
+                // The Git plugin does not say it: it stays one an older
+                // editor can install.
+                plugin.id() == migrate::GIT || panel.group == Some(Group::Git)
+            })
+            .map(|(plugin, panel)| {
+                let key = (plugin.id().to_string(), panel.id.clone());
+                (plugin.id() != migrate::GIT, self.panel_title(&key), key)
+            })
+            .collect();
+        members.sort();
+        members.into_iter().map(|(_, _, key)| key).collect()
+    }
+
+    /// The tabs the panel `key` shows over itself: those of the Git group,
+    /// unless Git is alone in it.
+    pub fn group_tabs(&self, key: &PanelKey) -> Option<Vec<PanelKey>> {
+        let members = self.git_group();
+        let grouped = members.contains(key) && members.iter().any(|k| k.0 != migrate::GIT);
+        grouped.then_some(members)
+    }
+
+    /// The panel the button of the Git group opens: the tab seen last, else
+    /// the first.
+    pub fn git_group_front(&self) -> Option<PanelKey> {
+        let members = self.git_group();
+        self.git_tab
+            .clone()
+            .filter(|k| members.contains(k))
+            .or_else(|| members.first().cloned())
     }
 
     /// The title of a panel, in the language of the interface.

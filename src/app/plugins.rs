@@ -864,6 +864,9 @@ impl ArdoiseApp {
     }
 
     fn close_plugin_panel(&mut self, key: &PanelKey) {
+        if self.plugins.git_group().contains(key) {
+            self.plugins.git_tab = Some(key.clone());
+        }
         host::notify(
             &key.0,
             methods::PANEL_CLOSED,
@@ -954,6 +957,26 @@ impl ArdoiseApp {
             }
             PluginMsg::TogglePanel(plugin, panel) => {
                 self.toggle_plugin_panel((plugin, panel));
+                Task::none()
+            }
+            PluginMsg::ToggleGitGroup => {
+                let open = self
+                    .plugins
+                    .bottom
+                    .clone()
+                    .filter(|k| self.plugins.git_group().contains(k));
+                if let Some(key) = open.or_else(|| self.plugins.git_group_front()) {
+                    // The one open closes; another opens.
+                    self.toggle_plugin_panel(key);
+                }
+                Task::none()
+            }
+            PluginMsg::GroupTab(plugin, panel) => {
+                let key = (plugin, panel);
+                // A click on the tab on show leaves it there.
+                if self.plugins.bottom.as_ref() != Some(&key) {
+                    self.toggle_plugin_panel(key);
+                }
                 Task::none()
             }
             PluginMsg::CloseBottom => {
@@ -2007,14 +2030,37 @@ impl ArdoiseApp {
             Location::Settings => return Vec::new(),
         };
         let locale = rust_i18n::locale();
+        // With a plugin that goes with Git, the panels of the group share one
+        // button, which stands where the first of them would.
+        let members = match location {
+            Location::Bottom => self.plugins.git_group(),
+            _ => Vec::new(),
+        };
+        let grouped = members.iter().any(|k| k.0 != crate::plugins::migrate::GIT);
+        let mut group_placed = false;
         self.plugins
             .panels(location)
             .into_iter()
-            .map(|(plugin, panel)| {
+            .filter_map(|(plugin, panel)| {
+                let member = grouped
+                    && members
+                        .iter()
+                        .any(|k| k.0 == plugin.id() && k.1 == panel.id);
+                if member {
+                    return (!std::mem::replace(&mut group_placed, true)).then(|| {
+                        (
+                            // The picto of Git, whoever is in the group.
+                            "\u{e725}".to_string(),
+                            open.is_some_and(|k| members.contains(k)),
+                            "Git".to_string(),
+                            plugin_msg(PluginMsg::ToggleGitGroup),
+                        )
+                    });
+                }
                 let title = panel.title.get(&locale).to_string();
                 let icon = panel_icon(panel.icon.as_deref(), &title);
                 let is_open = open.is_some_and(|k| k.0 == plugin.id() && k.1 == panel.id);
-                (
+                Some((
                     icon,
                     is_open,
                     title,
@@ -2022,7 +2068,7 @@ impl ArdoiseApp {
                         plugin.id().to_string(),
                         panel.id.clone(),
                     )),
-                )
+                ))
             })
             .collect()
     }
@@ -2063,11 +2109,31 @@ impl ArdoiseApp {
         close: Option<Message>,
     ) -> Element<'a, Message> {
         let p = se_theme::palette(dark);
-        let mut header = row![text(self.plugins.panel_title(key).to_uppercase())
-            .size(10.5)
-            .font(se_theme::UI_MEDIUM)
-            .color(p.muted)]
-        .align_y(Alignment::Center);
+        let mut header = match self.plugins.group_tabs(key) {
+            // The panels of the group, one tab each.
+            Some(tabs) => tabs
+                .into_iter()
+                .fold(row![].spacing(4), |row, tab| {
+                    let active = tab == *key;
+                    row.push(
+                        button(
+                            text(self.plugins.panel_title(&tab).to_uppercase())
+                                .size(10.5)
+                                .font(se_theme::UI_MEDIUM)
+                                .color(if active { p.text } else { p.muted }),
+                        )
+                        .padding([3, 8])
+                        .on_press(plugin_msg(PluginMsg::GroupTab(tab.0, tab.1)))
+                        .style((se_theme::GhostButton { dark, active }).style()),
+                    )
+                })
+                .align_y(Alignment::Center),
+            None => row![text(self.plugins.panel_title(key).to_uppercase())
+                .size(10.5)
+                .font(se_theme::UI_MEDIUM)
+                .color(p.muted)]
+            .align_y(Alignment::Center),
+        };
         if let Some(close) = close {
             header = header
                 .push(Space::new().width(Length::Fill))
@@ -2574,6 +2640,71 @@ mod tab_tests {
             dir: PathBuf::from("/nowhere"),
             origin: Default::default(),
         });
+    }
+
+    const GIT_PANEL: &str = r#"{"id": "ardoise.git", "name": "Git", "version": "1.0.0", "api": 1,
+        "command": ["bin/none"], "contributes": {"panels": [
+            {"id": "git", "title": "Git", "location": "bottom"}]}}"#;
+
+    fn forge(id: &str, name: &str) -> String {
+        format!(
+            r#"{{"id": "{id}", "name": "{name}", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {{"panels": [
+                    {{"id": "main", "title": "{name}", "location": "bottom", "group": "git"}}]}}}}"#
+        )
+    }
+
+    fn buttons(app: &ArdoiseApp) -> Vec<(bool, String)> {
+        app.plugin_tools(Location::Bottom)
+            .into_iter()
+            .map(|(_, open, title, _)| (open, title))
+            .collect()
+    }
+
+    #[test]
+    fn git_alone_keeps_its_panel_without_tabs() {
+        let mut app = app_with_plugin();
+        install(&mut app, GIT_PANEL);
+        let key = ("ardoise.git".to_string(), "git".to_string());
+        assert_eq!(app.plugins.git_group(), vec![key.clone()]);
+        assert_eq!(app.plugins.group_tabs(&key), None);
+        assert_eq!(buttons(&app), vec![(false, "Git".to_string())]);
+    }
+
+    #[test]
+    fn a_forge_alone_is_a_git_panel_with_its_one_tab() {
+        let mut app = app_with_plugin();
+        install(&mut app, &forge("ardoise.github", "GitHub"));
+        let key = ("ardoise.github".to_string(), "main".to_string());
+        assert_eq!(app.plugins.group_tabs(&key), Some(vec![key.clone()]));
+        assert_eq!(buttons(&app), vec![(false, "Git".to_string())]);
+    }
+
+    #[test]
+    fn git_and_the_forges_share_one_button_and_their_tabs() {
+        let mut app = app_with_plugin();
+        install(&mut app, &forge("ardoise.gitlab", "GitLab"));
+        install(&mut app, GIT_PANEL);
+        install(&mut app, &forge("ardoise.github", "GitHub"));
+        // A panel at the bottom that is not of the group keeps its button.
+        install(
+            &mut app,
+            r#"{"id": "acme.log", "name": "Log", "version": "1.0.0", "api": 1, "command": ["bin/none"],
+                "contributes": {"panels": [{"id": "log", "title": "Log", "location": "bottom"}]}}"#,
+        );
+        let names: Vec<String> = app.plugins.git_group().into_iter().map(|k| k.0).collect();
+        assert_eq!(names, ["ardoise.git", "ardoise.github", "ardoise.gitlab"]);
+        assert_eq!(
+            buttons(&app),
+            vec![(false, "Git".to_string()), (false, "Log".to_string())]
+        );
+        // The tab seen last is the one the button opens again.
+        let gitlab = ("ardoise.gitlab".to_string(), "main".to_string());
+        app.plugins.bottom = Some(gitlab.clone());
+        assert!(buttons(&app)[0].0);
+        let _ = app.update(Message::Plugin(PluginMsg::ToggleGitGroup));
+        assert_eq!(app.plugins.bottom, None);
+        assert_eq!(app.plugins.git_group_front(), Some(gitlab));
     }
 
     #[test]

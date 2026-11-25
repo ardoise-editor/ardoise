@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## [2.8.0] - 2026-11-25
+
+### Ajouté
+- Le panneau Git peut accueillir les panneaux d’autres plugins en onglets : avec le plugin GitHub ou GitLab, un seul bouton Git dans la barre d’activité et un onglet chacun, avec ou sans le plugin Git. Un plugin s’y joint avec `"group": "git"` sur un panneau du bas.
+
 ## [2.7.2] - 2026-11-24
 
 ### Ajouté
