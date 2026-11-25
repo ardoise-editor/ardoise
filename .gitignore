@@ -3,3 +3,4 @@
 *.swo
 .DS_Store
 dist/
+__pycache__/

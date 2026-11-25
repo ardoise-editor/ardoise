@@ -1,666 +1,87 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr" data-title-fr="Un éditeur de texte rapide, qui s&#x27;équipe à votre mesure" data-title-en="A fast text editor that grows to fit you">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ardoise Editor — A fast, clean, cross-platform text editor</title>
-  <meta name="description" content="Ardoise Editor is a fast, clean text editor written in Rust for macOS and Linux." />
-  <meta name="color-scheme" content="dark light" />
-  <style>
-    /* Fonts are served from this site (no request to Google's servers). */
-    @font-face { font-family: 'Instrument Sans'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-Regular.ttf') format('truetype'); }
-    @font-face { font-family: 'Instrument Sans'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-Medium.ttf') format('truetype'); }
-    @font-face { font-family: 'Instrument Sans'; font-weight: 600; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-SemiBold.ttf') format('truetype'); }
-    @font-face { font-family: 'Instrument Sans'; font-weight: 700; font-style: normal; font-display: swap; src: url('fonts/InstrumentSans-Bold.ttf') format('truetype'); }
-    @font-face { font-family: 'JetBrains Mono'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Regular.ttf') format('truetype'); }
-    @font-face { font-family: 'JetBrains Mono'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/JetBrainsMono-Medium.ttf') format('truetype'); }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Un éditeur de texte rapide, qui s&#x27;équipe à votre mesure</title>
+<meta name="description" content="Ardoise Editor : un éditeur de texte rapide et libre pour macOS et Linux, écrit en Rust, avec des plugins officiels (Git, base de données, API, terminal…).">
+<meta property="og:title" content="Un éditeur de texte rapide, qui s&#x27;équipe à votre mesure"><meta property="og:description" content="Ardoise Editor : un éditeur de texte rapide et libre pour macOS et Linux, écrit en Rust, avec des plugins officiels (Git, base de données, API, terminal…).">
+<meta property="og:type" content="website"><meta property="og:url" content="https://ardoise-editor.github.io/ardoise/">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" type="image/svg+xml" href="assets/ardoise.svg">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){try{var d=document.documentElement,l=localStorage.getItem('ardoise-lang'),t=localStorage.getItem('ardoise-theme');
+if(!l)l=(navigator.language||'fr').slice(0,2)==='fr'?'fr':'en';d.lang=l;if(t)d.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script defer src="assets/site.js"></script>
 
-    /* Ardoise Editor — "Nocturne" design tokens (see design/tokens/tokens.css) */
-    :root {
-      --font-ui: 'Instrument Sans', system-ui, sans-serif;
-      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-
-      --r-panel: 14px;  /* feature cards, code boxes */
-      --r-big: 18px;    /* editor mock-up */
-      --r-row: 10px;    /* buttons, inputs */
-      --r-sm: 8px;      /* logo, chips */
-      --r-pill: 99px;
-    }
-
-    /* Dark (default) */
-    :root, [data-theme='dark'] {
-      --bg: #07090E;
-      --side: #0F121B;
-      --panel: #121622;
-      --elev: #1A1F2E;
-      --line: #222839;
-      --line-2: #2D3550;
-      --text: #E9ECF4;
-      --mute: #8089A0;
-      --gutter: #444C64;
-      --acc: #FF9B6B;
-      --acc-ink: #1A0C05;
-      --acc-soft: rgba(255,155,107,.14);
-      --shadow-float: 0 18px 50px rgba(0,0,0,.5);
-
-      --syn-keyword: #FF9B6B;
-      --syn-string: #9BE3A4;
-      --syn-function: #7CB6FF;
-      --syn-number: #F5D07A;
-      --syn-comment: #566079;
-      --syn-type: #C4A6FF;
-    }
-
-    /* Light: follows the system unless forced with data-theme */
-    @media (prefers-color-scheme: light) {
-      :root:not([data-theme]) {
-        --bg: #E9ECF3;
-        --side: #F7F8FB;
-        --panel: #FFFFFF;
-        --elev: #FFFFFF;
-        --line: #DDE1EA;
-        --line-2: #C9CFDC;
-        --text: #131724;
-        --mute: #6B7388;
-        --gutter: #B3B9C8;
-        --acc: #D2561F;
-        --acc-ink: #FFFFFF;
-        --acc-soft: rgba(210,86,31,.10);
-        --shadow-float: 0 14px 40px rgba(30,30,50,.14);
-
-        --syn-keyword: #D2561F;
-        --syn-string: #1E8A4A;
-        --syn-function: #2563C9;
-        --syn-number: #A5780B;
-        --syn-comment: #9AA2B5;
-        --syn-type: #7A4FD0;
-      }
-    }
-    [data-theme='light'] {
-      --bg: #E9ECF3;
-      --side: #F7F8FB;
-      --panel: #FFFFFF;
-      --elev: #FFFFFF;
-      --line: #DDE1EA;
-      --line-2: #C9CFDC;
-      --text: #131724;
-      --mute: #6B7388;
-      --gutter: #B3B9C8;
-      --acc: #D2561F;
-      --acc-ink: #FFFFFF;
-      --acc-soft: rgba(210,86,31,.10);
-      --shadow-float: 0 14px 40px rgba(30,30,50,.14);
-
-      --syn-keyword: #D2561F;
-      --syn-string: #1E8A4A;
-      --syn-function: #2563C9;
-      --syn-number: #A5780B;
-      --syn-comment: #9AA2B5;
-      --syn-type: #7A4FD0;
-    }
-
-    /* Traffic lights (both themes) */
-    :root { --tl-close: #FF5F57; --tl-min: #FEBC2E; --tl-max: #28C840; }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; }
-    body {
-      font-family: var(--font-ui);
-      font-size: 13px;
-      line-height: 1.5;
-      background: var(--bg);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-    }
-    a { color: inherit; text-decoration: none; }
-    code { font-family: var(--font-mono); }
-
-    /* Language: every text exists in both languages; the page's lang picks one. */
-    html[lang='fr'] [data-lang='en'],
-    html[lang='en'] [data-lang='fr'] { display: none !important; }
-
-    /* ── Nav ─────────────────────────────────────────────── */
-    .nav {
-      display: flex;
-      align-items: center;
-      gap: 28px;
-      padding: 22px 56px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 700;
-      font-size: 17px;
-    }
-    .brand-mark {
-      width: 26px;
-      height: 26px;
-      border-radius: var(--r-sm);
-      background: var(--acc);
-      color: var(--acc-ink);
-      display: grid;
-      place-items: center;
-      font-size: 14px;
-    }
-    .nav-spacer { flex: 1; }
-    .nav a.link { color: var(--mute); font-size: 13px; transition: color 120ms ease; }
-    .nav a.link:hover { color: var(--text); }
-    .lang-switch {
-      display: flex;
-      padding: 2px;
-      gap: 2px;
-      background: var(--elev);
-      border: 1px solid var(--line);
-      border-radius: var(--r-pill);
-      font-size: 12px;
-    }
-    .lang-btn {
-      font: inherit;
-      color: var(--mute);
-      background: none;
-      border: none;
-      padding: 3px 10px;
-      border-radius: var(--r-pill);
-      cursor: pointer;
-      transition: background 120ms ease, color 120ms ease;
-    }
-    .lang-btn:hover { color: var(--text); }
-    .lang-btn.active { background: var(--acc-soft); color: var(--acc); }
-    .btn-pill {
-      padding: 8px 16px;
-      border-radius: var(--r-pill);
-      background: var(--text);
-      color: var(--bg);
-      font-weight: 600;
-      transition: opacity 120ms ease;
-    }
-    .btn-pill:hover { opacity: .88; }
-
-    /* ── Hero ────────────────────────────────────────────── */
-    .hero {
-      padding: 46px 56px 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 20px;
-    }
-    .pill-badge {
-      padding: 5px 12px;
-      border: 1px solid var(--line-2);
-      border-radius: var(--r-pill);
-      color: var(--mute);
-      font-size: 12px;
-    }
-    .hero h1 {
-      font-size: 58px;
-      line-height: 1.02;
-      font-weight: 700;
-      letter-spacing: -.035em;
-      max-width: 820px;
-      text-wrap: balance;
-    }
-    .hero .lead {
-      font-size: 17px;
-      color: var(--mute);
-      max-width: 560px;
-      line-height: 1.5;
-    }
-    .cta { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
-    .btn {
-      display: inline-block;
-      padding: 12px 20px;
-      border-radius: var(--r-row);
-      font-weight: 500;
-      font-size: 13px;
-      transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
-    }
-    .btn-primary { background: var(--acc); color: var(--acc-ink); font-weight: 600; }
-    .btn-primary:hover { opacity: .9; }
-    .btn-outline { border: 1px solid var(--line-2); }
-    .btn-outline:hover { background: var(--acc-soft); border-color: var(--acc); }
-
-    /* A command in a mono box, with its copy button */
-    .cmd {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      max-width: 100%;
-      font-family: var(--font-mono);
-      font-size: 12.5px;
-      padding: 11px 16px;
-      border-radius: var(--r-row);
-      background: var(--panel);
-      border: 1px solid var(--line);
-      color: var(--mute);
-      text-align: left;
-    }
-    .cmd .prompt { color: var(--acc); flex: none; }
-    .cmd code {
-      flex: 1;
-      min-width: 0;
-      font-size: inherit;
-      color: inherit;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .copy-btn {
-      flex: none;
-      font: inherit;
-      font-family: var(--font-ui);
-      font-size: 11.5px;
-      color: var(--mute);
-      background: none;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 3px 9px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
-    }
-    .copy-btn:hover { color: var(--text); border-color: var(--line-2); background: var(--acc-soft); }
-    .copy-btn.copied { color: var(--acc); border-color: var(--acc); }
-
-    /* ── Editor mock-up ──────────────────────────────────── */
-    .mock {
-      margin: 40px 56px 0;
-      border: 1px solid var(--line-2);
-      border-bottom: none;
-      border-radius: var(--r-big) var(--r-big) 0 0;
-      background: var(--panel);
-      height: 250px;
-      overflow: hidden;
-      box-shadow: var(--shadow-float);
-    }
-    .mock-bar {
-      height: 36px;
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      padding: 0 14px;
-      border-bottom: 1px solid var(--line);
-    }
-    .mock-bar i { width: 10px; height: 10px; border-radius: 50%; display: block; }
-    .mock-bar .name { margin-left: 14px; color: var(--mute); font-size: 12px; }
-    .mock-code {
-      display: flex;
-      padding-top: 8px;
-      font-family: var(--font-mono);
-      font-size: 12.5px;
-      line-height: 22px;
-      font-variant-ligatures: none;
-    }
-    .mock-nums { width: 46px; text-align: right; padding-right: 14px; color: var(--gutter); flex: none; }
-    .mock-lines { white-space: pre; overflow: hidden; }
-    .k { color: var(--syn-keyword); }
-    .s { color: var(--syn-string); }
-    .f { color: var(--syn-function); }
-    .n { color: var(--syn-number); }
-    .c { color: var(--syn-comment); }
-    .t { color: var(--syn-type); }
-
-    /* ── Sections ────────────────────────────────────────── */
-    .section {
-      padding: 60px 56px;
-      background: var(--side);
-      border-top: 1px solid var(--line);
-    }
-    .section h2 {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -.01em;
-      margin-bottom: 22px;
-    }
-    .features {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .feature {
-      padding: 22px;
-      border: 1px solid var(--line);
-      border-radius: var(--r-panel);
-      background: var(--panel);
-    }
-    .feature .num { font-family: var(--font-mono); font-size: 11px; color: var(--acc); margin-bottom: 12px; }
-    .feature h3 { font-weight: 600; font-size: 16px; margin-bottom: 6px; }
-    .feature p { color: var(--mute); line-height: 1.5; }
-
-    .install { background: var(--bg); }
-    .install-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      align-items: start;
-    }
-    .install-block {
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: var(--r-panel);
-      background: var(--panel);
-    }
-    .install-block.wide { grid-column: 1 / -1; }
-    .install-label {
-      color: var(--text);
-      font-weight: 600;
-      font-size: 13px;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .install-block .cmd { background: var(--bg); }
-    /* Long install commands wrap instead of being cut off. */
-    .install-block .cmd code { white-space: normal; word-break: break-all; }
-    .badge-recommended {
-      padding: 2px 9px;
-      border-radius: var(--r-pill);
-      background: var(--acc-soft);
-      color: var(--acc);
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .install-note { color: var(--mute); font-size: 12px; line-height: 1.5; margin-top: 10px; }
-    .install-note code {
-      font-size: 11.5px;
-      background: var(--bg);
-      border: 1px solid var(--line);
-      border-radius: 5px;
-      padding: 1px 5px;
-    }
-    .downloads { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
-
-    /* ── Footer ──────────────────────────────────────────── */
-    footer {
-      padding: 22px 56px;
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      color: var(--mute);
-      font-size: 12px;
-      border-top: 1px solid var(--line);
-    }
-    footer .grow { flex: 1; }
-    footer a { transition: color 120ms ease; }
-    footer a:hover { color: var(--text); }
-
-    /* ── Small screens ───────────────────────────────────── */
-    @media (max-width: 900px) {
-      .nav { padding: 18px 24px; gap: 16px; flex-wrap: wrap; }
-      .nav a.link { display: none; }
-      .hero { padding: 36px 24px 0; }
-      .hero h1 { font-size: 40px; }
-      .mock { margin: 32px 24px 0; }
-      .section { padding: 44px 24px; }
-      .features, .install-grid { grid-template-columns: 1fr; }
-      footer { padding: 20px 24px; }
-    }
-    @media (max-width: 520px) {
-      .hero h1 { font-size: 32px; }
-      .hero .lead { font-size: 15px; }
-    }
-  </style>
 </head>
 <body>
-
-<header class="nav">
-  <a class="brand" href="#top"><span class="brand-mark">A</span>Ardoise Editor</a>
-  <div class="nav-spacer"></div>
-  <a class="link" href="#features"><span data-lang="en">Features</span><span data-lang="fr">Fonctionnalités</span></a>
-  <a class="link" href="#install">Installation</a>
-  <a class="link" href="plugins.html">Plugins</a>
-  <a class="link" href="https://github.com/ardoise-editor/ardoise">GitHub</a>
-  <div class="lang-switch" role="group" aria-label="Language">
-    <button class="lang-btn" data-set-lang="en" onclick="setLang('en')">EN</button>
-    <button class="lang-btn" data-set-lang="fr" onclick="setLang('fr')">FR</button>
+<a class="skip" href="#main"><span data-lang="fr">Aller au contenu</span><span data-lang="en">Skip to content</span></a>
+<header class="site-header"><div class="wrap">
+  <a class="brand" href="index.html"><img src="assets/ardoise.svg" alt="" width="28" height="28">Ardoise</a>
+  <nav class="nav" id="nav" aria-label="Navigation"><a href="index.html" aria-current="page"><span data-lang="fr">Accueil</span><span data-lang="en">Home</span></a><a href="guide.html"><span data-lang="fr">Guide</span><span data-lang="en">Guide</span></a><a href="extensions.html"><span data-lang="fr">Plugins</span><span data-lang="en">Plugins</span></a><a href="install.html"><span data-lang="fr">Installation</span><span data-lang="en">Install</span></a></nav>
+  <div class="spacer"></div>
+  <div class="tools">
+    <div class="seg" role="group" aria-label="Language"><button type="button" data-set-lang="fr" onclick="setLang('fr')">FR</button><button type="button" data-set-lang="en" onclick="setLang('en')">EN</button></div>
+    <button class="icon-btn" id="theme-btn" type="button" aria-label="Theme / Thème"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg></button>
+    <a class="gh" href="https://github.com/ardoise-editor/ardoise"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z" fill="currentColor" stroke="none"/></svg><span>GitHub</span></a>
+    <button class="icon-btn burger" id="burger" type="button" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </div>
-  <a class="btn-pill" href="#install"><span data-lang="en">Download</span><span data-lang="fr">Télécharger</span></a>
-</header>
-
-<main id="top">
-<section class="hero">
-  <span class="pill-badge">Open source · MIT · macOS &amp; Linux</span>
-  <h1>
-    <span data-lang="en">A fast, clean, cross-platform text editor</span>
-    <span data-lang="fr">Un éditeur de texte rapide, propre et multiplateforme</span>
-  </h1>
-  <p class="lead">
-    <span data-lang="en">Written in Rust. Syntax highlighting for 30+ languages, regex search, Markdown preview.</span>
-    <span data-lang="fr">Écrit en Rust. Coloration syntaxique pour plus de 60 langages, recherche avec regex, aperçu Markdown.</span>
-  </p>
-  <div class="cta">
-    <a class="btn btn-primary" href="#install"><span data-lang="en">Install</span><span data-lang="fr">Installer</span></a>
-  </div>
-</section>
-
-<div class="mock" aria-hidden="true">
-  <div class="mock-bar">
-    <i style="background:var(--tl-close)"></i><i style="background:var(--tl-min)"></i><i style="background:var(--tl-max)"></i>
-    <span class="name">theme.rs</span>
-  </div>
-  <div class="mock-code">
-    <div class="mock-nums">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10</div>
-    <div class="mock-lines"><span class="c">// Palette de couleurs</span>
-<span class="k">pub struct </span><span class="t">Palette</span> {
-    <span class="k">pub </span>bg: <span class="t">Color</span>,
-    <span class="k">pub </span>accent: <span class="t">Color</span>,
-}
-
-<span class="k">pub fn </span><span class="f">palette</span>(dark: <span class="t">bool</span>) -&gt; <span class="t">Palette</span> {
-    <span class="k">if </span>dark {
-        <span class="t">Palette</span> {
-            bg: <span class="f">rgb</span>(<span class="n">0x14</span>, <span class="n">0x15</span>, <span class="n">0x1A</span>),</div>
-  </div>
+</div></header>
+<main id="main">
+<section class="hero"><div class="wrap hero-grid">
+<div>
+ <span class="eyebrow"><span data-lang="fr">Open source · MIT · macOS et Linux</span><span data-lang="en">Open source · MIT · macOS & Linux</span></span>
+ <h1><span data-lang="fr">L'éditeur de texte rapide, <em>qui s'équipe</em> à votre mesure.</span><span data-lang="en">A fast text editor that <em>grows</em> to fit you.</span></h1>
+ <p class="lead"><span data-lang="fr">Ardoise est écrit en Rust : il démarre tout de suite, colore plus de 30 langages, trouve la définition d'une fonction d'un Ctrl+clic. Au départ c'est un éditeur simple ; Git, bases de données, client d'API ou terminal s'ajoutent en un clic, avec des plugins officiels signés.</span><span data-lang="en">Ardoise is written in Rust: it starts at once, highlights 30+ languages and finds a definition with a Ctrl+click. It begins as a plain editor; Git, databases, an API client or a terminal install in one click, as signed official plugins.</span></p>
+ <div class="cta-row"><a class="btn primary" href="install.html"><span data-lang="fr">Installer Ardoise</span><span data-lang="en">Install Ardoise</span></a><a class="btn" href="guide.html"><span data-lang="fr">Lire le guide</span><span data-lang="en">Read the guide</span></a></div>
+ <div style="margin-top:24px;max-width:640px"><div class="cmd"><code><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/install.sh | bash</code><button class="copy" type="button"><span data-lang="fr">Copier</span><span data-lang="en">Copy</span></button></div></div>
+ <div class="badge-row"><span class="chip">v2.7.2</span><span class="chip">Rust + iced</span><span class="chip">macOS (Apple Silicon)</span><span class="chip">Linux x86_64</span><span class="chip">FR · EN</span></div>
 </div>
+<div class="hero-media"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Ardoise — theme.rs</span></div>
+<div class="win-body"><img data-lang="fr" src="media/hero.png" alt="Ardoise Editor" data-fallback="#hero-mock" style="aspect-ratio:16/10;object-fit:cover;object-position:top left;width:100%"><img data-lang="en" src="media/hero-en.png" alt="Ardoise Editor" data-fallback="#hero-mock" style="aspect-ratio:16/10;object-fit:cover;object-position:top left;width:100%"><div class="mock" id="hero-mock" hidden aria-hidden="true">
+<div class="mock-side"><h6>Projets</h6><p>▾ ardoise</p><p>&nbsp;&nbsp;▸ assets</p><p>&nbsp;&nbsp;▾ src</p><p>&nbsp;&nbsp;&nbsp;&nbsp;app.rs</p><p class="on">&nbsp;&nbsp;&nbsp;&nbsp;theme.rs</p><p>&nbsp;&nbsp;&nbsp;&nbsp;tabs.rs</p><p>&nbsp;&nbsp;Cargo.toml</p><p>&nbsp;&nbsp;README.md</p></div>
+<div class="mock-main"><div class="mock-tabs"><span>app.rs</span><span class="on">theme.rs</span><span>Cargo.toml</span></div>
+<div class="mock-code"><div><i>1</i><span><span class="c">// Palette de couleurs</span></span></div><div><i>2</i><span><span class="k">pub struct</span> <span class="t">Palette</span> {</span></div><div><i>3</i><span>    <span class="k">pub</span> bg: <span class="t">Color</span>,</span></div><div><i>4</i><span>    <span class="k">pub</span> accent: <span class="t">Color</span>,</span></div><div><i>5</i><span>}</span></div><div><i>6</i><span></span></div><div><i>7</i><span><span class="k">pub fn</span> <span class="f">palette</span>(dark: <span class="t">bool</span>) -&gt; <span class="t">Palette</span> {</span></div><div><i>8</i><span>    <span class="k">if</span> dark {</span></div><div><i>9</i><span>        <span class="t">Palette</span> {</span></div><div><i>10</i><span>            bg: <span class="f">rgb</span>(<span class="n">0x14</span>, <span class="n">0x15</span>, <span class="n">0x1A</span>),</span></div><div><i>11</i><span>            accent: <span class="f">rgb</span>(<span class="n">0xFF</span>, <span class="n">0x9B</span>, <span class="n">0x6B</span>),</span></div><div><i>12</i><span>        }</span></div><div><i>13</i><span>    } <span class="k">else</span> {</span></div><div><i>14</i><span>        <span class="t">Palette</span> { bg: <span class="f">rgb</span>(<span class="n">0xE9</span>, <span class="n">0xEC</span>, <span class="n">0xF3</span>), accent: <span class="f">rgb</span>(<span class="n">0xD2</span>, <span class="n">0x56</span>, <span class="n">0x1F</span>) }</span></div><div><i>15</i><span>    }</span></div><div><i>16</i><span>}</span></div></div>
+<div class="mock-status"><span>Rust · UTF-8 · LF</span><span>Ln 10, Col 24</span></div></div></div></div></div></div>
+</div>
+<div class="wrap"><div class="stats">
+ <div><b>30+</b><span><span data-lang="fr">langages colorés (grammaires TextMate)</span><span data-lang="en">languages highlighted (TextMate grammars)</span></span></div>
+ <div><b>9</b><span><span data-lang="fr">plugins officiels, signés</span><span data-lang="en">official plugins, signed</span></span></div>
+ <div><b>64 Mo</b><span><span data-lang="fr">taille maximale d'un fichier ouvert</span><span data-lang="en">largest file that opens</span></span></div>
+ <div><b>MIT</b><span><span data-lang="fr">libre, sans filigrane ni compte</span><span data-lang="en">free, no account, no watermark</span></span></div>
+</div></div></section><section class="block"><div class="wrap">
+<div class="sec-head"><span class="eyebrow"><span data-lang="fr">Pensé pour le travail de tous les jours</span><span data-lang="en">Made for everyday work</span></span>
+<h2><span data-lang="fr">Ce qui compte, rien de superflu.</span><span data-lang="en">What matters, nothing superfluous.</span></h2></div>
+<div class="grid g4"><div class="card"><span class="num">01</span><h3><span data-lang="fr">Rapide et natif</span><span data-lang="en">Fast and native</span></h3><p><span data-lang="fr">Une application native en Rust, pas une page web emballée. Elle s'ouvre vite, reste réactive sur de gros fichiers et garde votre session d'une fois sur l'autre, même le texte non enregistré.</span><span data-lang="en">A native Rust application, not a wrapped web page. It opens fast, stays responsive on large files and keeps your session between runs, unsaved text included.</span></p></div><div class="card"><span class="num">02</span><h3><span data-lang="fr">Simple au départ</span><span data-lang="en">Simple to begin with</span></h3><p><span data-lang="fr">Un éditeur sobre à l'installation. Ce dont vous avez besoin s'ajoute depuis Préférences › Plugins — ou dès le premier lancement, dans une fenêtre d'accueil.</span><span data-lang="en">A plain editor out of the box. What you need is added from Preferences › Plugins — or on first launch, in a welcome window.</span></p></div><div class="card"><span class="num">03</span><h3><span data-lang="fr">Chez vous, tout simplement</span><span data-lang="en">Yours, plainly</span></h3><p><span data-lang="fr">Fichiers locaux, session stockée sur votre machine et lisible par vous seul, mots de passe des plugins dans le trousseau du système. Désinstallation complète en une commande.</span><span data-lang="en">Local files, a session stored on your machine and readable by you only, plugin passwords in the system keychain. A complete uninstall in one command.</span></p></div><div class="card"><span class="num">04</span><h3><span data-lang="fr">Mises à jour vérifiées</span><span data-lang="en">Verified updates</span></h3><p><span data-lang="fr">Aide › Rechercher des mises à jour. Les versions sont signées (Ed25519) ; une mise à jour dont la signature ou la somme de contrôle ne correspond pas est refusée.</span><span data-lang="en">Help › Check for updates. Releases are signed (Ed25519); an update whose signature or checksum does not match is refused.</span></p></div></div></div></section><section class="block" style="padding-top:24px"><div class="wrap"><div class="show"><div class="show-text"><span class="eyebrow">Navigation</span><h3><span data-lang="fr">Aller à la définition, sans configuration</span><span data-lang="en">Go to definition, no setup</span></h3><p><span data-lang="fr">Ctrl+clic (Cmd+clic sur macOS) sur une fonction, une variable, une classe ou une interface : l'éditeur saute à sa définition. Sur la définition elle-même, il liste où elle est utilisée. Il ne répond que s'il est sûr.</span><span data-lang="en">Ctrl+click (Cmd+click on macOS) on a function, variable, class or interface and the editor jumps to where it is defined. On the definition itself, it lists where it is used. It only answers when it is sure.</span></p><ul><li><span data-lang="fr">Précédent / Suivant (Alt+←/→, boutons de la souris) à travers les sauts, onglets compris</span><span data-lang="en">Back / Forward (Alt+←/→, mouse buttons) across your jumps, tabs included</span></li><li><span data-lang="fr">Serveurs de langage facultatifs, installés sans droits administrateur</span><span data-lang="en">Optional language servers, installed without administrator rights</span></li><li><span data-lang="fr">Sans serveur : une recherche de motifs prudente</span><span data-lang="en">Without one: a careful pattern search</span></li></ul><a class="btn small" href="guide-navigation.html"><span data-lang="fr">Voir la navigation</span><span data-lang="en">See navigation</span> →</a></div><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Aller à la définition</span></div><div class="win-body"><video data-lang="fr" muted loop playsinline autoplay preload="metadata" poster="media/goto-definition.jpg"><source src="media/goto-definition.mp4" type="video/mp4"></video><video data-lang="en" muted loop playsinline autoplay preload="metadata" poster="media/goto-definition-en.jpg"><source src="media/goto-definition-en.mp4" type="video/mp4"></video><span class="vid-badge">VIDEO</span><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg><b>media/goto-definition.mp4</b><p><span data-lang="fr">Ctrl+clic sur un appel de fonction : le fichier de la définition s&#x27;ouvre à la bonne ligne ; puis Alt+← pour revenir. Sur un projet réel (le code d&#x27;Ardoise convient).</span><span data-lang="en">Ctrl+click a function call: the definition file opens at the right line; then Alt+← to go back.</span></p><small><span data-lang="fr">Vidéo à venir</span><span data-lang="en">Video to come</span></small></div></div></div></figure></div><div class="show rev"><div class="show-text"><span class="eyebrow">Édition</span><h3><span data-lang="fr">Coloration, pliage, recherche : l'essentiel, bien fait</span><span data-lang="en">Highlighting, folding, search: the essentials, done well</span></h3><p><span data-lang="fr">Plus de 30 langages via des grammaires TextMate, pliage des blocs, commentaires et sections Markdown depuis la marge, minimap, recherche et remplacement avec expressions régulières, édition multi-curseurs, formatage par prettier, rustfmt et autres outils externes.</span><span data-lang="en">30+ languages through TextMate grammars, folding of blocks, comments and Markdown sections from the gutter, a minimap, search and replace with regular expressions, multiple cursors, formatting through prettier, rustfmt and other external tools.</span></p><ul><li><span data-lang="fr">Thème sombre et clair, police au choix parmi celles à chasse fixe installées</span><span data-lang="en">Dark and light themes, text font chosen among the installed fixed-width fonts</span></li><li><span data-lang="fr">Duplication, déplacement, commentaire et indentation de lignes</span><span data-lang="en">Line duplication, moving, commenting and indenting</span></li><li><span data-lang="fr">Aperçu Markdown et arbre JSON</span><span data-lang="en">Markdown preview and JSON tree</span></li></ul><a class="btn small" href="guide-editing.html"><span data-lang="fr">Voir l'édition</span><span data-lang="en">See editing</span> →</a></div><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Édition</span></div><div class="win-body"><img data-lang="fr" src="media/editing.png" alt="Fenêtre avec un fichier Markdown en mode « Partagé » (texte et aperçu côte à côte), pliage visible dans la marge, minimap à droite." loading="lazy" decoding="async"><img data-lang="en" src="media/editing-en.png" alt="Window with a Markdown file in Split mode (text and preview side by side), folding chevrons in the gutter, minimap on the right." loading="lazy" decoding="async"><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg><b>media/editing.png</b><p><span data-lang="fr">Fenêtre avec un fichier Markdown en mode « Partagé » (texte et aperçu côte à côte), pliage visible dans la marge, minimap à droite.</span><span data-lang="en">Window with a Markdown file in Split mode (text and preview side by side), folding chevrons in the gutter, minimap on the right.</span></p><small><span data-lang="fr">Capture à venir</span><span data-lang="en">Screenshot to come</span></small></div></div></div></figure></div><div class="show"><div class="show-text"><span class="eyebrow">Recherche</span><h3><span data-lang="fr">Tout trouver depuis un seul champ</span><span data-lang="en">Find everything from one field</span></h3><p><span data-lang="fr">« Rechercher partout » réunit fichiers, classes, symboles, actions, texte des fichiers et ce que proposent les plugins (branches, commits…). Tapez <code>nom:ligne</code> pour aller à une ligne, <code>/</code> pour les réglages et les pages.</span><span data-lang="en">“Search everywhere” gathers files, classes, symbols, actions, text in files and what plugins offer (branches, commits…). Type <code>name:line</code> to go to a line, <code>/</code> for settings and pages.</span></p><ul><li><span data-lang="fr">Onglets Tout, Classes, Fichiers, Symboles, Actions, Texte, Plugins</span><span data-lang="en">Tabs All, Classes, Files, Symbols, Actions, Text, Plugins</span></li><li><span data-lang="fr">Chaque action a son raccourci, que vous pouvez changer</span><span data-lang="en">Every action has a shortcut you can change</span></li><li><span data-lang="fr">Les menus et actions s'éteignent quand elles ne peuvent rien faire</span><span data-lang="en">Menus and actions switch off when they cannot do anything</span></li></ul><a class="btn small" href="guide-search.html"><span data-lang="fr">Voir la recherche</span><span data-lang="en">See search</span> →</a></div><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Rechercher partout</span></div><div class="win-body"><img data-lang="fr" src="media/search-everywhere.png" alt="La fenêtre « Rechercher partout » ouverte sur l&#x27;onglet Tout, avec une saisie et des résultats de plusieurs types." loading="lazy" decoding="async"><img data-lang="en" src="media/search-everywhere-en.png" alt="The Search everywhere window open on the All tab, with a query and results of several kinds." loading="lazy" decoding="async"><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg><b>media/search-everywhere.png</b><p><span data-lang="fr">La fenêtre « Rechercher partout » ouverte sur l&#x27;onglet Tout, avec une saisie et des résultats de plusieurs types.</span><span data-lang="en">The Search everywhere window open on the All tab, with a query and results of several kinds.</span></p><small><span data-lang="fr">Capture à venir</span><span data-lang="en">Screenshot to come</span></small></div></div></div></figure></div><div class="show rev"><div class="show-text"><span class="eyebrow">Espace de travail</span><h3><span data-lang="fr">Notes jetables, signets, projets</span><span data-lang="en">Scratch files, bookmarks, projects</span></h3><p><span data-lang="fr">Le bouton « Scratch » sous la liste des fichiers crée des notes et essais qui s'enregistrent en tapant et restent jusqu'à leur suppression. Le panneau des signets liste chaque fichier marqué avec ses lignes ; un ruban jaune apparaît dans la marge et la minimap.</span><span data-lang="en">The “Scratch” button under the file list creates notes and trials saved as you type that stay until you delete them. The bookmarks panel lists each marked file with its lines; a yellow ribbon shows in the gutter and the minimap.</span></p><ul><li><span data-lang="fr">Plusieurs projets ouverts dans la barre latérale</span><span data-lang="en">Several projects open in the sidebar</span></li><li><span data-lang="fr">Fenêtre scindée à droite ou en dessous</span><span data-lang="en">Split the window right or below</span></li><li><span data-lang="fr">Menu contextuel dans les zones vides des panneaux</span><span data-lang="en">Context menu on the empty room of the panels</span></li></ul><a class="btn small" href="guide-workspace.html"><span data-lang="fr">Voir l'espace de travail</span><span data-lang="en">See the workspace</span> →</a></div><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Espace de travail</span></div><div class="win-body"><img data-lang="fr" src="media/workspace.png" alt="Barre latérale avec le panneau Projets déplié et le panneau Scratch ouvert, deux fichiers côte à côte en fenêtre scindée." loading="lazy" decoding="async"><img data-lang="en" src="media/workspace-en.png" alt="Sidebar with the Projects panel expanded and the Scratch panel open, two files side by side in a split window." loading="lazy" decoding="async"><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg><b>media/workspace.png</b><p><span data-lang="fr">Barre latérale avec le panneau Projets déplié et le panneau Scratch ouvert, deux fichiers côte à côte en fenêtre scindée.</span><span data-lang="en">Sidebar with the Projects panel expanded and the Scratch panel open, two files side by side in a split window.</span></p><small><span data-lang="fr">Capture à venir</span><span data-lang="en">Screenshot to come</span></small></div></div></div></figure></div></div></section><section class="block tight"><div class="wrap">
+<div class="sec-head"><span class="eyebrow"><span data-lang="fr">Apparence</span><span data-lang="en">Appearance</span></span><h2><span data-lang="fr">Sombre, clair, et vos yeux d'abord.</span><span data-lang="en">Dark, light, and your eyes first.</span></h2>
+<p class="lead"><span data-lang="fr">Deux thèmes mémorisés d'un lancement à l'autre, un mode contraste élevé, la police et la taille du texte à votre main.</span><span data-lang="en">Two themes remembered between launches, a high-contrast mode, the font and text size in your hands.</span></p></div>
+<div class="grid g2"><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Thème sombre</span></div><div class="win-body"><img data-lang="fr" src="media/theme-dark.png" alt="La même fenêtre en thème sombre (le même fichier ouvert que dans le thème clair, pour les comparer)." loading="lazy" decoding="async"><img data-lang="en" src="media/theme-dark-en.png" alt="The same window in the dark theme (same open file as the light one)." loading="lazy" decoding="async"><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg><b>media/theme-dark.png</b><p><span data-lang="fr">La même fenêtre en thème sombre (le même fichier ouvert que dans le thème clair, pour les comparer).</span><span data-lang="en">The same window in the dark theme (same open file as the light one).</span></p><small><span data-lang="fr">Capture à venir</span><span data-lang="en">Screenshot to come</span></small></div></div></div></figure>
+<figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Thème clair</span></div><div class="win-body"><img data-lang="fr" src="media/theme-light.png" alt="La même fenêtre en thème clair, même fichier, même position." loading="lazy" decoding="async"><img data-lang="en" src="media/theme-light-en.png" alt="The same window in the light theme, same file, same position." loading="lazy" decoding="async"><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg><b>media/theme-light.png</b><p><span data-lang="fr">La même fenêtre en thème clair, même fichier, même position.</span><span data-lang="en">The same window in the light theme, same file, same position.</span></p><small><span data-lang="fr">Capture à venir</span><span data-lang="en">Screenshot to come</span></small></div></div></div></figure></div>
+</div></section><section class="block" style="background:var(--side);border-block:1px solid var(--line)"><div class="wrap">
+<div class="sec-head"><span class="eyebrow">Plugins</span>
+<h2><span data-lang="fr">Un éditeur simple, des plugins pour le reste.</span><span data-lang="en">A plain editor, plugins for the rest.</span></h2>
+<p class="lead"><span data-lang="fr">Neuf plugins officiels, chacun dans son propre dépôt, signés et installables depuis Préférences › Plugins. Les outils que vous utilisiez avant l'arrivée des plugins s'installent d'eux-mêmes au premier lancement.</span><span data-lang="en">Nine official plugins, each in its own repository, signed and installable from Preferences › Plugins. The tools you used before plugins existed install themselves on first launch.</span></p></div>
+<div class="grid g3"><a class="card" href="plugin-git.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 8.4v7.2M18 11.4c0 3.6-3 4-8.6 4.4"/></svg></div><h3><span data-lang="fr">Git</span><span data-lang="en">Git</span></h3><p><span data-lang="fr">Git complet, dans un panneau sous l'éditeur.</span><span data-lang="en">Full Git, in a panel under the editor.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-database.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7" ry="2.8"/><path d="M5 5.5v13c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-13M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8"/></svg></div><h3><span data-lang="fr">Base de données</span><span data-lang="en">Database</span></h3><p><span data-lang="fr">PostgreSQL, MySQL/MariaDB et SQLite : explorer, modifier, interroger.</span><span data-lang="en">PostgreSQL, MySQL/MariaDB and SQLite: browse, edit, query.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-api.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h5l2-6 2 12 2-6h5"/></svg></div><h3><span data-lang="fr">API</span><span data-lang="en">API</span></h3><p><span data-lang="fr">Un Postman léger : requêtes, collections, environnements, tests.</span><span data-lang="en">A light Postman: requests, collections, environments, tests.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-lint.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div><h3><span data-lang="fr">Lint</span><span data-lang="en">Lint</span></h3><p><span data-lang="fr">Les problèmes de vos fichiers, soulignés pendant la frappe, avec leurs corrections.</span><span data-lang="en">The problems in your files, underlined as you type, with their fixes.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-spell.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l4-11 4 11M5.5 13h5"/><path d="M14 15l2.5 2.5L21 11"/></svg></div><h3><span data-lang="fr">Orthographe</span><span data-lang="en">Spelling</span></h3><p><span data-lang="fr">Les mots mal orthographiés soulignés, avec suggestions et dictionnaire personnel.</span><span data-lang="en">Misspelled words underlined, with suggestions and a personal dictionary.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-history.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.5-5.8L4 8.5"/><path d="M4 4v4.5h4.5M12 8v4.5l3 2"/></svg></div><h3><span data-lang="fr">Historique local</span><span data-lang="en">Local History</span></h3><p><span data-lang="fr">Ce qu'étaient vos fichiers, gardé sur la machine, que Git le sache ou non.</span><span data-lang="en">What your files were, kept on this machine whether Git knows it or not.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-tasks.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.3 1.3L7 5M3.5 12l1.3 1.3L7 11M3.5 18l1.3 1.3L7 17"/></svg></div><h3><span data-lang="fr">Tâches</span><span data-lang="en">Tasks</span></h3><p><span data-lang="fr">Compiler, tester et lancer les commandes d'un projet, avec leur sortie.</span><span data-lang="en">Build, test and run a project's commands, with their output.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-remote.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></div><h3><span data-lang="fr">Fichiers distants</span><span data-lang="en">Remote Files</span></h3><p><span data-lang="fr">Ouvrir et modifier les fichiers d'une autre machine par SSH.</span><span data-lang="en">Open and edit the files of another machine over SSH.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugin-terminal.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/></svg></div><h3><span data-lang="fr">Terminal</span><span data-lang="en">Terminal</span></h3><p><span data-lang="fr">Des shells en onglets sous l'éditeur, avec historique et recherche.</span><span data-lang="en">Shells in tabs under the editor, with history and search.</span></p><span class="more"><span data-lang="fr">Découvrir</span><span data-lang="en">Discover</span> →</span></a><a class="card" href="plugins.html"><div class="pi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></svg></div><h3><span data-lang="fr">Le vôtre</span><span data-lang="en">Your own</span></h3><p><span data-lang="fr">Un plugin est un programme et un fichier plugin.json, dans le langage de votre choix.</span><span data-lang="en">A plugin is a program and a plugin.json file, in the language of your choice.</span></p><span class="more"><span data-lang="fr">Créer un plugin</span><span data-lang="en">Write a plugin</span> →</span></a></div>
+<div class="cta-row" style="margin-top:32px"><a class="btn primary" href="extensions.html"><span data-lang="fr">Voir tous les plugins</span><span data-lang="en">See all plugins</span></a></div>
+</div></section><section class="block"><div class="wrap">
+<div class="sec-head"><span class="eyebrow"><span data-lang="fr">En vidéo</span><span data-lang="en">In motion</span></span><h2><span data-lang="fr">Voyez-le travailler.</span><span data-lang="en">See it at work.</span></h2></div>
+<div class="grid g3"><div><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Ardoise</span></div><div class="win-body"><video data-lang="fr" muted loop playsinline autoplay preload="metadata" poster="media/tour.jpg"><source src="media/tour.mp4" type="video/mp4"></video><video data-lang="en" muted loop playsinline autoplay preload="metadata" poster="media/tour-en.jpg"><source src="media/tour-en.mp4" type="video/mp4"></video><span class="vid-badge">VIDEO</span><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg><b>media/tour.mp4</b><p><span data-lang="fr">Ouvrir un projet, deux onglets, recherche partout, changer de thème, ouvrir les Préférences. Court et rythmé.</span><span data-lang="en">Open a project, two tabs, search everywhere, switch theme, open the Preferences. Short and brisk.</span></p><small><span data-lang="fr">Vidéo à venir</span><span data-lang="en">Video to come</span></small></div></div></div></figure><h3 style="margin-top:18px;font-size:18px"><span data-lang="fr">Visite de 60 secondes</span><span data-lang="en">A 60-second tour</span></h3><p class="muted" style="font-size:15px;margin-top:4px"><span data-lang="fr">Ouvrir un projet, deux onglets, recherche partout, changer de thème, ouvrir les Préférences. Court et rythmé.</span><span data-lang="en">Open a project, two tabs, search everywhere, switch theme, open the Preferences. Short and brisk.</span></p></div><div><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Ardoise</span></div><div class="win-body"><video data-lang="fr" muted loop playsinline autoplay preload="metadata" poster="media/welcome-first-launch.jpg"><source src="media/welcome-first-launch.mp4" type="video/mp4"></video><video data-lang="en" muted loop playsinline autoplay preload="metadata" poster="media/welcome-first-launch-en.jpg"><source src="media/welcome-first-launch-en.mp4" type="video/mp4"></video><span class="vid-badge">VIDEO</span><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg><b>media/welcome-first-launch.mp4</b><p><span data-lang="fr">La fenêtre d&#x27;accueil : langue, thème, taille du texte, puis installation de plugins en un clic.</span><span data-lang="en">The welcome window: language, theme, text size, then installing plugins in one click.</span></p><small><span data-lang="fr">Vidéo à venir</span><span data-lang="en">Video to come</span></small></div></div></div></figure><h3 style="margin-top:18px;font-size:18px"><span data-lang="fr">Premier lancement</span><span data-lang="en">First launch</span></h3><p class="muted" style="font-size:15px;margin-top:4px"><span data-lang="fr">La fenêtre d'accueil : langue, thème, taille du texte, puis installation de plugins en un clic.</span><span data-lang="en">The welcome window: language, theme, text size, then installing plugins in one click.</span></p></div><div><figure class="slot" style="--ratio:16/10"><div class="win"><div class="win-bar"><i></i><i></i><i></i><span>Ardoise</span></div><div class="win-body"><video data-lang="fr" muted loop playsinline autoplay preload="metadata" poster="media/plugins-install.jpg"><source src="media/plugins-install.mp4" type="video/mp4"></video><video data-lang="en" muted loop playsinline autoplay preload="metadata" poster="media/plugins-install-en.jpg"><source src="media/plugins-install-en.mp4" type="video/mp4"></video><span class="vid-badge">VIDEO</span><div class="ph"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg><b>media/plugins-install.mp4</b><p><span data-lang="fr">Préférences › Plugins : chercher « Git », installer, le panneau apparaît dans l&#x27;éditeur.</span><span data-lang="en">Preferences › Plugins: search “Git”, install, the panel appears in the editor.</span></p><small><span data-lang="fr">Vidéo à venir</span><span data-lang="en">Video to come</span></small></div></div></div></figure><h3 style="margin-top:18px;font-size:18px"><span data-lang="fr">Installer un plugin</span><span data-lang="en">Install a plugin</span></h3><p class="muted" style="font-size:15px;margin-top:4px"><span data-lang="fr">Préférences › Plugins : chercher « Git », installer, le panneau apparaît dans l'éditeur.</span><span data-lang="en">Preferences › Plugins: search “Git”, install, the panel appears in the editor.</span></p></div></div></div></section><section class="block tight"><div class="wrap" style="max-width:860px"><div class="sec-head"><span class="eyebrow">FAQ</span><h2><span data-lang="fr">Questions fréquentes</span><span data-lang="en">Frequently asked</span></h2></div><details><summary><span data-lang="fr">Sur quels systèmes fonctionne Ardoise ?</span><span data-lang="en">Which systems does Ardoise run on?</span></summary><div><span data-lang="fr">macOS (Apple Silicon) et Linux (x86_64), en binaires natifs. Il est aussi possible de compiler depuis les sources.</span><span data-lang="en">macOS (Apple Silicon) and Linux (x86_64), as native binaries. You can also build from source.</span></div></details><details><summary><span data-lang="fr">Est-ce vraiment libre ?</span><span data-lang="en">Is it really free?</span></summary><div><span data-lang="fr">Oui : licence MIT, sans compte, sans filigrane. Le code est sur GitHub.</span><span data-lang="en">Yes: MIT license, no account, no watermark. The code is on GitHub.</span></div></details><details><summary><span data-lang="fr">Les plugins sont-ils sûrs ?</span><span data-lang="en">Are plugins safe?</span></summary><div><span data-lang="fr">Les plugins officiels sont publiés dans leur propre dépôt et signés avec la clé des versions d'Ardoise. Les commandes propres à un projet ne s'exécutent qu'une fois le dossier approuvé.</span><span data-lang="en">Official plugins are published in their own repository and signed with Ardoise's release key. A project's own commands run only once you trust the folder.</span></div></details><details><summary><span data-lang="fr">Où sont mes données ?</span><span data-lang="en">Where is my data?</span></summary><div><span data-lang="fr">La session (y compris le texte non enregistré) est dans <code>~/.local/share/ardoise/session.json</code> (<code>~/Library/Application Support/ardoise</code> sur macOS), lisible par vous seul. Supprimez ce dossier pour l'oublier.</span><span data-lang="en">The session (unsaved text included) is in <code>~/.local/share/ardoise/session.json</code> (<code>~/Library/Application Support/ardoise</code> on macOS), readable by you only. Delete that folder to forget it.</span></div></details><details><summary><span data-lang="fr">Comment tout désinstaller ?</span><span data-lang="en">How do I remove everything?</span></summary><div><span data-lang="fr">Une commande par mode d'installation, détaillée sur la page <a href="install.html#uninstall">Installation</a>. Le script de désinstallation supprime aussi réglages, session, plugins et mots de passe du trousseau, sauf avec <code>--keep-data</code>.</span><span data-lang="en">One command per install method, detailed on the <a href="install.html#uninstall">Install</a> page. The uninstall script also removes settings, session, plugins and keychain passwords, unless you pass <code>--keep-data</code>.</span></div></details></div></section><section class="block tight"><div class="wrap"><div class="cta"><h2><span data-lang="fr">Prêt à essayer ?</span><span data-lang="en">Ready to try it?</span></h2><p class="lead"><span data-lang="fr">Une ligne dans le terminal, et Ardoise est installé.</span><span data-lang="en">One line in the terminal and Ardoise is installed.</span></p><div class="cta-row"><a class="btn primary" href="install.html"><span data-lang="fr">Installer</span><span data-lang="en">Install</span></a><a class="btn" href="guide.html"><span data-lang="fr">Parcourir le guide</span><span data-lang="en">Browse the guide</span></a></div></div></div></section>
 </main>
-
-<section class="section" id="features">
-  <h2 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"><span data-lang="en">Features</span><span data-lang="fr">Fonctionnalités</span></h2>
-  <div class="features">
-    <div class="feature">
-      <div class="num">01</div>
-      <h3><span data-lang="en">Syntax highlighting</span><span data-lang="fr">Coloration syntaxique</span></h3>
-      <p><span data-lang="en">30+ languages via TextMate grammars.</span><span data-lang="fr">30+ langages via des grammaires TextMate.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">02</div>
-      <h3><span data-lang="en">Search and replace</span><span data-lang="fr">Recherche et remplacement</span></h3>
-      <p><span data-lang="en">Regular expressions, case sensitivity.</span><span data-lang="fr">Expressions régulières, sensibilité à la casse.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">03</div>
-      <h3><span data-lang="en">Dark and light</span><span data-lang="fr">Sombre et clair</span></h3>
-      <p><span data-lang="en">Two themes, remembered between launches.</span><span data-lang="fr">Deux thèmes, réglage mémorisé entre les lancements.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">04</div>
-      <h3><span data-lang="en">English and French</span><span data-lang="fr">Français et English</span></h3>
-      <p><span data-lang="en">Language selectable in the preferences.</span><span data-lang="fr">Langue modifiable dans les préférences.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">05</div>
-      <h3><span data-lang="en">Code formatting</span><span data-lang="fr">Formatage du code</span></h3>
-      <p><span data-lang="en">prettier, rustfmt and other external tools.</span><span data-lang="fr">prettier, rustfmt et autres outils externes.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">06</div>
-      <h3><span data-lang="en">Native binaries</span><span data-lang="fr">Binaires natifs</span></h3>
-      <p><span data-lang="en">macOS (Apple Silicon) and Linux x86_64.</span><span data-lang="fr">macOS (Apple Silicon) et Linux x86_64.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">07</div>
-      <h3><span data-lang="en">Go to definition</span><span data-lang="fr">Aller à la définition</span></h3>
-      <p><span data-lang="en">Ctrl+click (Cmd+click on macOS) jumps to a definition, or lists where it is used. Back and forward walk your jumps.</span><span data-lang="fr">Ctrl+clic (Cmd+clic sur macOS) mène à la définition, ou liste les endroits où elle est utilisée. Retour et avance parcourent vos sauts.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">08</div>
-      <h3><span data-lang="en">Language servers, optional</span><span data-lang="fr">Serveurs de langage, facultatifs</span></h3>
-      <p><span data-lang="en">Install the one of a language in a click for exact results; without it, a safe pattern search.</span><span data-lang="fr">Installez celui d'un langage en un clic pour des résultats exacts ; sans lui, une recherche de motifs prudente.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">09</div>
-      <h3><span data-lang="en">Code folding</span><span data-lang="fr">Pliage de code</span></h3>
-      <p><span data-lang="en">Fold functions, blocks, comments and Markdown sections from the gutter.</span><span data-lang="fr">Pliez fonctions, blocs, commentaires et sections Markdown depuis la marge.</span></p>
-    </div>
-    <div class="feature">
-      <div class="num">10</div>
-      <h3><span data-lang="en">Plugins</span><span data-lang="fr">Plugins</span></h3>
-      <p><span data-lang="en">A simple editor out of the box. Add what you need from Preferences › Plugins: Git, Database (PostgreSQL, MySQL, SQLite), API client, Lint, Spell check, Local history, Tasks, Remote files over SSH, Terminal — or <a href="plugins.html">write your own</a>.</span><span data-lang="fr">Un éditeur simple au départ. Ajoutez ce qu'il vous faut depuis Préférences › Plugins : Git, Base de données (PostgreSQL, MySQL, SQLite), client d'API, Lint, Correcteur orthographique, Historique local, Tâches, Fichiers distants en SSH, Terminal — ou <a href="plugins.html">créez le vôtre</a>.</span></p>
-    </div>
-  </div>
-</section>
-
-<section class="section install" id="install">
-  <h2>Installation</h2>
-  <div class="install-grid">
-
-    <div class="install-block wide">
-      <p class="install-label">
-        <span data-lang="en">Install (macOS &amp; Linux):</span><span data-lang="fr">Installer (macOS &amp; Linux) :</span>
-        <span class="badge-recommended"><span data-lang="en">Recommended</span><span data-lang="fr">Recommandé</span></span>
-      </p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/install.sh | bash</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-    </div>
-
-    <div class="install-block">
-      <p class="install-label"><span data-lang="en">macOS — Homebrew:</span><span data-lang="fr">macOS — Homebrew :</span></p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>brew install --cask ardoise-editor/tap/ardoise</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-    </div>
-
-    <div class="install-block">
-      <p class="install-label"><span data-lang="en">Linux — .deb (install):</span><span data-lang="fr">Linux — .deb (installer) :</span></p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>curl -fsSL https://api.github.com/repos/ardoise-editor/ardoise/releases/latest | sed -n 's/.*"browser_download_url": *"\([^"]*\/ardoise_[^"]*\.deb\)".*/\1/p' | xargs curl -fsSLO &amp;&amp; sudo apt install ./ardoise_*.deb</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-    </div>
-
-    <div class="install-block wide">
-      <p class="install-label"><span data-lang="en">Linux — AppImage (install):</span><span data-lang="fr">Linux — AppImage (installer) :</span></p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>curl -fsSL https://api.github.com/repos/ardoise-editor/ardoise/releases/latest | sed -n 's/.*"browser_download_url": *"\([^"]*\.AppImage\)".*/\1/p' | xargs curl -fsSLO &amp;&amp; chmod +x ardoise-*.AppImage &amp;&amp; ./ardoise-*.AppImage</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-      <p class="install-note">
-        <span data-lang="en">Portable — no installation needed. To add it to your app menu, move it into <code>~/.local/bin</code> and drop a <code>.desktop</code> entry (or use a tool like AppImageLauncher).</span>
-        <span data-lang="fr">Portable — aucune installation requise. Pour l’ajouter à votre menu d’applications, déplacez-le dans <code>~/.local/bin</code> et ajoutez une entrée <code>.desktop</code> (ou utilisez un outil comme AppImageLauncher).</span>
-      </p>
-    </div>
-
-    <div class="install-block wide">
-      <p class="install-label"><span data-lang="en">Uninstall (macOS &amp; Linux):</span><span data-lang="fr">Désinstaller (macOS &amp; Linux) :</span></p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>curl -fsSL https://raw.githubusercontent.com/ardoise-editor/ardoise/main/uninstall.sh | bash</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-      <p class="install-note">
-        <span data-lang="en">Detects how Ardoise Editor was installed — Homebrew cask, <code>.deb</code> package or plain binary — and removes it, with everything it kept: settings, session (the text of unsaved files), plugins and their data, language servers, and the passwords the plugins saved in the system keychain. A scratch folder you chose yourself is left alone. Close Ardoise Editor first. To keep your data for a reinstall: <code>… | bash -s -- --keep-data</code>.</span>
-        <span data-lang="fr">Détecte le mode d’installation — cask Homebrew, paquet <code>.deb</code> ou binaire simple — et le supprime, avec tout ce qu’il a gardé : réglages, session (le texte des fichiers non enregistrés), plugins et leurs données, serveurs de langage, et les mots de passe que les plugins ont enregistrés dans le trousseau du système. Un dossier de notes que vous avez choisi vous-même n’est pas touché. Fermez Ardoise Editor avant. Pour garder vos données en vue d’une réinstallation : <code>… | bash -s -- --keep-data</code>.</span>
-      </p>
-    </div>
-
-    <div class="install-block">
-      <p class="install-label"><span data-lang="en">macOS — Homebrew (uninstall):</span><span data-lang="fr">macOS — Homebrew (désinstaller) :</span></p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>brew uninstall --cask ardoise</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-      <p class="install-note">
-        <span data-lang="en">Also drop your settings: <code>brew uninstall --zap --cask ardoise</code></span>
-        <span data-lang="fr">Pour aussi supprimer vos réglages : <code>brew uninstall --zap --cask ardoise</code></span>
-      </p>
-    </div>
-
-    <div class="install-block">
-      <p class="install-label"><span data-lang="en">Linux — .deb (uninstall):</span><span data-lang="fr">Linux — .deb (désinstaller) :</span></p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>sudo apt remove ardoise</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-      <p class="install-note">
-        <span data-lang="en">No apt? Use <code>sudo dpkg -r ardoise</code> instead.</span>
-        <span data-lang="fr">Pas d’apt ? Utilisez <code>sudo dpkg -r ardoise</code> à la place.</span>
-      </p>
-    </div>
-
-    <div class="install-block wide">
-      <p class="install-label"><span data-lang="en">Linux — AppImage (uninstall):</span><span data-lang="fr">Linux — AppImage (désinstaller) :</span></p>
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code>rm -f ardoise.AppImage ~/.local/bin/ardoise.AppImage ~/.local/share/applications/ardoise.desktop</code>
-        <button class="copy-btn" onclick="copyCode(this)"><span data-lang="en">Copy</span><span data-lang="fr">Copier</span></button>
-      </div>
-      <p class="install-note">
-        <span data-lang="en">Removes the AppImage from the current directory and, if you integrated it, from <code>~/.local/bin</code> and your app menu.</span>
-        <span data-lang="fr">Supprime l’AppImage du dossier courant et, si vous l’aviez intégré, de <code>~/.local/bin</code> et de votre menu d’applications.</span>
-      </p>
-    </div>
-
-  </div>
-
-  <div class="downloads">
-    <a class="btn btn-outline" href="https://github.com/ardoise-editor/ardoise/releases/latest"><span data-lang="en">Download .tar.gz (macOS)</span><span data-lang="fr">Télécharger .tar.gz (macOS)</span></a>
-    <a class="btn btn-outline" href="https://github.com/ardoise-editor/ardoise/releases/latest"><span data-lang="en">Download .deb (Linux)</span><span data-lang="fr">Télécharger .deb (Linux)</span></a>
-    <a class="btn btn-outline" href="https://github.com/ardoise-editor/ardoise/releases/latest"><span data-lang="en">Download .AppImage (Linux)</span><span data-lang="fr">Télécharger .AppImage (Linux)</span></a>
-  </div>
-</section>
-
-<footer>
-  <span class="grow">© Ardoise Editor · <span data-lang="en">MIT License</span><span data-lang="fr">Licence MIT</span></span>
-  <span>
-    <a href="https://github.com/ardoise-editor/ardoise">GitHub</a> ·
-    <a href="https://github.com/ardoise-editor/ardoise/releases">Releases</a> ·
-    <a href="https://github.com/ardoise-editor/ardoise/issues">Issues</a> ·
-    <a href="https://github.com/ardoise-editor/homebrew-tap">Homebrew</a> ·
-    <a href="plugins.html"><span data-lang="en">Write a plugin</span><span data-lang="fr">Créer un plugin</span></a>
-  </span>
-</footer>
-
-<script>
-  function copyCode(btn) {
-    const code = btn.parentElement.querySelector('code');
-    navigator.clipboard.writeText(code.textContent).then(() => {
-      const label = btn.innerHTML;
-      btn.textContent = '✓';
-      btn.classList.add('copied');
-      setTimeout(() => { btn.innerHTML = label; btn.classList.remove('copied'); }, 1500);
-    });
-  }
-
-  function setLang(lang) {
-    document.documentElement.lang = lang;
-    document.querySelectorAll('[data-set-lang]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.setLang === lang);
-    });
-    try { localStorage.setItem('lang', lang); } catch (e) {}
-  }
-
-  // The visitor's last choice, else the browser's language (French or English).
-  (function () {
-    let lang = null;
-    try { lang = localStorage.getItem('lang'); } catch (e) {}
-    if (lang !== 'fr' && lang !== 'en') {
-      lang = (navigator.language || 'en').toLowerCase().startsWith('fr') ? 'fr' : 'en';
-    }
-    setLang(lang);
-  })();
-</script>
-
+<footer class="site-footer"><div class="wrap">
+ <div class="foot">
+  <div><a class="brand" href="index.html"><img src="assets/ardoise.svg" alt="" width="28" height="28">Ardoise</a>
+   <p><span data-lang="fr">Un éditeur de texte rapide pour macOS et Linux, écrit en Rust. Libre, licence MIT.</span><span data-lang="en">A fast text editor for macOS and Linux, written in Rust. Free, MIT licensed.</span></p></div>
+  <div><h6><span data-lang="fr">Application</span><span data-lang="en">App</span></h6>
+   <a href="index.html"><span data-lang="fr">Accueil</span><span data-lang="en">Home</span></a><a href="install.html"><span data-lang="fr">Installation</span><span data-lang="en">Install</span></a>
+   <a href="guide.html"><span data-lang="fr">Guide</span><span data-lang="en">Guide</span></a><a href="https://github.com/ardoise-editor/ardoise/blob/main/CHANGELOG.md">Changelog</a></div>
+  <div><h6>Plugins</h6><a href="extensions.html"><span data-lang="fr">Plugins officiels</span><span data-lang="en">Official plugins</span></a>
+   <a href="plugins.html"><span data-lang="fr">Créer un plugin</span><span data-lang="en">Write a plugin</span></a>
+   <a href="https://github.com/ardoise-editor/plugin-sdk">SDK</a><a href="https://github.com/ardoise-editor/plugin-template"><span data-lang="fr">Modèle</span><span data-lang="en">Template</span></a></div>
+  <div><h6><span data-lang="fr">Projet</span><span data-lang="en">Project</span></h6><a href="https://github.com/ardoise-editor/ardoise">GitHub</a><a href="https://github.com/ardoise-editor"><span data-lang="fr">Organisation</span><span data-lang="en">Organization</span></a>
+   <a href="https://github.com/ardoise-editor/ardoise/issues"><span data-lang="fr">Signaler un problème</span><span data-lang="en">Report an issue</span></a><a href="https://github.com/ardoise-editor/ardoise/blob/main/LICENSE"><span data-lang="fr">Licence MIT</span><span data-lang="en">MIT license</span></a></div>
+ </div>
+ <div class="legal"><span>Ardoise Editor v2.7.2</span><span>MIT · Rust · iced</span></div>
+</div></footer>
 </body>
 </html>
