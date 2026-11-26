@@ -778,6 +778,45 @@ impl ArdoiseApp {
         }
     }
 
+    /// The lines of the file in front with a run mark of a plugin, sorted.
+    pub(super) fn plugin_run_marks(&self) -> Vec<usize> {
+        let Some(path) = &self.current_file else {
+            return Vec::new();
+        };
+        let mut lines: Vec<usize> = self
+            .plugins
+            .run_marks
+            .iter()
+            .filter(|((_, p), _)| p == path)
+            .flat_map(|(_, lines)| lines.iter().copied())
+            .collect();
+        lines.sort_unstable();
+        lines.dedup();
+        lines
+    }
+
+    /// A click on a run mark: the plugins that put one there hear of it.
+    pub(super) fn plugin_run_mark_clicked(&mut self, line: usize) -> bool {
+        let Some(path) = self.current_file.clone() else {
+            return false;
+        };
+        let mut heard = false;
+        for ((plugin, marked), lines) in &self.plugins.run_marks {
+            if *marked == path && lines.contains(&line) {
+                host::notify(
+                    plugin,
+                    methods::RUN_MARK_CLICKED,
+                    ardoise_plugin::protocol::LineParams {
+                        path: path.clone(),
+                        line,
+                    },
+                );
+                heard = true;
+            }
+        }
+        heard
+    }
+
     /// A column of annotations of a plugin (a blame), or none.
     fn plugin_annotate(&mut self, plugin: String, p: AnnotateParams) {
         let Some(found) = p.annotations else {
@@ -1618,6 +1657,35 @@ impl ArdoiseApp {
                                 Some(origin) => self.plugins.origins.insert(p.path, origin),
                                 None => self.plugins.origins.remove(&p.path),
                             };
+                        }
+                    }
+                    methods::SET_COMPLETER => {
+                        if let Ok(p) = serde_json::from_value::<
+                            ardoise_plugin::protocol::CompleterParams,
+                        >(params)
+                        {
+                            if p.on {
+                                self.plugins.completers.insert(p.path, (id, p.triggers));
+                            } else if self
+                                .plugins
+                                .completers
+                                .get(&p.path)
+                                .is_some_and(|(by, _)| *by == id)
+                            {
+                                self.plugins.completers.remove(&p.path);
+                            }
+                        }
+                    }
+                    methods::SET_RUN_MARKS => {
+                        if let Ok(p) = serde_json::from_value::<
+                            ardoise_plugin::protocol::RunMarksParams,
+                        >(params)
+                        {
+                            if p.lines.is_empty() {
+                                self.plugins.run_marks.remove(&(id, p.path));
+                            } else {
+                                self.plugins.run_marks.insert((id, p.path), p.lines);
+                            }
                         }
                     }
                     methods::ANNOTATE => {
@@ -2914,6 +2982,61 @@ mod tab_tests {
         );
         assert!(app.plugins.tabs.is_empty());
         assert!(!app.sidebar.files().contains(&renamed));
+    }
+
+    #[test]
+    fn a_plugin_puts_run_marks_hears_the_clicks_and_takes_them_away() {
+        let mut app = app_with_plugin();
+        let path = std::path::PathBuf::from("/repo/compose.yml");
+        app.current_file = Some(path.clone());
+        let say = |app: &mut ArdoiseApp, lines: serde_json::Value| {
+            from_plugin(
+                app,
+                Rpc::notification(
+                    methods::SET_RUN_MARKS,
+                    serde_json::json!({"path": "/repo/compose.yml", "lines": lines}),
+                ),
+            );
+        };
+        say(&mut app, serde_json::json!([4, 1, 4]));
+        assert_eq!(app.plugin_run_marks(), vec![1, 4]);
+        assert!(app.plugin_run_mark_clicked(4));
+        assert!(!app.plugin_run_mark_clicked(2));
+        // Another file has none.
+        app.current_file = Some("/repo/other.yml".into());
+        assert!(app.plugin_run_marks().is_empty());
+        app.current_file = Some(path);
+        // No line: they go. A plugin that stops takes its own with it.
+        say(&mut app, serde_json::json!([]));
+        assert!(app.plugin_run_marks().is_empty());
+        say(&mut app, serde_json::json!([0]));
+        app.plugins.forget("test.tabs");
+        assert!(app.plugin_run_marks().is_empty());
+    }
+
+    #[test]
+    fn a_plugin_completes_a_file_until_it_says_no_more_or_stops() {
+        let mut app = app_with_plugin();
+        let path = PathBuf::from("/repo/Dockerfile");
+        let say = |app: &mut ArdoiseApp, on: bool| {
+            from_plugin(
+                app,
+                Rpc::notification(
+                    methods::SET_COMPLETER,
+                    serde_json::json!({"path": "/repo/Dockerfile", "on": on, "triggers": [" "]}),
+                ),
+            );
+        };
+        say(&mut app, true);
+        assert_eq!(
+            app.plugins.completers.get(&path),
+            Some(&("test.tabs".to_string(), vec![" ".to_string()]))
+        );
+        say(&mut app, false);
+        assert!(app.plugins.completers.is_empty());
+        say(&mut app, true);
+        app.plugins.forget("test.tabs");
+        assert!(app.plugins.completers.is_empty());
     }
 
     #[test]

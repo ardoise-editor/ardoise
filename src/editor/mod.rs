@@ -279,6 +279,7 @@ impl EditorState {
         tab_width: usize,
         search: Option<&SearchState>,
         bookmarks: &[usize],
+        runs: Vec<usize>,
         blame: Option<crate::code_editor::Annotations>,
         changes: Option<crate::code_editor::ChangePaint>,
         problems: Option<crate::code_editor::DiagPaint>,
@@ -366,6 +367,15 @@ impl EditorState {
                 Message::ChangeBar,
                 || Message::RevertChange,
                 || Message::CloseRevert,
+            );
+        }
+        if !runs.is_empty() {
+            editor = editor.runs(
+                crate::code_editor::RunPaint {
+                    lines: runs,
+                    color: p.accent,
+                },
+                Message::RunMarkClicked,
             );
         }
         if let Some(blame) = blame {

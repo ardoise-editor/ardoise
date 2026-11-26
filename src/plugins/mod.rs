@@ -311,6 +311,10 @@ pub struct Plugins {
     /// A line pointed at in the gutter (right click): the next answer to
     /// `editor/activeFile` gives it as the lines of the cursor.
     pub pointed_line: Option<usize>,
+    /// The files a plugin completes: (plugin, its trigger characters).
+    pub completers: HashMap<PathBuf, (String, Vec<String>)>,
+    /// The lines with a run mark, by (plugin, file).
+    pub run_marks: HashMap<(String, PathBuf), Vec<usize>>,
     /// The plugin whose annotations are the column of the file in front.
     pub annotations_of: Option<String>,
     /// The tabs of the plugins among the files, by path.
@@ -482,6 +486,8 @@ impl Plugins {
         self.rendered_inputs.retain(|k, _| k.0 != id);
         self.typed.retain(|k, _| k.0 .0 != id);
         self.status.retain(|k, _| k.0 != id);
+        self.run_marks.retain(|k, _| k.0 != id);
+        self.completers.retain(|_, (plugin, _)| plugin != id);
         for by_plugin in self.published.values_mut() {
             by_plugin.remove(id);
         }

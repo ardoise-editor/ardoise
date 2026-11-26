@@ -162,6 +162,18 @@ pub struct BookmarkPaint {
     pub color: Color,
 }
 
+/// Run marks: a ▶ at the left of the gutter, to click (a plugin's: a service
+/// of a compose file…). Without line numbers there is no gutter, so none.
+#[derive(Debug, Clone)]
+pub struct RunPaint {
+    /// 0-based, sorted.
+    pub lines: Vec<usize>,
+    pub color: Color,
+}
+
+/// Width of the zone of a run mark, at the left of the gutter.
+const RUN_WIDTH: f32 = 15.0;
+
 /// Folding: a chevron in the gutter at the head of each foldable block, and a
 /// marker after a folded one.
 #[derive(Debug, Clone)]
@@ -409,6 +421,8 @@ where
     guide: Option<(usize, Color)>,
     minimap: Option<Minimap>,
     bookmarks: Option<BookmarkPaint>,
+    runs: Option<RunPaint>,
+    on_run: Option<Box<dyn Fn(usize) -> Message + 'a>>,
     changes: Option<ChangePaint>,
     annotations: Option<Annotations>,
     on_annotation: Option<Box<dyn Fn(usize) -> Message + 'a>>,
@@ -450,6 +464,8 @@ impl<'a, Message, Theme> CodeEditor<'a, highlighter::PlainText, Message, Theme> 
             guide: None,
             minimap: None,
             bookmarks: None,
+            runs: None,
+            on_run: None,
             changes: None,
             annotations: None,
             on_annotation: None,
@@ -568,6 +584,14 @@ where
         self
     }
 
+    /// Puts run marks on lines (see [`RunPaint`]); `on_run` hears about a
+    /// click on one.
+    pub fn runs(mut self, runs: RunPaint, on_run: impl Fn(usize) -> Message + 'a) -> Self {
+        self.runs = Some(runs);
+        self.on_run = Some(Box::new(on_run));
+        self
+    }
+
     /// Underlines problems; `on_hover` hears of the one the pointer rests on
     /// (and where its card goes, in the window), and when it leaves.
     pub fn diagnostics(
@@ -639,6 +663,8 @@ where
             guide: self.guide,
             minimap: self.minimap,
             bookmarks: self.bookmarks,
+            runs: self.runs,
+            on_run: self.on_run,
             changes: self.changes,
             annotations: self.annotations,
             on_annotation: self.on_annotation,
@@ -1024,6 +1050,23 @@ where
         self.line_at_any_row(at.y, padding, renderer)
     }
 
+    /// The line whose run mark is under `at` (relative to the widget).
+    fn run_line_at(&self, at: Point, padding: Padding, renderer: &iced::Renderer) -> Option<usize> {
+        let runs = self.runs.as_ref()?;
+        self.gutter?;
+        let extra = if self.annotations.is_some() {
+            ANNOTATION_WIDTH
+        } else {
+            0.0
+        };
+        let from = self.padding.left + extra;
+        if at.x < from || at.x >= from + RUN_WIDTH {
+            return None;
+        }
+        self.line_at_y(at.y, padding, renderer)
+            .filter(|l| runs.lines.binary_search(l).is_ok())
+    }
+
     /// The problem under the pointer (at a point of the widget).
     fn diag_at(&self, at: Point, padding: Padding) -> Option<usize> {
         let paint = self.diagnostics.as_ref()?;
@@ -1200,6 +1243,7 @@ where
         let line = self.line_at_any_row(at.y, padding, renderer);
         let over = |from: f32, to: f32| at.x >= from && at.x < to;
         let hand = self.chevron_line_at(at, padding, renderer).is_some()
+            || self.run_line_at(at, padding, renderer).is_some()
             || self.note_line_at(at, padding, renderer).is_some()
             || self
                 .revert_rect(padding, renderer)
@@ -2865,6 +2909,19 @@ where
             }
         }
 
+        if let (Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)), Some(on_run)) =
+            (event, &self.on_run)
+        {
+            if let Some(line) = cursor
+                .position_in(layout.bounds())
+                .and_then(|at| self.run_line_at(at, padding, renderer))
+            {
+                shell.publish(on_run(line));
+                shell.capture_event();
+                return;
+            }
+        }
+
         if let (Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)), Some(on_note)) =
             (event, &self.on_annotation)
         {
@@ -3748,6 +3805,45 @@ where
             }
         }
 
+        if let (Some(runs), Some(_)) = (&self.runs, self.gutter) {
+            let x = bounds.x
+                + self.padding.left
+                + if self.annotations.is_some() {
+                    ANNOTATION_WIDTH
+                } else {
+                    0.0
+                };
+            let mut previous = None;
+            for run in internal.editor.buffer().layout_runs() {
+                if previous == Some(run.line_i) || run.line_height <= 0.0 {
+                    continue;
+                }
+                previous = Some(run.line_i);
+                if runs.lines.binary_search(&run.line_i).is_err() {
+                    continue;
+                }
+                renderer.fill_text(
+                    text::Text {
+                        content: "▶".to_string(),
+                        bounds: Size::new(RUN_WIDTH, row_height),
+                        size: Pixels(size * 0.85),
+                        line_height: self.line_height,
+                        font: self.font.unwrap_or(Font::MONOSPACE),
+                        align_x: text::Alignment::Center,
+                        align_y: alignment::Vertical::Center,
+                        shaping: text::Shaping::Advanced,
+                        wrapping: text::Wrapping::None,
+                    },
+                    Point::new(
+                        x + RUN_WIDTH / 2.0,
+                        bounds.y + padding.top + run.line_top + row_height / 2.0,
+                    ),
+                    runs.color,
+                    bounds,
+                );
+            }
+        }
+
         if let Some(marks) = &self.bookmarks {
             // A small flag at the left edge of the gutter (or of the text,
             // without line numbers), on the first row of each marked line.
@@ -3765,7 +3861,12 @@ where
                     continue;
                 }
                 previous = Some(run.line_i);
-                if marks.lines.binary_search(&run.line_i).is_err() {
+                // A run mark takes the place of the flag on its line (the
+                // minimap still shows the bookmark).
+                let runs = self.runs.as_ref().filter(|_| self.gutter.is_some());
+                if marks.lines.binary_search(&run.line_i).is_err()
+                    || runs.is_some_and(|r| r.lines.binary_search(&run.line_i).is_ok())
+                {
                     continue;
                 }
                 // The ribbon of the bookmarks panel: a body with a notch cut

@@ -19,6 +19,11 @@ const LIST_WIDTH: f32 = 470.0;
 const DOC_WIDTH: f32 = 380.0;
 /// Room kept under the list for the status bar.
 const BOTTOM_ROOM: f32 = 34.0;
+/// What stands for the extension of a file a plugin completes: no language
+/// server is asked about it.
+const PLUGIN: &str = "plugin:";
+/// How long a plugin has to say what may come at the cursor.
+const PLUGIN_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 /// How often a server still loading the project is looked at again.
 const BUSY_POLL: std::time::Duration = std::time::Duration::from_millis(600);
 
@@ -165,6 +170,76 @@ impl Geometry {
     }
 }
 
+/// Asks a plugin what may come at the cursor of a file.
+async fn ask_plugin(plugin: &str, path: &Path, base: &Base) -> Result<lsp::Completions, String> {
+    let params = ardoise_plugin::protocol::CompletionParams {
+        panel: String::new(),
+        editor: path.to_string_lossy().into_owned(),
+        offset: base.text[..cmp::offset_of(&base.text, base.origin)]
+            .chars()
+            .count(),
+        text: base.text.clone(),
+    };
+    let answer = crate::plugins::host::request(
+        plugin,
+        ardoise_plugin::protocol::methods::COMPLETION,
+        params,
+        PLUGIN_WAIT,
+    )
+    .await?;
+    let found = serde_json::from_value(answer).map_err(|e| e.to_string())?;
+    Ok(lsp::Completions {
+        items: plugin_items(found, base),
+        incomplete: false,
+        busy: false,
+    })
+}
+
+/// What a plugin proposed, as the list takes it: its order kept, and what it
+/// replaces (`from`, in characters; none: the word before the cursor).
+fn plugin_items(found: ardoise_plugin::protocol::Completions, base: &Base) -> Vec<Item> {
+    let list = found
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let insert = item.insert.as_ref().unwrap_or(&item.label);
+            serde_json::json!({
+                "label": item.label,
+                "insertText": insert,
+                "detail": item.detail,
+                "sortText": format!("{i:06}"),
+                "kind": 14,
+                // What waits for more (`--from=`, `FROM `): the list again.
+                "command": insert.ends_with(['=', ' '])
+                    .then(|| serde_json::json!({"command": "editor.action.triggerSuggest"})),
+            })
+        })
+        .collect();
+    let mut items = cmp::parse_list(&serde_json::Value::Array(list), "").0;
+    // Only a stretch of the cursor's line, before it.
+    let start = found.from.and_then(|from| {
+        let at = base
+            .text
+            .char_indices()
+            .nth(from)
+            .map_or(base.text.len(), |(at, _)| at);
+        let pos = cmp::pos_of_offset(&base.text, at);
+        (pos.0 == base.origin.0 && pos.1 <= base.origin.1).then_some(pos)
+    });
+    if let Some(start) = start {
+        let range = cmp::Range {
+            start,
+            end: base.origin,
+        };
+        for item in &mut items {
+            item.insert = Some(range);
+            item.replace = Some(range);
+        }
+    }
+    items
+}
+
 fn server_key(path: &Path, ext: &str) -> ServerKey {
     let root = crate::definition::project_root(path)
         .or_else(|| path.parent().map(Path::to_path_buf))
@@ -215,6 +290,11 @@ impl ArdoiseApp {
             .current_file
             .clone()
             .filter(|p| !is_untitled(p) && !is_virtual(p))?;
+        // A plugin that completes the file goes before a server.
+        if let Some((plugin, _)) = self.plugins.completers.get(&path) {
+            let ext = format!("{PLUGIN}{plugin}");
+            return Some((path, ext));
+        }
         let ext = path
             .extension()
             .map(|e| e.to_string_lossy().to_ascii_lowercase())?;
@@ -258,6 +338,9 @@ impl ArdoiseApp {
         let Some((path, ext)) = self.completion_target() else {
             return Task::none();
         };
+        if ext.starts_with(PLUGIN) {
+            return Task::none();
+        }
         let key = self
             .completion
             .keys
@@ -303,6 +386,14 @@ impl ArdoiseApp {
     }
 
     fn triggers(&self, path: &Path, ext: &str) -> Vec<String> {
+        if ext.starts_with(PLUGIN) {
+            return self
+                .plugins
+                .completers
+                .get(path)
+                .map(|(_, triggers)| triggers.clone())
+                .unwrap_or_default();
+        }
         self.completion
             .info
             .get(&server_key(path, ext))
@@ -377,7 +468,10 @@ impl ArdoiseApp {
         }
         Task::perform(
             async move {
-                let found = lsp::complete(&ext, &path, &text, origin.0, origin.1, trigger).await;
+                let found = match ext.strip_prefix(PLUGIN) {
+                    Some(plugin) => ask_plugin(plugin, &path, &base).await,
+                    None => lsp::complete(&ext, &path, &text, origin.0, origin.1, trigger).await,
+                };
                 (base, found)
             },
             move |(base, found)| Message::CompletionAnswer(generation, Box::new((base, found))),
@@ -1187,7 +1281,11 @@ impl ArdoiseApp {
         character: Option<String>,
         manual: bool,
     ) -> Task<Message> {
-        let Some((path, ext)) = self.completion_target() else {
+        // A plugin that completes a file says nothing about parameters.
+        let target = self
+            .completion_target()
+            .filter(|(_, ext)| !ext.starts_with(PLUGIN));
+        let Some((path, ext)) = target else {
             if manual && self.config.completion_enabled {
                 let ext = self
                     .current_file
@@ -2242,6 +2340,38 @@ mod tests {
 
     /// Draws the window with a list open, to look at it without a screen:
     /// `SNAPSHOT=/tmp/list.png cargo test completion_list_look -- --ignored`.
+    #[test]
+    fn what_a_plugin_proposes_keeps_its_order_and_replaces_what_it_says() {
+        let base = Base {
+            text: "# é\nCOPY --fr".into(),
+            origin: (1, 9),
+        };
+        let found: ardoise_plugin::protocol::Completions =
+            serde_json::from_value(serde_json::json!({
+                "from": 9,
+                "items": [{"label": "--from=", "detail": "stage"}, {"label": "--from-a"}],
+            }))
+            .unwrap();
+        let items = plugin_items(found, &base);
+        let ranked = cmp::rank(&items, &base, "COPY --fr", (1, 9));
+        assert_eq!(ranked.len(), 2, "what was typed since the dashes matches");
+        assert_eq!(items[ranked[0].index].label, "--from=");
+        assert_eq!(items[0].insert.unwrap().start, (1, 5));
+        assert_eq!(
+            items[0].command.as_deref(),
+            Some("editor.action.triggerSuggest"),
+            "a value comes after"
+        );
+        assert_eq!(items[1].command, None);
+        let plan = cmp::plan(&items[0], &base, &base.text, (1, 9), false, &|_| None).unwrap();
+        assert_eq!(plan.text, "# é\nCOPY --from=");
+        // A start on another line is not taken: the word before the cursor is.
+        let found =
+            serde_json::from_value(serde_json::json!({"from": 0, "items": [{"label": "a"}]}))
+                .unwrap();
+        assert!(plugin_items(found, &base)[0].insert.is_none());
+    }
+
     #[test]
     #[ignore]
     fn completion_list_look() {
