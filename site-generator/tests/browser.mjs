@@ -10,10 +10,12 @@ import assert from 'node:assert/strict';
 
 const docs = resolve(dirname(fileURLToPath(import.meta.url)), '../../docs');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.mp4': 'video/mp4', '.svg': 'image/svg+xml', '.ttf': 'font/ttf' };
+// Served as if still to come: every media of the site is there now.
+const withheld = /plugin-database-diagram(-en)?\.png$/;
 const server = createServer((req, res) => {
   const file = join(docs, new URL(req.url, 'http://x').pathname);
   try {
-    if (!file.startsWith(docs) || !statSync(file).isFile()) throw new Error('not a file');
+    if (!file.startsWith(docs) || withheld.test(file) || !statSync(file).isFile()) throw new Error('not a file');
     res.writeHead(200, { 'content-type': types[extname(file)] || 'application/octet-stream' });
     createReadStream(file).pipe(res);
   } catch { res.writeHead(404); res.end(); }
