@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # A plugin released since the last deployment: its new version shows on the site.
+  schedule:
+    - cron: '23 5 * * *'
 
 permissions:
   contents: read
@@ -23,6 +26,15 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      # The versions of the plugins are those of their latest releases. The
+      # build also writes notes that git does not track: they are not published.
+      - name: Build the site with the latest plugin versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 site-generator/plugin_versions.py
+          python3 site-generator/build.py --repo . --out docs
+          git clean -fdq docs
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: docs/
