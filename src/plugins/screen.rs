@@ -293,7 +293,10 @@ pub fn view<'a>(key: &PanelKey, grid: &'a Grid, dark: bool, focused: bool) -> El
         focused,
     })
     .width(Length::Fill)
-    .height(Length::Fill)
+    .height(
+        grid.height
+            .map_or(Length::Fill, |h| Length::Fixed(f32::from(h))),
+    )
     .into()
 }
 

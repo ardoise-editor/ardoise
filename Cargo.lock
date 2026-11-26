@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "ardoise"
-version = "2.10.0"
+version = "2.11.0"
 dependencies = [
  "ardoise-plugin",
  "dirs",
@@ -155,8 +155,8 @@ dependencies = [
 
 [[package]]
 name = "ardoise-plugin"
-version = "0.16.0"
-source = "git+https://github.com/ardoise-editor/plugin-sdk?tag=v0.16.0#6e7ec4fb86908b27706852cf91d49c0347d2a629"
+version = "0.17.0"
+source = "git+https://github.com/ardoise-editor/plugin-sdk?tag=v0.17.0#6a0bd5c48da892f7e47c155d583c29df4740221e"
 dependencies = [
  "serde",
  "serde_json",

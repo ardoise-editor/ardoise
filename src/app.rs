@@ -814,6 +814,9 @@ pub struct ArdoiseApp {
     panels: crate::sidebar::Panels,
     /// Width of the file list, and whether its edge is being dragged.
     sidebar_width: f32,
+    /// The panel of a plugin at the right: its width, and its edge dragged.
+    right_width: f32,
+    right_resizing: bool,
     /// The API panel: collections, environments, history.
     sidebar_resizing: bool,
     /// The height of the bottom panels (Git, terminal, scratch files, bookmarks), and the drag that resizes it: where the
@@ -1123,6 +1126,8 @@ impl ArdoiseApp {
             session_writes: 0,
             abandoned_reads: HashSet::new(),
             sidebar_width: config.sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX),
+            right_width: config.right_panel_width.clamp(RIGHT_MIN, RIGHT_MAX),
+            right_resizing: false,
             sidebar_resizing: false,
             panel_height: PANEL_HEIGHT,
             panel_resizing: false,
@@ -1304,6 +1309,7 @@ impl ArdoiseApp {
         let task = self.update_message(message);
         self.plugins_follow_settings();
         self.plugins_follow_active();
+        self.plugins_follow_workspace();
         self.plugins_follow_tab();
         // The tests run off the main thread, where the system menu is off limits.
         #[cfg(all(target_os = "macos", not(test)))]
@@ -1600,6 +1606,19 @@ impl ArdoiseApp {
                 },
             ));
         }
+        if self.right_resizing {
+            subscriptions.push(iced::event::listen_with(
+                |event, _status, _window| match event {
+                    iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(
+                        Message::Plugin(crate::plugins::PluginMsg::RightResize(position.x)),
+                    ),
+                    iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                        iced::mouse::Button::Left,
+                    )) => Some(Message::Plugin(crate::plugins::PluginMsg::RightResizeEnd)),
+                    _ => None,
+                },
+            ));
+        }
         if self.panel_resizing {
             subscriptions.push(iced::event::listen_with(
                 |event, _status, _window| match event {
@@ -1842,6 +1861,22 @@ impl ArdoiseApp {
             );
         }
         main_row = main_row.push(editor_panel);
+        if let Some(panel) = self.plugin_right(dark) {
+            // Its left edge is the handle that resizes it.
+            main_row = main_row.push(
+                iced::widget::mouse_area(
+                    row![
+                        vrule(dark),
+                        container(Space::new().width(SIDEBAR_GRIP).height(Length::Fill))
+                            .style(se_theme::panel(dark)),
+                    ]
+                    .height(Length::Fill),
+                )
+                .on_press(Message::Plugin(crate::plugins::PluginMsg::RightResizeStart))
+                .interaction(iced::mouse::Interaction::ResizingHorizontally),
+            );
+            main_row = main_row.push(panel);
+        }
 
         // On macOS the menus are in the system bar: no title bar here.
         let content: Element<Message> = if cfg!(target_os = "macos") {
@@ -9090,6 +9125,8 @@ const SIDEBAR_GRIP: f32 = 4.0;
 pub(crate) const ACTIVITY_WIDTH: f32 = 44.0;
 const SIDEBAR_MIN: f32 = 160.0;
 const SIDEBAR_MAX: f32 = 700.0;
+pub(crate) const RIGHT_MIN: f32 = 280.0;
+pub(crate) const RIGHT_MAX: f32 = 900.0;
 
 /// A path for a person: the home folder written `~`.
 pub fn display_path(path: &Path) -> String {

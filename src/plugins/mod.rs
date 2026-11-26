@@ -128,6 +128,15 @@ pub enum PluginMsg {
     Ui(String, String, String, Option<Value>),
     /// A field of a panel typed in: the plugin, the panel, the field, the text.
     Input(String, String, String, String),
+    /// Enter in an editor of a panel that sends: the plugin, the panel, the
+    /// editor, what Enter sends.
+    EditorSubmit(String, String, String, String),
+    /// Closes the panel at the right.
+    CloseRight,
+    /// The edge of the panel at the right is dragged (to this x) or let go.
+    RightResizeStart,
+    RightResize(f32),
+    RightResizeEnd,
     /// A secret field shown in clear or hidden again: the plugin, the
     /// panel, the field.
     Reveal(String, String, String),
@@ -279,6 +288,8 @@ pub struct Plugins {
     /// The panel of a plugin shown in the sidebar, and the one under the editor.
     pub sidebar: Option<PanelKey>,
     pub bottom: Option<PanelKey>,
+    /// The panel at the right of the editor.
+    pub right: Option<PanelKey>,
     /// The tab of the Git group seen last.
     pub git_tab: Option<PanelKey>,
     /// The settings panel open in Preferences › Plugins.
@@ -335,6 +346,8 @@ pub struct Plugins {
     pub crashed: HashMap<String, String>,
     /// The files the plugins were told are open.
     pub told_open: HashSet<PathBuf>,
+    /// The projects as the plugins were last told.
+    pub sent_workspace: Option<Vec<PathBuf>>,
     /// The settings the plugins were last told.
     pub sent_settings: Option<Settings>,
     /// The file in front the plugins were last told of.
@@ -535,9 +548,14 @@ impl Plugins {
 
     /// Whether a panel of this plugin is open.
     pub fn has_open_panel(&self, id: &str) -> bool {
-        [&self.sidebar, &self.bottom, &self.settings_open]
-            .into_iter()
-            .any(|k| k.as_ref().is_some_and(|k| k.0 == id))
+        [
+            &self.sidebar,
+            &self.bottom,
+            &self.right,
+            &self.settings_open,
+        ]
+        .into_iter()
+        .any(|k| k.as_ref().is_some_and(|k| k.0 == id))
     }
 
     /// The tools of the official plugins that the menus, the shortcuts and
