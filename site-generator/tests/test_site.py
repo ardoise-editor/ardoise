@@ -3,6 +3,8 @@ import glob, os, re, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DOCS = os.path.join(ROOT, "docs")
+sys.path.insert(0, os.path.join(ROOT, "site-generator"))
+sys.dont_write_bytecode = True
 # Media still to come (none: every one of them is there).
 PENDING = set()
 
@@ -68,6 +70,29 @@ class Version(unittest.TestCase):
             t = read(os.path.join(out, "index.html"))
             self.assertIn('<span class="chip">v9.8.7</span>', t)
             self.assertIn("Ardoise Editor v9.8.7<", t)
+
+
+class PluginVersions(unittest.TestCase):
+    def test_every_plugin_shows_the_version_of_the_file(self):
+        import plugin_versions, plugins_data
+        self.assertEqual({p["slug"]: p["ver"] for p in plugins_data.PLUGINS}, plugin_versions.load())
+
+    def test_a_newer_release_replaces_the_version(self):
+        import plugin_versions
+        asked = []
+        def latest(repo):
+            asked.append(repo)
+            return "v2.0.0"
+        self.assertEqual(plugin_versions.refresh({"git": "1.0.0"}, latest), {"git": "2.0.0"})
+        self.assertEqual(asked, ["plugin-git"])
+
+    def test_the_version_is_kept_when_github_fails_or_answers_something_else(self):
+        import plugin_versions
+        def down(repo):
+            raise OSError("502 Bad Gateway")
+        # The tag ends up in the pages: only a plain version number gets there.
+        for latest in (down, lambda r: None, lambda r: "nightly", lambda r: "v1.0.0<script>"):
+            self.assertEqual(plugin_versions.refresh({"git": "1.0.0"}, latest), {"git": "1.0.0"})
 
 
 class Published(unittest.TestCase):
