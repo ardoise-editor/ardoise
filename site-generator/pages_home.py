@@ -53,7 +53,7 @@ def hero():
 </div>
 <div class="wrap"><div class="stats">
  <div><b>30+</b><span>{L("langages colorés (grammaires TextMate)", "languages highlighted (TextMate grammars)")}</span></div>
- <div><b>9</b><span>{L("plugins officiels, signés", "official plugins, signed")}</span></div>
+ <div><b>11</b><span>{L("plugins officiels, signés", "official plugins, signed")}</span></div>
  <div><b>64 Mo</b><span>{L("taille maximale d'un fichier ouvert", "largest file that opens")}</span></div>
  <div><b>MIT</b><span>{L("libre, sans filigrane ni compte", "free, no account, no watermark")}</span></div>
 </div></div></section>'''
@@ -127,7 +127,7 @@ def plugin_strip():
     return f'''<section class="block" style="background:var(--side);border-block:1px solid var(--line)"><div class="wrap">
 <div class="sec-head"><span class="eyebrow">Plugins</span>
 <h2>{L("Un éditeur simple, des plugins pour le reste.", "A plain editor, plugins for the rest.")}</h2>
-<p class="lead">{L("Neuf plugins officiels, chacun dans son propre dépôt, signés et installables depuis Préférences › Plugins. Les outils que vous utilisiez avant l'arrivée des plugins s'installent d'eux-mêmes au premier lancement.", "Nine official plugins, each in its own repository, signed and installable from Preferences › Plugins. The tools you used before plugins existed install themselves on first launch.")}</p></div>
+<p class="lead">{L("Onze plugins officiels, chacun dans son propre dépôt, signés et installables depuis Préférences › Plugins. Les outils que vous utilisiez avant l'arrivée des plugins s'installent d'eux-mêmes au premier lancement.", "Eleven official plugins, each in its own repository, signed and installable from Preferences › Plugins. The tools you used before plugins existed install themselves on first launch.")}</p></div>
 <div class="grid g3">{cards}</div>
 <div class="cta-row" style="margin-top:32px"><a class="btn primary" href="extensions.html">{L("Voir tous les plugins", "See all plugins")}</a></div>
 </div></section>'''

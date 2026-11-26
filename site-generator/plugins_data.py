@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The nine official plugins (content taken from each repository's README and plugin.json)."""
+"""The eleven official plugins (content taken from each repository's README and plugin.json)."""
 
 PLUGINS = [
  dict(
@@ -20,9 +20,9 @@ PLUGINS = [
      ("Branches locales et distantes, tags : checkout, merge, rebase, pull, fetch, push, force push, renommer, supprimer, comparer avec l'arbre de travail.", "Local and remote branches and tags: checkout, merge, rebase, pull, fetch, push, force push, rename, delete, compare with the working tree."),
      ("Remisage (en gardant l'index, ou l'index seul), appliquer, pop, supprimer, créer une branche depuis un remisage.", "Stash (keeping the index, or the index only), apply, pop, drop, make a branch of a stash.")]),
    (("GitHub et GitLab", "GitHub and GitLab"), [
-     ("Les plugins officiels <a href=\"https://github.com/ardoise-editor/plugin-github\">GitHub</a> et <a href=\"https://github.com/ardoise-editor/plugin-gitlab\">GitLab</a> ajoutent chacun un onglet au panneau Git : avec eux, un seul bouton Git dans la barre d'activité. Ils fonctionnent aussi sans le plugin Git.", "The official <a href=\"https://github.com/ardoise-editor/plugin-github\">GitHub</a> and <a href=\"https://github.com/ardoise-editor/plugin-gitlab\">GitLab</a> plugins each add a tab to the Git panel: with them, a single Git button in the activity bar. They work without the Git plugin too."),
-     ("GitHub : pull requests (créer, lire, commenter, approuver, fusionner), Actions et leurs journaux, tags.", "GitHub: pull requests (make, read, comment, approve, merge), Actions and their logs, tags."),
-     ("GitLab : merge requests (créer, lire, commenter, approuver, fusionner), pipelines et leurs journaux, tags.", "GitLab: merge requests (make, read, comment, approve, merge), pipelines and their logs, tags.")]),
+     ("Les plugins officiels <a href=\"plugin-github.html\">GitHub</a> et <a href=\"plugin-gitlab.html\">GitLab</a> ajoutent chacun un onglet au panneau Git : avec eux, un seul bouton Git dans la barre d'activité. Ils fonctionnent aussi sans le plugin Git.", "The official <a href=\"plugin-github.html\">GitHub</a> and <a href=\"plugin-gitlab.html\">GitLab</a> plugins each add a tab to the Git panel: with them, a single Git button in the activity bar. They work without the Git plugin too."),
+     ("GitHub : pull requests (créer, lire, commenter, approuver, fusionner), Actions et leurs journaux, étiquettes.", "GitHub: pull requests (make, read, comment, approve, merge), Actions and their logs, tags."),
+     ("GitLab : merge requests (créer, lire, commenter, approuver, fusionner), pipelines et leurs journaux, étiquettes.", "GitLab: merge requests (make, read, comment, approve, merge), pipelines and their logs, tags.")]),
    (("Dans l'éditeur", "In the editor"), [
      ("Couleurs des fichiers modifiés dans l'arbre et sur les onglets ; lignes modifiées marquées dans la marge.", "Colors of changed files in the tree and on the tabs; changed lines marked beside the text."),
      ("Blame dans la marge (« Git : annoter (blame) »), diffs en onglets où l'on indexe ou annule des blocs, conflits résolus dans une vue à trois colonnes.", "Blame in the gutter (“Git: Annotate (Blame)”), diffs in tabs where blocks are staged or put back, conflicts settled in a three-column merge."),
@@ -37,6 +37,52 @@ PLUGINS = [
          ("plugin-git-merge.png", "Résolution d'un conflit dans la vue à trois colonnes.", "A conflict settled in the three-column merge.", "img", "16/10"),
          ("plugin-git-tabs.png", "Le panneau Git avec les onglets Git, GitHub et GitLab, et un seul bouton Git dans la barre d'activité.", "The Git panel with the Git, GitHub and GitLab tabs, and a single Git button in the activity bar.", "img", "16/10"),
          ("plugin-git-demo.mp4", "Parcours complet : modifier un fichier, voir les lignes marquées, indexer, commit et push depuis le panneau.", "Complete flow: edit a file, see the marked lines, stage, commit and push from the panel.", "video", "16/10")],
+ ),
+ dict(
+  slug="github", repo="plugin-github", ver="1.0.1", icon="github", name=("GitHub", "GitHub"),
+  tag=("Pull requests, Actions et étiquettes, dans un onglet du panneau Git.", "Pull requests, Actions and tags, in a tab of the Git panel."),
+  intro=("GitHub (github.com ou GitHub Enterprise) dans l'éditeur, en onglet du panneau Git. Le plugin fonctionne avec ou sans le <a href=\"plugin-git.html\">plugin Git</a>. Le dépôt est celui du remote <code>origin</code>.",
+         "GitHub (github.com or GitHub Enterprise) in the editor, as a tab of the Git panel. The plugin works with or without the <a href=\"plugin-git.html\">Git plugin</a>. The repository is the one of the <code>origin</code> remote."),
+  groups=[
+   (("Pull requests", "Pull requests"), [
+     ("Les pull requests ouvertes, fusionnées ou fermées ; en créer une, en brouillon ou non, depuis la branche courante.", "The open, merged or closed pull requests; make one, draft or not, from the branch checked out."),
+     ("En lire une : description, fichiers et leurs diffs dans un onglet, commentaires et relectures (commenter, répondre sur des lignes), vérifications.", "Read one: its description, its files and their diffs in a tab, its comments and reviews (comment, answer on lines), its checks."),
+     ("Approuver ou demander des changements, fusionner (merge ou squash, en supprimant la branche si vous le cochez), fermer, rouvrir. GitHub ne permet pas de supprimer une pull request.", "Approve or request changes, merge (merge or squash, deleting the branch when you tick it), close, reopen. GitHub does not delete pull requests."),
+     ("La fusion porte sur le commit que vous avez vu : si la branche a bougé depuis, GitHub la refuse.", "Merging asks for the commit you saw: if the branch moved since, GitHub refuses.")]),
+   (("Actions et étiquettes", "Actions and tags"), [
+     ("Les dernières exécutions, leurs jobs et journaux ; lancer un workflow à la main ; relancer les jobs en échec ou un seul job, annuler ou supprimer une exécution.", "The latest runs, their jobs and logs; start a workflow by hand; rerun failed jobs or a single job, cancel or delete a run."),
+     ("Étiquettes : les lister, en créer (annotées, avec un message), les supprimer.", "Tags: list, create (annotated with a message), delete.")]),
+   (("Connexion", "Signing in"), [
+     ("Pour chaque serveur, le panneau demande un jeton d'accès personnel (un jeton « classic » avec les droits <code>repo</code> et <code>workflow</code>).", "For each server the panel asks for a personal access token (a classic token with the <code>repo</code> and <code>workflow</code> scopes)."),
+     ("Il est gardé dans le trousseau du système (ou, à défaut, dans un fichier lisible par vous seul) et n'est <b>envoyé qu'au serveur pour lequel vous l'avez saisi</b>, en HTTPS.", "It is kept in the system keychain (or a file only you can read when there is none) and <b>sent only to the server you typed it for</b>, over HTTPS.")]),
+  ],
+  needs=[("<code>git</code> sur la machine et Ardoise 2.8 ou plus récent.", "<code>git</code> on the machine and Ardoise 2.8 or later.")],
+  settings=("La page de réglages du plugin, dans les Préférences, concerne les serveurs connectés.", "The settings page of the plugin, in the Preferences, is about the servers signed in to."),
+  keys=[],
+  media=[("plugin-github-connect.png", "L'onglet GitHub du panneau Git avant la connexion : le jeton demandé pour github.com.", "The GitHub tab of the Git panel before signing in: the token asked for github.com.", "img", "16/10")],
+ ),
+ dict(
+  slug="gitlab", repo="plugin-gitlab", ver="1.0.1", icon="merge", name=("GitLab", "GitLab"),
+  tag=("Merge requests, pipelines et étiquettes, dans un onglet du panneau Git.", "Merge requests, pipelines and tags, in a tab of the Git panel."),
+  intro=("GitLab (gitlab.com ou votre serveur) dans l'éditeur, en onglet du panneau Git. Le plugin fonctionne avec ou sans le <a href=\"plugin-git.html\">plugin Git</a>. Le projet est celui du remote <code>origin</code>.",
+         "GitLab (gitlab.com or your own server) in the editor, as a tab of the Git panel. The plugin works with or without the <a href=\"plugin-git.html\">Git plugin</a>. The project is the one of the <code>origin</code> remote."),
+  groups=[
+   (("Merge requests", "Merge requests"), [
+     ("Les merge requests ouvertes, fusionnées ou fermées ; en créer une depuis la branche courante.", "The open, merged or closed merge requests; make one from the branch checked out."),
+     ("En lire une : description, fichiers et leurs diffs dans un onglet, commentaires (répondre, résoudre, commenter), pipeline.", "Read one: its description, its files and their diffs in a tab, its comments (answer, resolve, comment), its pipeline."),
+     ("Approuver, fusionner (squash, suppression de la branche source, une fois le pipeline réussi), fermer, rouvrir, supprimer. GitLab réserve la suppression aux propriétaires et administrateurs ; les autres ferment.", "Approve, merge (squash, delete the source branch, once the pipeline passes), close, reopen, delete. GitLab allows deleting to owners and administrators only; others close."),
+     ("La fusion porte sur le commit que vous avez vu : si la branche a bougé depuis, GitLab la refuse.", "Merging asks for the commit you saw: if the branch moved since, GitLab refuses.")]),
+   (("Pipelines et étiquettes", "Pipelines and tags"), [
+     ("Les derniers pipelines, leurs jobs et journaux ; en lancer un sur une branche ou un tag ; relancer, annuler, supprimer ; relancer, annuler ou démarrer un job.", "The latest pipelines, their jobs and logs; run one on a branch or a tag; retry, cancel, delete; retry, cancel or start a job."),
+     ("Étiquettes : les lister, en créer (annotées, avec un message), les supprimer.", "Tags: list, create (annotated with a message), delete.")]),
+   (("Connexion", "Signing in"), [
+     ("Pour chaque serveur, le panneau demande un jeton d'accès personnel avec le droit <code>api</code>.", "For each server the panel asks for a personal access token with the <code>api</code> scope."),
+     ("Il est gardé dans le trousseau du système (ou, à défaut, dans un fichier lisible par vous seul) et n'est <b>envoyé qu'au serveur pour lequel vous l'avez saisi</b>, en HTTPS.", "It is kept in the system keychain (or a file only you can read when there is none) and <b>sent only to the server you typed it for</b>, over HTTPS.")]),
+  ],
+  needs=[("<code>git</code> sur la machine et Ardoise 2.8 ou plus récent.", "<code>git</code> on the machine and Ardoise 2.8 or later.")],
+  settings=("La page de réglages du plugin, dans les Préférences, concerne les serveurs connectés.", "The settings page of the plugin, in the Preferences, is about the servers signed in to."),
+  keys=[],
+  media=[("plugin-gitlab-connect.png", "L'onglet GitLab du panneau Git avant la connexion : le jeton demandé pour gitlab.com.", "The GitLab tab of the Git panel before signing in: the token asked for gitlab.com.", "img", "16/10")],
  ),
  dict(
   slug="database", repo="plugin-database", ver="1.5.2", icon="database", name=("Base de données", "Database"),

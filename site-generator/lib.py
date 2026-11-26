@@ -56,6 +56,7 @@ def kbd(*keys):
 def icon(name, size=22):
     paths = {
         "git": '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 8.4v7.2M18 11.4c0 3.6-3 4-8.6 4.4"/>',
+        "merge": '<circle cx="7" cy="5.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/><circle cx="17" cy="18.5" r="2.4"/><path d="M7 7.9v8.2M17 16.1V11c0-3-2-5-5.5-5M13.5 3.5L11 6l2.5 2.5"/>',
         "database": '<ellipse cx="12" cy="5.5" rx="7" ry="2.8"/><path d="M5 5.5v13c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-13M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8"/>',
         "api": '<path d="M4 12h5l2-6 2 12 2-6h5"/>',
         "lint": '<path d="M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',

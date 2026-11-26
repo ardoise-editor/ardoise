@@ -32,8 +32,8 @@ def catalog(out):
 {P("Pour essayer un plugin en cours de développement : <b>Préférences › Plugins › Lier un dossier…</b>. Pour publier : poussez un tag <code>vX.Y.Z</code> ; le workflow du modèle construit les archives Linux et macOS et la somme de contrôle, et n'importe qui peut ensuite l'installer depuis Préférences › Plugins en saisissant <code>propriétaire/nom</code>.", "To try a plugin under development: <b>Preferences › Plugins › Link a folder…</b>. To publish: push a <code>vX.Y.Z</code> tag; the template's workflow builds the Linux and macOS archives and the checksums, and anyone can then install it from Preferences › Plugins by typing <code>owner/name</code>.")}
 </div></div></section>'''
     page("extensions.html", "plugins", ("Plugins officiels", "Official plugins"),
-         ("Les neuf plugins officiels d'Ardoise Editor : Git, base de données, API, lint, orthographe, historique local, tâches, fichiers distants et terminal.",
-          "The nine official Ardoise Editor plugins: Git, database, API, lint, spelling, local history, tasks, remote files and terminal."),
+         ("Les onze plugins officiels d'Ardoise Editor : Git, GitHub, GitLab, base de données, API, lint, orthographe, historique local, tâches, fichiers distants et terminal.",
+          "The eleven official Ardoise Editor plugins: Git, GitHub, GitLab, database, API, lint, spelling, local history, tasks, remote files and terminal."),
          body, out)
 
 
