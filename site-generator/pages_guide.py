@@ -270,7 +270,7 @@ def hub(out):
     cards = ""
     for fn, fr, en, dfr, den, n in GUIDE:
         cards += f'<a class="card" href="{fn}"><span class="num">{n}</span><h3>{L(fr, en)}</h3><p>{L(dfr, den)}</p><span class="more">{L("Lire", "Read")} →</span></a>'
-    cards += (f'<a class="card" href="extensions.html"><span class="num">09</span><h3>Plugins</h3><p>{L("Git, base de données, API, lint, orthographe, historique, tâches, fichiers distants, terminal.", "Git, database, API, lint, spelling, history, tasks, remote files, terminal.")}</p><span class="more">{L("Découvrir", "Discover")} →</span></a>')
+    cards += (f'<a class="card" href="extensions.html"><span class="num">09</span><h3>Plugins</h3><p>{L("Git, GitHub, GitLab, base de données, API, lint, orthographe, historique, tâches, fichiers distants, terminal.", "Git, GitHub, GitLab, database, API, lint, spelling, history, tasks, remote files, terminal.")}</p><span class="more">{L("Découvrir", "Discover")} →</span></a>')
     quick = table([("Je veux…", "I want to…"), ("Raccourci", "Shortcut")], [
         [("Trouver n'importe quelle action", "Find any action"), K("Ctrl", "Shift", "A")], [("Ouvrir un fichier par son nom", "Open a file by name"), K("Ctrl", "Shift", "N")],
         [("Aller à la définition", "Go to definition"), "<kbd>Ctrl</kbd> + clic"], [("Chercher dans le fichier", "Find in the file"), K("Ctrl", "F")],

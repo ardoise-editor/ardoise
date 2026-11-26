@@ -3,8 +3,8 @@ import glob, os, re, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DOCS = os.path.join(ROOT, "docs")
-# The app draws the ER diagram without any text: its two screenshots are still to come.
-PENDING = {"media/plugin-database-diagram.png", "media/plugin-database-diagram-en.png"}
+# Media still to come (none: every one of them is there).
+PENDING = set()
 
 
 def read(path):
