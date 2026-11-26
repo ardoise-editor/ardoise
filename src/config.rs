@@ -600,6 +600,8 @@ pub struct Config {
     pub show_api_panel: bool,
     /// Width of the file list, in pixels (dragged by its right edge).
     pub sidebar_width: f32,
+    /// Width of a plugin's panel at the right (dragged by its left edge).
+    pub right_panel_width: f32,
     /// How `pull` and `merge` were made (`rebase`, `no-fast-forward`…) and
     /// the minutes between two fetches, before Git became the Git plugin:
     /// carried over to its settings, no longer used.
@@ -738,6 +740,7 @@ impl Default for Config {
             show_database_panel: false,
             show_api_panel: false,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
+            right_panel_width: 440.0,
             git_pull_mode: "merge".into(),
             git_merge_mode: "default".into(),
             git_auto_fetch_minutes: 5,

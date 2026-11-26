@@ -1153,6 +1153,7 @@ impl ArdoiseApp {
                 ),
             ]
             .extend(plugin_tools(ardoise_plugin::manifest::Location::Sidebar))
+            .extend(plugin_tools(ardoise_plugin::manifest::Location::Right))
             .push(Space::new().height(Length::Fill))
             .extend(plugin_tools(ardoise_plugin::manifest::Location::Bottom))
             .extend([

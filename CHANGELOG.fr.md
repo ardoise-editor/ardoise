@@ -1,5 +1,12 @@
 # Journal des modifications
 
+## [2.11.0] - 2026-11-26
+
+### Ajouté
+- Les plugins sont prévenus quand les projets changent, et peuvent demander un dossier.
+- Un panneau de plugin peut se placer à droite de l’éditeur et se redimensionne par son bord gauche.
+- Les plugins peuvent afficher du Markdown, faire envoyer un éditeur avec Entrée (Maj+Entrée : nouvelle ligne) et fixer la hauteur d’un écran (plugin-sdk 0.17.0) : le plugin IA (Claude Code) s’en sert.
+
 ## [2.10.0] - 2026-11-26
 
 ### Ajouté

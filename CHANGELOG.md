@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0] - 2026-11-26
+
+### Added
+- Plugins hear when the projects change, and can ask for a folder.
+- A panel of a plugin can stand at the right of the editor, resized by its left edge.
+- Plugins can show Markdown, have an editor send on Enter (Shift+Enter: a new line) and give a screen a fixed height (plugin-sdk 0.17.0): the AI plugin (Claude Code) uses them.
+
 ## [2.10.0] - 2026-11-26
 
 ### Added

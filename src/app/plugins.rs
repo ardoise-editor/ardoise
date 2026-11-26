@@ -385,6 +385,27 @@ impl ArdoiseApp {
         self.plugins.sent_active = Some(now);
     }
 
+    /// The projects changed: the plugins that follow them hear of it.
+    pub(super) fn plugins_follow_workspace(&mut self) {
+        let sent = self.plugins.sent_workspace.as_ref();
+        if sent == Some(&self.projects.roots) {
+            return;
+        }
+        let folders = self.projects.roots.clone();
+        for plugin in &self.plugins.installed {
+            if plugin.manifest.events.contains(&Event::WorkspaceChanged) {
+                host::notify(
+                    plugin.id(),
+                    methods::WORKSPACE_CHANGED,
+                    ardoise_plugin::protocol::WorkspaceParams {
+                        folders: folders.clone(),
+                    },
+                );
+            }
+        }
+        self.plugins.sent_workspace = Some(folders);
+    }
+
     /// A file was opened, saved or closed: the plugins that asked hear of it.
     pub(super) fn plugins_file_event(&mut self, event: Event, path: &Path) {
         self.plugins_file_event_with(event, path, None);
@@ -416,7 +437,9 @@ impl ArdoiseApp {
             }
             Event::FileSaved => methods::FILE_SAVED,
             Event::FileDeleted => methods::FILE_DELETED,
-            Event::Startup | Event::ActiveFile | Event::FileRenamed => return,
+            Event::Startup | Event::ActiveFile | Event::FileRenamed | Event::WorkspaceChanged => {
+                return
+            }
         };
         let params = FileParams {
             path: path.to_path_buf(),
@@ -952,6 +975,16 @@ impl ArdoiseApp {
                 self.bookmark_panel.open = false;
                 self.plugins.bottom = Some(key);
             }
+            Some(Location::Right) => {
+                if let Some(old) = self.plugins.right.take() {
+                    self.close_plugin_panel(&old);
+                    if old == key {
+                        return;
+                    }
+                }
+                self.open_plugin_panel(&key);
+                self.plugins.right = Some(key);
+            }
             Some(Location::Settings) => {
                 let _ = self.plugin_update(PluginMsg::ToggleSettings(key.0));
             }
@@ -1016,6 +1049,50 @@ impl ArdoiseApp {
                 if self.plugins.bottom.as_ref() != Some(&key) {
                     self.toggle_plugin_panel(key);
                 }
+                Task::none()
+            }
+            PluginMsg::CloseRight => {
+                if let Some(old) = self.plugins.right.take() {
+                    self.close_plugin_panel(&old);
+                }
+                self.plugins.screen_focus = None;
+                Task::none()
+            }
+            PluginMsg::RightResizeStart => {
+                self.right_resizing = true;
+                Task::none()
+            }
+            PluginMsg::RightResize(x) => {
+                let most =
+                    (self.config.window_width * 0.6).clamp(super::RIGHT_MIN, super::RIGHT_MAX);
+                self.right_width = (self.config.window_width - x).clamp(super::RIGHT_MIN, most);
+                Task::none()
+            }
+            PluginMsg::RightResizeEnd => {
+                self.right_resizing = false;
+                self.config.right_panel_width = self.right_width;
+                self.config_dirty = true;
+                Task::none()
+            }
+            PluginMsg::EditorSubmit(plugin, panel, editor, action) => {
+                let slot = ((plugin.clone(), panel.clone()), editor);
+                let Some((content, _)) = self.plugins.editors.get(&slot) else {
+                    return Task::none();
+                };
+                let mut text = content.text();
+                // The widget ends its text with a line break of its own.
+                if text.ends_with('\n') {
+                    text.pop();
+                }
+                host::notify(
+                    &plugin,
+                    methods::UI_EVENT,
+                    UiEvent {
+                        panel,
+                        action,
+                        value: Some(Value::String(text)),
+                    },
+                );
                 Task::none()
             }
             PluginMsg::CloseBottom => {
@@ -1238,6 +1315,7 @@ impl ArdoiseApp {
                     let open: Vec<PanelKey> = [
                         self.plugins.sidebar.clone(),
                         self.plugins.bottom.clone(),
+                        self.plugins.right.clone(),
                         self.plugins.settings_open.clone(),
                     ]
                     .into_iter()
@@ -1346,6 +1424,7 @@ impl ArdoiseApp {
                         for slot in [
                             &mut self.plugins.sidebar,
                             &mut self.plugins.bottom,
+                            &mut self.plugins.right,
                             &mut self.plugins.settings_open,
                         ] {
                             if slot.as_ref().is_some_and(|k| k.0 == id && !has(k)) {
@@ -1431,6 +1510,7 @@ impl ArdoiseApp {
                         for slot in [
                             &mut self.plugins.sidebar,
                             &mut self.plugins.bottom,
+                            &mut self.plugins.right,
                             &mut self.plugins.settings_open,
                         ] {
                             if slot.as_ref().is_some_and(|k| k.0 == id) {
@@ -1738,9 +1818,13 @@ impl ArdoiseApp {
                     methods::SHOW_PANEL => {
                         if let Ok(p) = serde_json::from_value::<PanelParams>(params) {
                             let key = (id, p.panel);
-                            let open = [&self.plugins.sidebar, &self.plugins.bottom]
-                                .into_iter()
-                                .any(|k| k.as_ref() == Some(&key));
+                            let open = [
+                                &self.plugins.sidebar,
+                                &self.plugins.bottom,
+                                &self.plugins.right,
+                            ]
+                            .into_iter()
+                            .any(|k| k.as_ref() == Some(&key));
                             if !open {
                                 self.toggle_plugin_panel(key);
                             }
@@ -1836,7 +1920,11 @@ impl ArdoiseApp {
                             if !p.extensions.is_empty() {
                                 dialog = dialog.add_filter("", &p.extensions);
                             }
-                            let picked = dialog.pick_file().await;
+                            let picked = if p.folder {
+                                dialog.pick_folder().await
+                            } else {
+                                dialog.pick_file().await
+                            };
                             Ok(picked.map_or(Value::Null, |f| {
                                 Value::String(f.path().to_string_lossy().into_owned())
                             }))
@@ -2068,7 +2156,7 @@ impl ArdoiseApp {
     /// (with their shortcut), so they are not here twice.
     pub(super) fn menu_panels(&self) -> Vec<(String, Message)> {
         let locale = rust_i18n::locale();
-        [Location::Sidebar, Location::Bottom]
+        [Location::Sidebar, Location::Bottom, Location::Right]
             .into_iter()
             .flat_map(|location| self.plugins.panels(location))
             .filter(|(plugin, _)| {
@@ -2094,6 +2182,7 @@ impl ArdoiseApp {
         let open = match location {
             Location::Sidebar => self.plugins.sidebar.as_ref().filter(|_| self.show_sidebar),
             Location::Bottom => self.plugins.bottom.as_ref(),
+            Location::Right => self.plugins.right.as_ref(),
             // No button: the settings are in the preferences.
             Location::Settings => return Vec::new(),
         };
@@ -2236,6 +2325,25 @@ impl ArdoiseApp {
             )
             .padding([10, 12])
             .width(Length::Fill)
+            .height(Length::Fill)
+            .style(se_theme::panel(dark))
+            .into(),
+        )
+    }
+
+    /// The panel of a plugin at the right of the editor, if one is open.
+    pub(super) fn plugin_right(&self, dark: bool) -> Option<Element<'_, Message>> {
+        let key = self.plugins.right.as_ref()?;
+        Some(
+            container(
+                iced::widget::column![
+                    self.plugin_panel_header(key, dark, Some(plugin_msg(PluginMsg::CloseRight))),
+                    self.plugin_panel_body(key, dark)
+                ]
+                .spacing(8),
+            )
+            .padding([8, 12])
+            .width(Length::Fixed(self.right_width))
             .height(Length::Fill)
             .style(se_theme::panel(dark))
             .into(),
@@ -3012,6 +3120,55 @@ mod tab_tests {
         say(&mut app, serde_json::json!([0]));
         app.plugins.forget("test.tabs");
         assert!(app.plugin_run_marks().is_empty());
+    }
+
+    #[test]
+    fn the_projects_are_followed_as_they_change() {
+        let mut app = ArdoiseApp::blank(Config::default());
+        app.plugins_follow_workspace();
+        assert_eq!(app.plugins.sent_workspace, Some(Vec::new()));
+        app.projects.roots = vec![PathBuf::from("/repo")];
+        // Looked at after each message.
+        let _ = app.update(Message::Plugin(PluginMsg::CloseRight));
+        assert_eq!(
+            app.plugins.sent_workspace,
+            Some(vec![PathBuf::from("/repo")])
+        );
+    }
+
+    #[test]
+    fn a_panel_at_the_right_opens_beside_the_others_and_closes() {
+        let mut app = ArdoiseApp::blank(Config::default());
+        install(
+            &mut app,
+            r#"{"id": "test.chat", "name": "Chat", "version": "1.0.0", "api": 1,
+                "command": ["bin/none"], "contributes": {"panels": [
+                    {"id": "chat", "title": "Chat", "location": "right"},
+                    {"id": "out", "title": "Out", "location": "bottom"}]}}"#,
+        );
+        let chat: PanelKey = ("test.chat".into(), "chat".into());
+        let out: PanelKey = ("test.chat".into(), "out".into());
+        app.toggle_plugin_panel(out.clone());
+        app.toggle_plugin_panel(chat.clone());
+        assert_eq!(app.plugins.right.as_ref(), Some(&chat));
+        assert_eq!(app.plugins.bottom.as_ref(), Some(&out), "both stay");
+        assert!(app.plugins.has_open_panel("test.chat"));
+        assert!(app.plugin_right(true).is_some());
+        assert_eq!(app.plugin_tools(Location::Right).len(), 1);
+        assert!(app.plugin_tools(Location::Right)[0].1, "its button is lit");
+        // Dragged by its left edge, within limits, and remembered.
+        app.config.window_width = 1600.0;
+        let _ = app.plugin_update(PluginMsg::RightResize(1000.0));
+        assert_eq!(app.right_width, 600.0);
+        let _ = app.plugin_update(PluginMsg::RightResize(1590.0));
+        assert_eq!(app.right_width, crate::app::RIGHT_MIN);
+        let _ = app.plugin_update(PluginMsg::RightResizeEnd);
+        assert_eq!(app.config.right_panel_width, crate::app::RIGHT_MIN);
+        let _ = app.plugin_update(PluginMsg::CloseRight);
+        assert!(app.plugins.right.is_none());
+        app.toggle_plugin_panel(chat.clone());
+        app.toggle_plugin_panel(chat);
+        assert!(app.plugins.right.is_none(), "its button closes it too");
     }
 
     #[test]

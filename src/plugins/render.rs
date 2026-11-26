@@ -358,6 +358,7 @@ fn draw<'a>(
             height,
             regions,
             mark,
+            submit,
             ..
         } => {
             let Some((content, _)) = plugins.editors.get(&(key.clone(), id.clone())) else {
@@ -386,6 +387,32 @@ fn draw<'a>(
                     crate::editor::highlighter::to_format,
                 );
             let _ = read_only;
+            // A chat: Enter sends, Shift+Enter starts a line.
+            let editor = match submit {
+                Some(action) => {
+                    let (k, id, action) = (key.clone(), id_of(node).to_string(), action.clone());
+                    editor.key_binding(move |press| {
+                        use iced::widget::text_editor::{Binding, Status};
+                        let enter = matches!(
+                            press.key,
+                            iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter)
+                        );
+                        if !enter || !matches!(press.status, Status::Focused { .. }) {
+                            Binding::from_key_press(press)
+                        } else if press.modifiers.shift() {
+                            Some(Binding::Enter)
+                        } else {
+                            Some(Binding::Custom(Message::Plugin(PluginMsg::EditorSubmit(
+                                k.0.clone(),
+                                k.1.clone(),
+                                id.clone(),
+                                action.clone(),
+                            ))))
+                        }
+                    })
+                }
+                None => editor,
+            };
             // A frame or a mark is placed by logical line, which wrapping
             // would shift.
             let placed = !regions.is_empty() || mark.is_some();
@@ -466,6 +493,14 @@ fn draw<'a>(
             let view = plugins.grids.get(&(key.clone(), grid.id.clone()));
             super::grid::view(key, grid, view, dark)
         }
+        Node::Markdown { text } => column(
+            crate::preview::markdown::parse(text)
+                .iter()
+                .map(|block| crate::preview::markdown::block_view(block, dark, None)),
+        )
+        .spacing(8)
+        .width(Length::Fill)
+        .into(),
         Node::Image { svg, height } => {
             let handle = iced::widget::svg::Handle::from_memory(svg.clone().into_bytes());
             let image = iced::widget::svg(handle).width(Length::Fill);
