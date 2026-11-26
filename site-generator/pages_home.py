@@ -68,7 +68,7 @@ def pillars():
         ("03", ("Chez vous, tout simplement", "Yours, plainly"),
          ("Fichiers locaux, session stockée sur votre machine et lisible par vous seul, mots de passe des plugins dans le trousseau du système. Désinstallation complète en une commande.", "Local files, a session stored on your machine and readable by you only, plugin passwords in the system keychain. A complete uninstall in one command.")),
         ("04", ("Mises à jour vérifiées", "Verified updates"),
-         ("Aide › Rechercher des mises à jour. Les versions sont signées (Ed25519) ; une mise à jour dont la signature ou la somme de contrôle ne correspond pas est refusée.", "Help › Check for updates. Releases are signed (Ed25519); an update whose signature or checksum does not match is refused.")),
+         ("Aide › Vérifier les mises à jour…. Les versions sont signées (Ed25519) ; une mise à jour dont la signature ou la somme de contrôle ne correspond pas est refusée.", "Help › Check for updates. Releases are signed (Ed25519); an update whose signature or checksum does not match is refused.")),
     ]
     out = "".join(f'<div class="card"><span class="num">{n}</span><h3>{L(*t)}</h3><p>{L(*d)}</p></div>' for n, t, d in cards)
     return f'''<section class="block"><div class="wrap">
@@ -92,7 +92,7 @@ def showcase():
                   ("Duplication, déplacement, commentaire et indentation de lignes", "Line duplication, moving, commenting and indenting"),
                   ("Aperçu Markdown et arbre JSON", "Markdown preview and JSON tree")],
                  ("guide-editing.html", "Voir l'édition", "See editing"),
-                 slot("editing.png", "Fenêtre avec un fichier Markdown en mode « Partagé » (texte et aperçu côte à côte), pliage visible dans la marge, minimap à droite.", "Window with a Markdown file in Split mode (text and preview side by side), folding chevrons in the gutter, minimap on the right.", page="index.html", title="Édition")))
+                 slot("editing.png", "Fenêtre avec un fichier Markdown en mode « Divisé » (texte et aperçu côte à côte), pliage visible dans la marge, minimap à droite.", "Window with a Markdown file in Split mode (text and preview side by side), folding chevrons in the gutter, minimap on the right.", page="index.html", title="Édition")))
     rows.append((False, "Recherche", ("Tout trouver depuis un seul champ", "Find everything from one field"),
                  ("« Rechercher partout » réunit fichiers, classes, symboles, actions, texte des fichiers et ce que proposent les plugins (branches, commits…). Tapez <code>nom:ligne</code> pour aller à une ligne, <code>/</code> pour les réglages et les pages.", "“Search everywhere” gathers files, classes, symbols, actions, text in files and what plugins offer (branches, commits…). Type <code>name:line</code> to go to a line, <code>/</code> for settings and pages."),
                  [("Onglets Tout, Classes, Fichiers, Symboles, Actions, Texte, Plugins", "Tabs All, Classes, Files, Symbols, Actions, Text, Plugins"),
@@ -100,13 +100,13 @@ def showcase():
                   ("Les menus et actions s'éteignent quand elles ne peuvent rien faire", "Menus and actions switch off when they cannot do anything")],
                  ("guide-search.html", "Voir la recherche", "See search"),
                  slot("search-everywhere.png", "La fenêtre « Rechercher partout » ouverte sur l'onglet Tout, avec une saisie et des résultats de plusieurs types.", "The Search everywhere window open on the All tab, with a query and results of several kinds.", page="index.html", title="Rechercher partout")))
-    rows.append((True, "Espace de travail", ("Notes jetables, signets, projets", "Scratch files, bookmarks, projects"),
-                 ("Le bouton « Scratch » sous la liste des fichiers crée des notes et essais qui s'enregistrent en tapant et restent jusqu'à leur suppression. Le panneau des signets liste chaque fichier marqué avec ses lignes ; un ruban jaune apparaît dans la marge et la minimap.", "The “Scratch” button under the file list creates notes and trials saved as you type that stay until you delete them. The bookmarks panel lists each marked file with its lines; a yellow ribbon shows in the gutter and the minimap."),
+    rows.append((True, "Espace de travail", ("Notes jetables, marque-pages, projets", "Scratch files, bookmarks, projects"),
+                 ("Le bouton « Scratch » sous la liste des fichiers crée des notes et essais qui s'enregistrent en tapant et restent jusqu'à leur suppression. Le panneau des marque-pages liste chaque fichier marqué avec ses lignes ; un ruban jaune apparaît dans la marge et la minimap.", "The “Scratch” button under the file list creates notes and trials saved as you type that stay until you delete them. The bookmarks panel lists each marked file with its lines; a yellow ribbon shows in the gutter and the minimap."),
                  [("Plusieurs projets ouverts dans la barre latérale", "Several projects open in the sidebar"),
-                  ("Fenêtre scindée à droite ou en dessous", "Split the window right or below"),
+                  ("Éditeur divisé à droite ou en bas", "Split the window right or below"),
                   ("Menu contextuel dans les zones vides des panneaux", "Context menu on the empty room of the panels")],
                  ("guide-workspace.html", "Voir l'espace de travail", "See the workspace"),
-                 slot("workspace.png", "Barre latérale avec le panneau Projets déplié et le panneau Scratch ouvert, deux fichiers côte à côte en fenêtre scindée.", "Sidebar with the Projects panel expanded and the Scratch panel open, two files side by side in a split window.", page="index.html", title="Espace de travail")))
+                 slot("workspace.png", "Barre latérale avec le panneau Projets déplié et le panneau Scratch ouvert, deux fichiers côte à côte en éditeur divisé.", "Sidebar with the Projects panel expanded and the Scratch panel open, two files side by side in a split window.", page="index.html", title="Espace de travail")))
     out = ""
     for rev, eb, title, text, bullets, link, media in rows:
         li = "".join(f"<li>{L(*b)}</li>" for b in bullets)
@@ -167,7 +167,7 @@ def faq():
         (("Est-ce vraiment libre ?", "Is it really free?"),
          ("Oui : licence MIT, sans compte, sans filigrane. Le code est sur GitHub.", "Yes: MIT license, no account, no watermark. The code is on GitHub.")),
         (("Les plugins sont-ils sûrs ?", "Are plugins safe?"),
-         ("Les plugins officiels sont publiés dans leur propre dépôt et signés avec la clé des versions d'Ardoise. Les commandes propres à un projet ne s'exécutent qu'une fois le dossier approuvé.", "Official plugins are published in their own repository and signed with Ardoise's release key. A project's own commands run only once you trust the folder.")),
+         ("Les plugins officiels sont publiés dans leur propre dépôt et signés avec la clé des versions d'Ardoise. Les commandes propres à un projet ne s'exécutent qu'une fois le dossier déclaré de confiance.", "Official plugins are published in their own repository and signed with Ardoise's release key. A project's own commands run only once you trust the folder.")),
         (("Où sont mes données ?", "Where is my data?"),
          ("La session (y compris le texte non enregistré) est dans <code>~/.local/share/ardoise/session.json</code> (<code>~/Library/Application Support/ardoise</code> sur macOS), lisible par vous seul. Supprimez ce dossier pour l'oublier.", "The session (unsaved text included) is in <code>~/.local/share/ardoise/session.json</code> (<code>~/Library/Application Support/ardoise</code> on macOS), readable by you only. Delete that folder to forget it.")),
         (("Comment tout désinstaller ?", "How do I remove everything?"),

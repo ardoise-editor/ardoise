@@ -3,7 +3,7 @@
 
 PLUGINS = [
  dict(
-  slug="git", repo="plugin-git", ver="1.3.0", icon="git", name=("Git", "Git"),
+  slug="git", repo="plugin-git", ver="1.4.2", icon="git", name=("Git", "Git"),
   tag=("Git complet, dans un panneau sous l'éditeur.", "Full Git, in a panel under the editor."),
   intro=("Commit, remisage, historique avec son graphe, branches, push et pull, blame, diffs et conflits : tout ce qu'on fait au quotidien avec Git, sans quitter l'éditeur — jusqu'au rebase interactif.",
          "Commit, stash, log with its graph, branches, push and pull, blame, diffs and conflicts: everything you do with Git every day, without leaving the editor — down to the interactive rebase."),
@@ -19,9 +19,13 @@ PLUGINS = [
    (("Branches et remisages", "Branches and stashes"), [
      ("Branches locales et distantes, tags : checkout, merge, rebase, pull, fetch, push, force push, renommer, supprimer, comparer avec l'arbre de travail.", "Local and remote branches and tags: checkout, merge, rebase, pull, fetch, push, force push, rename, delete, compare with the working tree."),
      ("Remisage (en gardant l'index, ou l'index seul), appliquer, pop, supprimer, créer une branche depuis un remisage.", "Stash (keeping the index, or the index only), apply, pop, drop, make a branch of a stash.")]),
+   (("GitHub et GitLab", "GitHub and GitLab"), [
+     ("Les plugins officiels <a href=\"https://github.com/ardoise-editor/plugin-github\">GitHub</a> et <a href=\"https://github.com/ardoise-editor/plugin-gitlab\">GitLab</a> ajoutent chacun un onglet au panneau Git : avec eux, un seul bouton Git dans la barre d'activité. Ils fonctionnent aussi sans le plugin Git.", "The official <a href=\"https://github.com/ardoise-editor/plugin-github\">GitHub</a> and <a href=\"https://github.com/ardoise-editor/plugin-gitlab\">GitLab</a> plugins each add a tab to the Git panel: with them, a single Git button in the activity bar. They work without the Git plugin too."),
+     ("GitHub : pull requests (créer, lire, commenter, approuver, fusionner), Actions et leurs journaux, tags.", "GitHub: pull requests (make, read, comment, approve, merge), Actions and their logs, tags."),
+     ("GitLab : merge requests (créer, lire, commenter, approuver, fusionner), pipelines et leurs journaux, tags.", "GitLab: merge requests (make, read, comment, approve, merge), pipelines and their logs, tags.")]),
    (("Dans l'éditeur", "In the editor"), [
      ("Couleurs des fichiers modifiés dans l'arbre et sur les onglets ; lignes modifiées marquées dans la marge.", "Colors of changed files in the tree and on the tabs; changed lines marked beside the text."),
-     ("Blame dans la marge (« Git: Annotate »), diffs en onglets où l'on indexe ou annule des blocs, conflits résolus dans une vue à trois colonnes.", "Blame in the gutter (“Git: Annotate”), diffs in tabs where blocks are staged or put back, conflicts settled in a three-column merge."),
+     ("Blame dans la marge (« Git : annoter (blame) »), diffs en onglets où l'on indexe ou annule des blocs, conflits résolus dans une vue à trois colonnes.", "Blame in the gutter (“Git: Annotate (Blame)”), diffs in tabs where blocks are staged or put back, conflicts settled in a three-column merge."),
      ("Branches et commits dans « Rechercher partout » (onglet Plugins) ; outils : comparer/récupérer un fichier d'une révision, historique d'un fichier ou de lignes, remotes, patches, nettoyage, sous-modules, worktrees, clone, et fetch/pull/push de tous les dépôts des projets.", "Branches and commits in Search Everywhere (Plugins tab); tools: compare with or get from a revision, history of a file or selected lines, remotes, patches, clean, submodules, worktrees, clone, and fetch/pull/push of every repository of the projects.")]),
   ],
   needs=[("<code>git</code> doit être installé sur la machine.", "<code>git</code> must be installed on the machine.")],
@@ -31,16 +35,18 @@ PLUGINS = [
   media=[("plugin-git-commit.png", "Panneau Git, onglet Commit : fichiers modifiés, message en cours de saisie, diff d'un fichier ouvert à côté.", "Git panel, Commit tab: changed files, a message being typed, a file diff open beside it.", "img", "16/10"),
          ("plugin-git-log.png", "Onglet Log : le graphe d'historique avec plusieurs branches, un commit sélectionné et ses fichiers.", "Log tab: the history graph with several branches, one commit selected and its files.", "img", "16/10"),
          ("plugin-git-merge.png", "Résolution d'un conflit dans la vue à trois colonnes.", "A conflict settled in the three-column merge.", "img", "16/10"),
+         ("plugin-git-tabs.png", "Le panneau Git avec les onglets Git, GitHub et GitLab, et un seul bouton Git dans la barre d'activité.", "The Git panel with the Git, GitHub and GitLab tabs, and a single Git button in the activity bar.", "img", "16/10"),
          ("plugin-git-demo.mp4", "Parcours complet : modifier un fichier, voir les lignes marquées, indexer, commit et push depuis le panneau.", "Complete flow: edit a file, see the marked lines, stage, commit and push from the panel.", "video", "16/10")],
  ),
  dict(
-  slug="database", repo="plugin-database", ver="1.4.1", icon="database", name=("Base de données", "Database"),
-  tag=("PostgreSQL, MySQL/MariaDB et SQLite : explorer, modifier, interroger.", "PostgreSQL, MySQL/MariaDB and SQLite: browse, edit, query."),
+  slug="database", repo="plugin-database", ver="1.5.2", icon="database", name=("Base de données", "Database"),
+  tag=("PostgreSQL, MySQL/MariaDB, SQLite et DuckDB : explorer, modifier, interroger.", "PostgreSQL, MySQL/MariaDB, SQLite and DuckDB: browse, edit, query."),
   intro=("Un client de bases de données intégré : l'arbre des sources dans la barre latérale, les tables éditables dans des onglets, une console SQL avec complétion, un concepteur de tables, des imports, exports et sauvegardes, et le diagramme ER.",
          "A database client built in: the tree of data sources in the sidebar, editable tables in tabs, a SQL console with completion, a table designer, imports, exports and backups, and the ER diagram."),
   groups=[
    (("Sources et arbre", "Sources and tree"), [
-     ("PostgreSQL, MySQL / MariaDB et SQLite, en direct ou par un tunnel SSH, avec TLS.", "PostgreSQL, MySQL / MariaDB and SQLite, directly or through an SSH tunnel, with TLS."),
+     ("PostgreSQL, MySQL / MariaDB, SQLite et DuckDB, en direct ou par un tunnel SSH, avec TLS.", "PostgreSQL, MySQL / MariaDB, SQLite and DuckDB, directly or through an SSH tunnel, with TLS."),
+     ("Un fichier DuckDB n'est ouvert que par un programme à la fois : tant que le plugin l'a ouvert, un autre ne peut pas y écrire.", "A DuckDB file is opened by one program at a time: while the plugin has it open, another cannot write to it."),
      ("L'arbre de chaque source : bases, schémas, tables et leurs composants, fonctions, séquences, types ; sous l'arbre, les actions du nœud choisi (ouvrir, structure, modifier, DDL, import, copie, sauvegarde et restauration, vider, supprimer, nouvelle table ou schéma, diagramme ER, santé).", "The tree of each source: databases, schemas, tables and what they are made of, functions, sequences, types; under it, the actions for the node picked (open, structure, modify, DDL, import, copy, backup and restore, empty, drop, new table or schema, ER diagram, health)."),
      ("Mots de passe gardés dans le trousseau du système si vous le demandez.", "Passwords kept in the system keychain when asked to.")]),
    (("Une table dans un onglet", "A table in a tab"), [
@@ -55,7 +61,7 @@ PLUGINS = [
      ("Diagramme ER d'un schéma (copiable en Mermaid), santé d'une base (tailles, lignes mortes, index inutilisés).", "ER diagram of a schema (copied as Mermaid), health of a database (sizes, dead rows, unused indexes)."),
      ("Import CSV et JSON, copie d'une table vers une autre source, sauvegarde et restauration.", "Import of CSV and JSON, copy of a table to another source, backup and restore.")]),
   ],
-  needs=[("Les pilotes (PostgreSQL, MySQL, SQLite) sont des programmes à part livrés avec le plugin : rien d'autre à installer.", "The drivers (PostgreSQL, MySQL, SQLite) are programs of their own, shipped with the plugin: nothing else to install.")],
+  needs=[("Les pilotes (PostgreSQL, MySQL, SQLite, DuckDB) sont des programmes à part livrés avec le plugin : rien d'autre à installer.", "The drivers (PostgreSQL, MySQL, SQLite, DuckDB) are programs of their own, shipped with the plugin: nothing else to install.")],
   settings=("Le formulaire de connexion (tuile du type de source, six onglets, test de connexion) s'ouvre dans une fenêtre par-dessus l'éditeur.", "The connection form (a tile for the kind of source, six tabs, a connection test) opens in a window over the editor."),
   keys=[],
   media=[("plugin-database-tree.png", "Barre latérale avec une source PostgreSQL dépliée (schémas, tables) et une table ouverte dans un onglet.", "Sidebar with an expanded PostgreSQL source (schemas, tables) and a table open in a tab.", "img", "16/10"),
@@ -65,7 +71,7 @@ PLUGINS = [
          ("plugin-database-demo.mp4", "Se connecter à une base (le Docker de test fait très bien l'affaire), ouvrir une table, modifier une cellule, voir le SQL puis Commit.", "Connect to a database (a test Docker container is perfect), open a table, edit a cell, see the SQL then Commit.", "video", "16/10")],
  ),
  dict(
-  slug="api", repo="plugin-api", ver="1.3.0", icon="api", name=("API", "API"),
+  slug="api", repo="plugin-api", ver="1.3.2", icon="api", name=("API", "API"),
   tag=("Un Postman léger : requêtes, collections, environnements, tests.", "A light Postman: requests, collections, environments, tests."),
   intro=("Testez vos API HTTP sans quitter l'éditeur : requêtes dans des onglets, collections, environnements à variables, tests des réponses, et imports depuis Postman, OpenAPI ou cURL.",
          "Test your HTTP APIs without leaving the editor: requests in tabs, collections, environments with variables, tests of the answers, and imports from Postman, OpenAPI or cURL."),
@@ -89,7 +95,7 @@ PLUGINS = [
          ("plugin-api-tests.png", "Résultat des tests d'une collection exécutée.", "Test results of a collection run.", "img", "16/10")],
  ),
  dict(
-  slug="lint", repo="plugin-lint", ver="1.0.1", icon="lint", name=("Lint", "Lint"),
+  slug="lint", repo="plugin-lint", ver="1.0.2", icon="lint", name=("Lint", "Lint"),
   tag=("Les problèmes de vos fichiers, soulignés pendant la frappe, avec leurs corrections.", "The problems in your files, underlined as you type, with their fixes."),
   intro=("Le plugin lance les linters de votre projet et affiche leurs avertissements dans l'éditeur, avec leurs corrections. L'éditeur y ajoute ce que trouvent ses serveurs de langage.",
          "The plugin runs your project's linters and shows their findings in the editor, with their fixes. The editor adds what its language servers find."),
@@ -97,17 +103,17 @@ PLUGINS = [
    (("Outils pris en charge", "Supported tools"), [
      ("ESLint, ruff, flake8, pycodestyle, pylint, mypy, Clippy, go vet, golangci-lint, cppcheck, ShellCheck, stylelint, yamllint, markdownlint, RuboCop, PHP, luacheck, ktlint, SwiftLint, SQLFluff, HLint, xmllint, et JSON lui-même.", "ESLint, ruff, flake8, pycodestyle, pylint, mypy, Clippy, go vet, golangci-lint, cppcheck, ShellCheck, stylelint, yamllint, markdownlint, RuboCop, PHP, luacheck, ktlint, SwiftLint, SQLFluff, HLint, xmllint, and JSON itself.")]),
    (("Dans l'éditeur", "In the editor"), [
-     ("Problèmes affichés pendant que vous tapez, avec leur correction : « Vérifier les problèmes », « Corriger les problèmes du fichier », problème suivant / précédent.", "Problems shown as you type, with their fix: “Check for problems”, “Fix the problems of the file”, next / previous problem."),
-     ("Les programmes propres au projet (<code>node_modules/.bin</code>, un virtualenv) ne tournent qu'une fois le dossier approuvé.", "A project's own programs (<code>node_modules/.bin</code>, a virtualenv) run only once the folder is trusted.")]),
+     ("Problèmes affichés pendant que vous tapez, avec leur correction : « Rechercher les problèmes », « Corriger les problèmes du fichier », problème suivant / précédent.", "Problems shown as you type, with their fix: “Check for problems”, “Fix the problems of the file”, next / previous problem."),
+     ("Les programmes propres au projet (<code>node_modules/.bin</code>, un virtualenv) ne tournent qu'une fois le dossier déclaré de confiance.", "A project's own programs (<code>node_modules/.bin</code>, a virtualenv) run only once the folder is trusted.")]),
   ],
   needs=[("Les linters eux-mêmes doivent être présents (dans le projet ou sur la machine).", "The linters themselves must be available (in the project or on the machine).")],
-  settings=("Préférences › Plugins : langages concernés, outils de chacun (ceux trouvés prêts dans le projet par défaut), chemin d'un programme introuvable.", "Preferences › Plugins: the languages looked at, the tools of each one (those found ready in the project by default), and the path of a program that is not found by itself."),
+  settings=("Préférences › Lint : langages concernés, outils de chacun (ceux trouvés prêts dans le projet par défaut), chemin d'un programme introuvable.", "Preferences › Lint: the languages looked at, the tools of each one (those found ready in the project by default), and the path of a program that is not found by itself."),
   keys=[],
   media=[("plugin-lint-problems.png", "Un fichier avec des soulignements d'erreurs/avertissements et le menu des problèmes.", "A file with error/warning underlines and the Problems menu.", "img", "16/10"),
          ("plugin-lint-fix.png", "La correction proposée dans la bulle d'un problème.", "The fix offered in the card of a problem.", "img", "16/10")],
  ),
  dict(
-  slug="spell", repo="plugin-spell", ver="1.0.1", icon="spell", name=("Orthographe", "Spelling"),
+  slug="spell", repo="plugin-spell", ver="1.0.2", icon="spell", name=("Orthographe", "Spelling"),
   tag=("Les mots mal orthographiés soulignés, avec suggestions et dictionnaire personnel.", "Misspelled words underlined, with suggestions and a personal dictionary."),
   intro=("Un correcteur orthographique discret basé sur les dictionnaires Hunspell de la machine : il souligne dans la prose (texte, Markdown hors code) et dans les commentaires des programmes.",
          "A quiet spell checker based on the machine's Hunspell dictionaries: it underlines in prose (text, Markdown outside code) and in the comments of programs."),
@@ -125,16 +131,16 @@ PLUGINS = [
   media=[("plugin-spell-underline.png", "Un fichier Markdown avec quelques fautes soulignées et le menu de suggestions ouvert.", "A Markdown file with a few underlined mistakes and the suggestions menu open.", "img", "16/10")],
  ),
  dict(
-  slug="history", repo="plugin-history", ver="1.1.1", icon="history", name=("Historique local", "Local History"),
+  slug="history", repo="plugin-history", ver="1.1.2", icon="history", name=("Historique local", "Local History"),
   tag=("Ce qu'étaient vos fichiers, gardé sur la machine, que Git le sache ou non.", "What your files were, kept on this machine whether Git knows it or not."),
   intro=("Comme dans IntelliJ IDEA : chaque fichier est mémorisé à l'ouverture, à l'enregistrement, avant un remplacement dans les fichiers ou une suppression, et chaque minute pendant la frappe. Comparez, restaurez, posez des labels.",
          "As IntelliJ IDEA has it: a file is kept when it is opened, saved, rewritten by a replace in files, about to be deleted, and every minute while it is typed in. Compare, revert, put labels."),
   groups=[
-   (("Panneau « Local History: Show »", "The “Local History: Show” panel"), [
+   (("Panneau « Historique local : afficher »", "The “Local History: Show” panel"), [
      ("Ouvrez-le depuis la recherche d'actions et les menus de l'éditeur, d'un fichier et d'un dossier.", "Open it from the search for actions and the menus of the editor, of a file and of a folder."),
      ("Les révisions du fichier ou du dossier, les plus récentes d'abord, avec leurs labels ; choisissez-en une pour la comparer à l'état actuel, la remettre en place (ou une seule de ses modifications), ou l'enregistrer comme patch.", "The revisions of the file or folder, latest first, with the labels; pick one to compare it with now, put it back (or one of its changes), or save it as a patch.")]),
    (("Labels", "Labels"), [
-     ("« Put label » marque un instant : revenir à un label remet en place tous les fichiers du dossier.", "“Put label” marks a moment: going back to a label puts back every file of the folder.")]),
+     ("« Poser un label » marque un instant : revenir à un label remet en place tous les fichiers du dossier.", "“Put label” marks a moment: going back to a label puts back every file of the folder.")]),
    (("Stockage", "Storage"), [
      ("Les textes sont stockés une seule fois, par leur empreinte, dans le dossier de données du plugin.", "Texts are stored once, by their hash, in the plugin's data folder.")]),
   ],
@@ -144,7 +150,7 @@ PLUGINS = [
   media=[("plugin-history-panel.png", "Panneau d'historique d'un fichier : liste des révisions avec labels, diff avec l'état actuel.", "History panel of a file: list of revisions with labels, diff against the current state.", "img", "16/10")],
  ),
  dict(
-  slug="tasks", repo="plugin-tasks", ver="1.0.2", icon="tasks", name=("Tâches", "Tasks"),
+  slug="tasks", repo="plugin-tasks", ver="1.0.3", icon="tasks", name=("Tâches", "Tasks"),
   tag=("Compiler, tester et lancer les commandes d'un projet, avec leur sortie.", "Build, test and run a project's commands, with their output."),
   intro=("Les commandes de build, de test et de lancement de votre projet (Cargo, scripts npm, Make, Go, ou votre propre fichier) s'exécutent depuis un panneau, avec leur sortie. Un emplacement cité dans la sortie s'ouvre au bon endroit.",
          "The build, test and run commands of your project (Cargo, npm scripts, Make, Go, or your own file) run from a panel, with their output. A place the output names opens the file there."),
@@ -164,7 +170,7 @@ PLUGINS = [
          ("plugin-tasks-demo.mp4", "Lancer « test » puis cliquer sur une erreur : le fichier s'ouvre à la bonne ligne.", "Run “test” then click an error: the file opens at the right line.", "video", "16/10")],
  ),
  dict(
-  slug="remote", repo="plugin-remote", ver="1.1.2", icon="remote", name=("Fichiers distants", "Remote Files"),
+  slug="remote", repo="plugin-remote", ver="1.1.4", icon="remote", name=("Fichiers distants", "Remote Files"),
   tag=("Ouvrir et modifier les fichiers d'une autre machine par SSH.", "Open and edit the files of another machine over SSH."),
   intro=("C'est le <code>ssh</code> du système qui travaille : vos clés, votre agent et votre <code>~/.ssh/config</code> s'appliquent. Indiquez <code>user@hôte</code> et un dossier, choisissez un fichier : une copie est gardée ici, s'ouvre comme n'importe quel fichier, et repart à chaque enregistrement.",
          "The system's <code>ssh</code> does the work: keys, the agent and <code>~/.ssh/config</code> apply. Give <code>user@host</code> and a folder, pick a file: a copy is kept here and opened like any file, and sent back at each save."),
@@ -180,7 +186,7 @@ PLUGINS = [
   media=[("plugin-remote-panel.png", "Panneau Fichiers distants : une machine connectée, un dossier déplié, un fichier ouvert dans un onglet.", "Remote Files panel: a connected machine, an expanded folder, a file open in a tab.", "img", "16/10")],
  ),
  dict(
-  slug="terminal", repo="plugin-terminal", ver="1.1.0", icon="terminal", name=("Terminal", "Terminal"),
+  slug="terminal", repo="plugin-terminal", ver="1.1.1", icon="terminal", name=("Terminal", "Terminal"),
   tag=("Des shells en onglets sous l'éditeur, avec historique et recherche.", "Shells in tabs under the editor, with history and search."),
   intro=("Votre <code>$SHELL</code> dans un pseudo-terminal sous l'éditeur : xterm-256color, vraies couleurs, souris pour vim ou htop. Les chemins <code>fichier:ligne</code> s'ouvrent d'un Ctrl/Cmd+clic.",
          "Your <code>$SHELL</code> in a pseudo-terminal under the editor: xterm-256color, true color, the mouse for vim or htop. <code>file:line</code> paths open with a Ctrl/Cmd+click."),
