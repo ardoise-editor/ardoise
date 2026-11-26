@@ -542,6 +542,8 @@ pub enum Message {
     CloseBlame,
     BlameOption(BlameOption),
     BlameLineClicked(usize),
+    /// A run mark of a plugin clicked in the gutter (line from 0).
+    RunMarkClicked(usize),
     /// Shows the file as it was before the commit of the line that was
     /// right-clicked in the blame column, with its own blame.
     BlamePrevious,
@@ -2725,6 +2727,10 @@ impl ArdoiseApp {
                     BlameOption::ShowHidden => "git.blame_show_hidden",
                     BlameOption::HideLine => "git.blame_hide",
                 })
+            }
+            Message::RunMarkClicked(line) => {
+                self.plugin_run_mark_clicked(line);
+                Task::none()
             }
             Message::BlameLineClicked(line) => {
                 self.plugin_annotation_clicked(line);
@@ -8304,6 +8310,7 @@ impl ArdoiseApp {
                     self.indent().1,
                     search,
                     marks,
+                    self.plugin_run_marks(),
                     self.blame_annotations(),
                     self.change_paint(),
                     self.problem_paint(dark),

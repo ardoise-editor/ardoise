@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.10.0] - 2026-11-26
+
+### Added
+- Plugins can put run marks (▶) in the gutter of a file and hear the clicks (`editor/setRunMarks`, plugin-sdk 0.16.0): the Docker plugin uses them in Dockerfiles and compose files.
+- Plugins can complete what is typed in a file (`editor/setCompleter`): the Docker plugin completes Dockerfiles.
+
 ## [2.9.1] - 2026-11-25
 
 ### Added

@@ -1,5 +1,11 @@
 # Journal des modifications
 
+## [2.10.0] - 2026-11-26
+
+### Ajouté
+- Les plugins peuvent placer des repères de lancement (▶) dans la marge d’un fichier et recevoir les clics (`editor/setRunMarks`, plugin-sdk 0.16.0) : le plugin Docker les utilise dans les Dockerfile et les fichiers compose.
+- Les plugins peuvent compléter la saisie d’un fichier (`editor/setCompleter`) : le plugin Docker complète les Dockerfile.
+
 ## [2.9.1] - 2026-11-25
 
 ### Ajouté
